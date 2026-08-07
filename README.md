@@ -2,8 +2,10 @@
 
 *A free, open 3D factory simulator for learning PLC programming.*
 
-> **Status: active development.** Tag bus, drivers, Godot 4.7/C# engine with 3D rendering and Jolt physics are complete and tested end-to-end against a real S7-1500 (100.0% split verified on SCL v0.4). See the [roadmap](docs/ROADMAP.md). `factoryforge` is a
-> working name.
+**Created by:** Mahamed Algaroshy (محمد الجروشي)  
+**Repository:** [github.com/malgaroshy-maker/factory](https://github.com/malgaroshy-maker/factory)
+
+> **Status: active development.** Tag bus, drivers, Godot 4.7/C# engine with 3D rendering and Jolt physics are complete and tested end-to-end against a real S7-1500 (100.0% split verified on SCL v0.4). See the [roadmap](docs/ROADMAP.md).
 
 Write ladder in TIA Portal, run it in S7-PLCSIM Advanced, and watch it drive a
 factory. Or use OpenPLC over Modbus and pay nothing at all. No account, no
