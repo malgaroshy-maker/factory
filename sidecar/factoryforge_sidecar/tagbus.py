@@ -88,24 +88,27 @@ class TagBusClient:
 
     async def run(self, stop: asyncio.Event | None = None) -> None:
         """Connect and pump until *stop* is set or the connection drops."""
-        async with websockets.connect(self.url, max_queue=64) as ws:
-            self._ws = ws
-            msg = proto.decode(await ws.recv())
-            if msg.get("t") == "status":
-                log.warning("status message before hello: %s", msg.get("message"))
+        try:
+            async with websockets.connect(self.url, max_queue=64) as ws:
+                self._ws = ws
                 msg = proto.decode(await ws.recv())
-            hello = proto.check_hello(msg)
-            self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
-            log.info("connected to %s (tick %dms)", hello.get("engine"), self._tick_ms)
-            self.connected.set()
+                if msg.get("t") == "status":
+                    log.warning("status message before hello: %s", msg.get("message"))
+                    msg = proto.decode(await ws.recv())
+                hello = proto.check_hello(msg)
+                self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
+                log.info("connected to %s (tick %dms)", hello.get("engine"), self._tick_ms)
+                self.connected.set()
 
-            flusher = asyncio.create_task(self._flush_loop())
-            try:
-                await self._recv_loop(ws, stop)
-            finally:
-                flusher.cancel()
-                self.connected.clear()
-                self._ws = None
+                flusher = asyncio.create_task(self._flush_loop())
+                try:
+                    await self._recv_loop(ws, stop)
+                finally:
+                    flusher.cancel()
+                    self.connected.clear()
+                    self._ws = None
+        except (websockets.exceptions.ConnectionClosed, OSError) as e:
+            log.warning("tag bus connection closed: %s", e)
 
     async def _recv_loop(self, ws, stop: asyncio.Event | None) -> None:
         stopper = asyncio.create_task(stop.wait()) if stop else None

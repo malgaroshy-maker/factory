@@ -7,7 +7,7 @@ echo ============================================================
 echo.
 
 echo [1/3] Building C# Engine...
-cd %~dp0engine
+cd /d "%~dp0engine"
 dotnet build
 if %errorlevel% neq 0 (
     echo [ERROR] C# Engine Build Failed!
@@ -17,16 +17,17 @@ if %errorlevel% neq 0 (
 echo [OK] Engine build succeeded.
 echo.
 
-echo [2/3] Starting Godot 3D Engine in background...
-start "" "D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64_console.exe" --path "%~dp0engine"
+echo [2/3] Starting Godot 3D Engine...
+cd /d "%~dp0engine"
+start "" "D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64_console.exe" --path .
 echo [OK] Godot 3D Engine launched.
 echo.
 
-echo [3/3] Waiting 3 seconds for Tag Bus server to initialize...
-timeout /t 3 /nobreak >nul
+echo [3/3] Waiting 4 seconds for Tag Bus server to initialize...
+timeout /t 4 /nobreak >nul
 
 echo [4/4] Launching Python Live Driver...
-cd %~dp0
+cd /d "%~dp0"
 python "%~dp0scratch\live_driver.py"
 
 pause
