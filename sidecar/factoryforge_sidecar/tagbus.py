@@ -90,7 +90,11 @@ class TagBusClient:
         """Connect and pump until *stop* is set or the connection drops."""
         async with websockets.connect(self.url, max_queue=64) as ws:
             self._ws = ws
-            hello = proto.check_hello(proto.decode(await ws.recv()))
+            msg = proto.decode(await ws.recv())
+            if msg.get("t") == "status":
+                log.warning("status message before hello: %s", msg.get("message"))
+                msg = proto.decode(await ws.recv())
+            hello = proto.check_hello(msg)
             self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
             log.info("connected to %s (tick %dms)", hello.get("engine"), self._tick_ms)
             self.connected.set()

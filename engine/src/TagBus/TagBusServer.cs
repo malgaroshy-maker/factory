@@ -83,6 +83,8 @@ public partial class TagBusServer : Node
             case WebSocketPeer.State.Closed:
                 GD.Print("tag bus: sidecar disconnected");
                 _client = null;
+                _greeted = false;
+                _lastSent.Clear();
                 return;
             default:
                 return; // still connecting or closing
