@@ -20,6 +20,8 @@
 
 No accounts, no per-seat subscription fees, and 100% open for custom part & driver creation.
 
+![FactoryForge 3D Engine & Scene Editor Demo Video](docs/images/demo_video.gif)
+
 ```
 ┌────────────────────────────┐          ┌──────────────────────────┐
 │  SIM ENGINE (Godot 4.7/C#) │          │  DRIVER SIDECAR (Python) │
