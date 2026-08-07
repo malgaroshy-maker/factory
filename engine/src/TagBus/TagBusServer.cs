@@ -37,6 +37,12 @@ public partial class TagBusServer : Node
     {
         var err = _listener.Listen((ushort)Port, "127.0.0.1");
         if (err != Error.Ok)
+        {
+            System.Threading.Thread.Sleep(500); // 500ms wait for socket TIME_WAIT release
+            err = _listener.Listen((ushort)Port, "127.0.0.1");
+        }
+
+        if (err != Error.Ok)
             GD.PushError($"tag bus could not listen on port {Port}: {err}");
         else
             GD.Print($"tag bus listening on ws://127.0.0.1:{Port}/tagbus");

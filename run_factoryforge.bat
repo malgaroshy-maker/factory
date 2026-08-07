@@ -6,9 +6,13 @@ echo   Author: Mahamed Algaroshy (محمد الجروشي)
 echo ============================================================
 echo.
 
-echo [1/3] Building C# Engine...
+echo [1/4] Closing any previously running Godot instances...
+taskkill /F /IM Godot_v4.7.1-stable_mono_win64.exe /IM Godot_v4.7.1-stable_mono_win64_console.exe 2>nul
+timeout /t 1 /nobreak >nul
+
+echo [2/4] Building C# Engine...
 cd /d "%~dp0engine"
-dotnet build --no-incremental
+dotnet build
 if %errorlevel% neq 0 (
     echo [ERROR] C# Engine Build Failed!
     pause
@@ -17,7 +21,7 @@ if %errorlevel% neq 0 (
 echo [OK] Engine build succeeded.
 echo.
 
-echo [2/3] Launching Godot 3D Engine Window...
+echo [3/4] Launching Godot 3D Engine Window...
 cd /d "%~dp0engine"
 if exist "D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64.exe" (
     start "" "D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64.exe" --path "%~dp0engine"
@@ -27,10 +31,10 @@ if exist "D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot
 echo [OK] Godot 3D Engine launched.
 echo.
 
-echo [3/3] Waiting 5 seconds for Tag Bus server to initialize...
-timeout /t 5 /nobreak >nul
+echo [4/4] Waiting 4 seconds for Tag Bus server to initialize...
+timeout /t 4 /nobreak >nul
 
-echo [4/4] Launching Python Live Driver...
+echo [LIVE DEMO STARTING] Launching Python Live Driver...
 cd /d "%~dp0"
 python "%~dp0scratch\live_driver.py"
 
