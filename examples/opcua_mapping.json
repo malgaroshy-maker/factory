@@ -1,0 +1,15 @@
+{
+  "_comment": "Maps FactoryForge tag ids to S7-1500 OPC UA NodeIds. The namespace index is usually 3 but is NOT guaranteed - run 'python -m factoryforge_sidecar browse opc.tcp://<cpu-ip>:4840' and paste the exact strings. The double quotes are part of the Siemens identifier and must stay escaped.",
+
+  "conveyor.rotate":     "ns=3;s=\"FF_IO\".\"ConveyorRotate\"",
+  "emitter.emit":        "ns=3;s=\"FF_IO\".\"EmitterEmit\"",
+  "pusher.extend":       "ns=3;s=\"FF_IO\".\"PusherExtend\"",
+  "stack_light.green":   "ns=3;s=\"FF_IO\".\"StackLightGreen\"",
+
+  "sensor_low.detect":   "ns=3;s=\"FF_IO\".\"SensorLow\"",
+  "sensor_high.detect":  "ns=3;s=\"FF_IO\".\"SensorHigh\"",
+  "pusher.extended":     "ns=3;s=\"FF_IO\".\"PusherExtended\"",
+  "pusher.retracted":    "ns=3;s=\"FF_IO\".\"PusherRetracted\"",
+  "counter.tall":        "ns=3;s=\"FF_IO\".\"CounterTall\"",
+  "counter.short":       "ns=3;s=\"FF_IO\".\"CounterShort\""
+}

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "factoryforge-sidecar"
+version = "0.1.0"
+description = "PLC driver sidecar for FactoryForge -- bridges the simulation tag bus to industrial protocols"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "websockets>=12",
+]
+
+[project.optional-dependencies]
+# The primary integration path. Optional only so that a Modbus/OpenPLC user, or
+# CI, need not pull it in.
+opcua = [
+    "asyncua>=1.1",
+]
+# Remaining Siemens drivers, scheduled for M5.
+siemens = [
+    "python-snap7>=2.0",
+]
+# PLCSIM Advanced is reached through its .NET API and is Windows-only.
+plcsim = [
+    "pythonnet>=3.0; platform_system=='Windows'",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pymodbus>=3.6",
+    "asyncua>=1.1",
+]
+
+[project.scripts]
+factoryforge-sidecar = "factoryforge_sidecar.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["factoryforge_sidecar*"]
+
+# pytest is configured at the repo root (pytest.ini), because the test suite
+# spans both this package and the harness.

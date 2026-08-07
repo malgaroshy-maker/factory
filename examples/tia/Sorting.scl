@@ -1,0 +1,102 @@
+FUNCTION_BLOCK "Sorting"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.4
+
+// ---------------------------------------------------------------------------
+// FactoryForge - sorting by height
+//
+// Boxes of two heights travel along a belt. The low sensor sees every box; the
+// high sensor is mounted above short-box height, so it only sees tall ones.
+// Tall boxes are pushed off into a chute; short boxes carry on to the remover.
+//
+// Sequence for a tall box:
+//   1. Leading edge breaks SensorHigh
+//   2. Wait 900 ms while it travels on to the pusher
+//   3. Extend the pusher for 1.5 s, which deflects it
+//   4. Retract, ready for the next one
+//
+// The timings come from the scene geometry in harness/scene.py:
+//   belt speed          0.5 m/s
+//   SensorHigh at 2.0 m, window +/-0.1 -> edge breaks at 1.9 m
+//   pusher at 2.5 m, catches within +/-0.15 m
+//   pusher stroke       0.3 s
+//
+//   travel 1.9 -> 2.5 = 0.6 m / 0.5 m/s = 1.2 s
+//   lead   1.2 s - 0.3 s stroke        = 0.9 s   <- PUSH_DELAY
+//
+// If you change the belt speed or the layout, recompute PUSH_DELAY or the
+// pusher will swing at empty air.
+//
+// v0.2: emitter became a square wave rather than a short pulse.
+// v0.3: the emit timer now latches Q instead of self-resetting. v0.2 relied on
+//       the toggle executing in the single scan Q was high, which did not
+//       happen on a real S7-1500 -- the timer fired and the assignment ran,
+//       but the toggle between them never did.
+// v0.4: PUSH_HOLD T#500MS -> T#1S500MS. Extends the catch window to tolerate
+//       OPC UA round-trip jitter (~100 ms) on a real S7-1500.
+// ---------------------------------------------------------------------------
+
+VAR
+    tEmit    : TON_TIME;   // free-running half-period
+    EmitFlag : Bool;       // toggles each half-period; see below
+    tDelay   : TON_TIME;   // detection -> arrival at the pusher
+    tPush    : TON_TIME;   // how long the pusher stays out
+    HighMem  : Bool;       // edge memory for SensorHigh
+    PushReq  : Bool;       // a tall box is on its way to the pusher
+END_VAR
+
+VAR CONSTANT
+    // One box is emitted per *rising* edge, so the box interval is twice this.
+    EMIT_HALF_PERIOD : Time := T#1S500MS;   // -> a box every 3 s
+    PUSH_DELAY       : Time := T#900MS;
+    PUSH_HOLD        : Time := T#1S500MS;
+END_VAR
+
+BEGIN
+
+    // --- run continuously -------------------------------------------------
+    "FF_IO".ConveyorRotate  := TRUE;
+    "FF_IO".StackLightGreen := TRUE;
+
+    // --- emit one box per rising edge -------------------------------------
+    // EmitterEmit is a square wave: high for a full half-period, low for the
+    // next. The simulator emits one box on each rising edge.
+    //
+    // Why not a short pulse? OPC UA subscriptions *sample* -- they do not
+    // capture every transition. A signal held for one PLC scan (~1 ms) is
+    // essentially never observed, so the PLC would emit boxes the simulator
+    // never sees. Holding the level for 1.5 s makes that impossible.
+    //
+    // IN is held TRUE, so tEmit.Q latches when ET reaches PT and STAYS latched
+    // until reset explicitly below. Do not write this as
+    //     #tEmit(IN := NOT #tEmit.Q, ...)
+    // which makes Q high for a single scan: that relies on the toggle running
+    // in exactly that scan, and on a real S7-1500 it does not reliably happen.
+    // A latched Q cannot be missed regardless of scan timing.
+    #tEmit(IN := TRUE, PT := #EMIT_HALF_PERIOD);
+    IF #tEmit.Q THEN
+        #EmitFlag := NOT #EmitFlag;
+        #tEmit(IN := FALSE, PT := #EMIT_HALF_PERIOD);   // reset; restarts next scan
+    END_IF;
+    "FF_IO".EmitterEmit := #EmitFlag;
+
+    // --- latch a push request on the rising edge of SensorHigh ------------
+    // Latching matters: the box clears the sensor long before it reaches the
+    // pusher, so the request has to outlive the signal that created it.
+    IF "FF_IO".SensorHigh AND NOT #HighMem THEN
+        #PushReq := TRUE;
+    END_IF;
+    #HighMem := "FF_IO".SensorHigh;
+
+    // --- delay, then stroke the pusher ------------------------------------
+    #tDelay(IN := #PushReq,      PT := #PUSH_DELAY);
+    #tPush (IN := #tDelay.Q,     PT := #PUSH_HOLD);
+
+    "FF_IO".PusherExtend := #tDelay.Q AND NOT #tPush.Q;
+
+    // Clearing the request drops tDelay.Q, which resets tPush too.
+    IF #tPush.Q THEN
+        #PushReq := FALSE;
+    END_IF;
+
+END_FUNCTION_BLOCK

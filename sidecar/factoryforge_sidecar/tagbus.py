@@ -1,0 +1,173 @@
+"""Sidecar-side tag bus client.
+
+Connects to the engine, tracks the tag table, coalesces driver writes into one
+message per tick, and fans engine updates out to drivers.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Awaitable, Callable
+
+import websockets
+
+from . import protocol as proto
+from .tags import Tag, TagTable, TagValue
+
+log = logging.getLogger(__name__)
+
+#: Called with (scene, epoch, table) whenever the engine sends a describe.
+DescribeHook = Callable[[str, int, TagTable], Awaitable[None]]
+#: Called with the changed input values whenever the engine sends an update.
+UpdateHook = Callable[[dict[str, TagValue]], Awaitable[None]]
+
+
+class TagBusClient:
+    def __init__(self, url: str = proto.DEFAULT_URL) -> None:
+        self.url = url
+        self.table = TagTable()
+        self.scene: str | None = None
+        self.epoch: int = -1
+        self.connected = asyncio.Event()
+
+        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._pending: dict[str, TagValue] = {}
+        self._pending_lock = asyncio.Lock()
+        self._tick_ms = proto.DEFAULT_TICK_MS
+        self._on_describe: list[DescribeHook] = []
+        self._on_update: list[UpdateHook] = []
+
+    # --- hooks ---
+
+    def on_describe(self, hook: DescribeHook) -> None:
+        self._on_describe.append(hook)
+        # Drivers are usually constructed after the engine's initial describe has
+        # already been processed. Replay it so registration order never matters.
+        if self.epoch >= 0 and self.scene is not None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            loop.create_task(hook(self.scene, self.epoch, self.table))
+
+    def on_update(self, hook: UpdateHook) -> None:
+        self._on_update.append(hook)
+
+    # --- driver-facing API ---
+
+    def read(self, tag_id: str) -> TagValue:
+        """Read from the local cache. Never blocks, never hits the bus."""
+        return self.table.visible(tag_id)
+
+    async def write(self, tag_id: str, value: TagValue) -> None:
+        """Queue a write to a PLC-output tag. Flushed on the next tick."""
+        tag = self.table.get(tag_id)
+        if tag is None:
+            log.warning("write to unknown tag %s (scene may have changed)", tag_id)
+            return
+        if tag.kind != "output":
+            raise ValueError(
+                f"{tag_id} is an input (simulator-owned); use force() to override it"
+            )
+        async with self._pending_lock:
+            self._pending[tag_id] = tag.coerce(value)
+
+    async def write_many(self, values: dict[str, TagValue]) -> None:
+        for tag_id, value in values.items():
+            await self.write(tag_id, value)
+
+    async def force(self, values: dict[str, TagValue] | None = None,
+                    clear: list[str] | None = None) -> None:
+        await self._send(proto.force(self.epoch, values, clear or []))
+
+    async def status(self, level: str, code: str, message: str) -> None:
+        await self._send(proto.status(level, code, message))
+
+    # --- lifecycle ---
+
+    async def run(self, stop: asyncio.Event | None = None) -> None:
+        """Connect and pump until *stop* is set or the connection drops."""
+        async with websockets.connect(self.url, max_queue=64) as ws:
+            self._ws = ws
+            hello = proto.check_hello(proto.decode(await ws.recv()))
+            self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
+            log.info("connected to %s (tick %dms)", hello.get("engine"), self._tick_ms)
+            self.connected.set()
+
+            flusher = asyncio.create_task(self._flush_loop())
+            try:
+                await self._recv_loop(ws, stop)
+            finally:
+                flusher.cancel()
+                self.connected.clear()
+                self._ws = None
+
+    async def _recv_loop(self, ws, stop: asyncio.Event | None) -> None:
+        stopper = asyncio.create_task(stop.wait()) if stop else None
+        try:
+            while True:
+                recv = asyncio.create_task(ws.recv())
+                waits = {recv} | ({stopper} if stopper else set())
+                done, _ = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
+                if stopper in done:
+                    recv.cancel()
+                    return
+                try:
+                    raw = recv.result()
+                except websockets.ConnectionClosed:
+                    log.info("engine closed the connection")
+                    return
+                await self._handle(proto.decode(raw))
+        finally:
+            if stopper:
+                stopper.cancel()
+
+    async def _handle(self, msg: dict) -> None:
+        kind = msg.get("t")
+        if kind == "describe":
+            scene, epoch, tags = proto.parse_describe(msg)
+            self.scene, self.epoch = scene, epoch
+            self.table = TagTable(tags)
+            # A new epoch invalidates anything queued against the old tag set.
+            async with self._pending_lock:
+                self._pending.clear()
+            log.info("scene %r epoch %d, %d tags", scene, epoch, len(tags))
+            for hook in self._on_describe:
+                await hook(scene, epoch, self.table)
+        elif kind == "update":
+            values = proto.parse_values(msg)
+            for tag_id, value in values.items():
+                if tag_id in self.table:
+                    self.table.set(tag_id, value)
+            for hook in self._on_update:
+                await hook(values)
+        elif kind == "status":
+            log.log(
+                {"info": logging.INFO, "warn": logging.WARNING}.get(
+                    msg.get("level"), logging.ERROR
+                ),
+                "engine: %s", msg.get("message"),
+            )
+        else:
+            log.warning("ignoring unexpected message %r", kind)
+
+    async def _flush_loop(self) -> None:
+        """Coalesce queued writes into at most one message per tick."""
+        interval = self._tick_ms / 1000.0
+        while True:
+            await asyncio.sleep(interval)
+            async with self._pending_lock:
+                if not self._pending:
+                    continue
+                batch, self._pending = self._pending, {}
+            await self._send(proto.write(self.epoch, batch))
+
+    async def _send(self, msg: dict) -> None:
+        if self._ws is None:
+            log.debug("dropping %s: not connected", msg.get("t"))
+            return
+        try:
+            await self._ws.send(proto.encode(msg))
+        except websockets.ConnectionClosed:
+            log.debug("dropping %s: connection closed", msg.get("t"))

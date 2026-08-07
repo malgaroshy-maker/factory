@@ -1,0 +1,30 @@
+# FactoryForge .gitignore
+
+# Godot engine build outputs & mono temp files
+.godot/
+engine/.godot/
+*.import
+
+# .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+*.userosset
+*.sln.docstates
+
+# Python bytecode & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+*.egg-info/
+build/
+dist/
+
+# Temporary screenshots & logs
+*.png
+*.log
+scratch/
