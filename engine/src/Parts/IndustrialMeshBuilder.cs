@@ -36,11 +36,11 @@ public static class IndustrialMeshBuilder
     public static StandardMaterial3D CreateBeltMaterial(Vector3 size)
     {
         var gradient = new Gradient();
-        gradient.AddPoint(0.0f, new Color(0.14f, 0.14f, 0.16f));
-        gradient.AddPoint(0.46f, new Color(0.14f, 0.14f, 0.16f));
-        gradient.AddPoint(0.50f, new Color(0.90f, 0.75f, 0.15f)); // Yellow tread stripe
-        gradient.AddPoint(0.54f, new Color(0.14f, 0.14f, 0.16f));
-        gradient.AddPoint(1.0f, new Color(0.14f, 0.14f, 0.16f));
+        gradient.AddPoint(0.0f, new Color(0.12f, 0.12f, 0.14f));
+        gradient.AddPoint(0.47f, new Color(0.12f, 0.12f, 0.14f));
+        gradient.AddPoint(0.50f, new Color(0.22f, 0.22f, 0.25f)); // Subtle dark grey tread line
+        gradient.AddPoint(0.53f, new Color(0.12f, 0.12f, 0.14f));
+        gradient.AddPoint(1.0f, new Color(0.12f, 0.12f, 0.14f));
 
         var tex = new GradientTexture2D
         {
@@ -52,8 +52,8 @@ public static class IndustrialMeshBuilder
         return new StandardMaterial3D
         {
             AlbedoTexture = tex,
-            Uv1Scale = new Vector3(size.X * 3.0f, 1.0f, 1.0f),
-            Roughness = 0.80f,
+            Uv1Scale = new Vector3(size.X * 4.0f, 1.0f, 1.0f),
+            Roughness = 0.85f,
         };
     }
 
@@ -175,7 +175,6 @@ public static class IndustrialMeshBuilder
     {
         var container = new Node3D { Name = "PistonHeadVisual" };
 
-        // Chrome piston rod shaft
         var shaftMat = new StandardMaterial3D
         {
             AlbedoColor = new Color(0.90f, 0.92f, 0.95f),
@@ -192,7 +191,6 @@ public static class IndustrialMeshBuilder
         shaft.RotateX(Mathf.Pi / 2);
         container.AddChild(shaft);
 
-        // Industrial orange face plate
         var facePlate = new MeshInstance3D
         {
             Mesh = new BoxMesh { Size = new Vector3(0.35f, 0.16f, 0.04f) },

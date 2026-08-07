@@ -130,8 +130,8 @@ public partial class SceneView : Node3D
 
     private void AddSensors()
     {
-        _sensorLowBeam = AddSensor(SortingScene.SensorLowPos, 0.12f, "low");
-        _sensorHighBeam = AddSensor(SortingScene.SensorHighPos, 0.32f, "high");
+        _sensorLowBeam = AddSensor(SortingScene.SensorLowPos, 0.10f, "low");
+        _sensorHighBeam = AddSensor(SortingScene.SensorHighPos, 0.35f, "high");
     }
 
     private MeshInstance3D AddSensor(double x, float height, string name)
