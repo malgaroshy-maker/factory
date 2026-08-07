@@ -6,7 +6,8 @@ echo   Author: Mahamed Algaroshy (محمد الجروشي)
 echo ============================================================
 echo.
 
-echo [1/4] Closing any previously running Godot instances...
+echo [1/4] Clearing any stale processes listening on port 7411...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 7411 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 taskkill /F /IM Godot_v4.7.1-stable_mono_win64.exe /IM Godot_v4.7.1-stable_mono_win64_console.exe 2>nul
 timeout /t 1 /nobreak >nul
 
