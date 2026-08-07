@@ -3,11 +3,11 @@ using Godot;
 namespace FactoryForge.Parts;
 
 /// <summary>
-/// Diffuse photoelectric sensor using RayCast3D to detect objects across the conveyor belt.
+/// Diffuse photoelectric sensor using RayCast3D to detect objects across the conveyor belt at adjustable mounting heights.
 /// </summary>
 public partial class PhotoelectricSensor : Node3D
 {
-    [Export] public float HeightAboveBelt { get; set; } = 0.10f;
+    [Export] public float HeightAboveBelt { get; set; } = 0.20f;
     [Export] public float Range { get; set; } = 0.60f;
     [Export] public string SensorName { get; set; } = "Sensor";
 
@@ -22,11 +22,13 @@ public partial class PhotoelectricSensor : Node3D
 
     public override void _Ready()
     {
-        var visual = IndustrialMeshBuilder.BuildDetailedSensor(Range);
+        var visual = IndustrialMeshBuilder.BuildDetailedSensor(Range, HeightAboveBelt);
         AddChild(visual);
+
         _rayCast = new RayCast3D
         {
             TargetPosition = new Vector3(0, 0, -Range),
+            Position = new Vector3(0, HeightAboveBelt, 0),
             Enabled = true,
             CollideWithBodies = true,
             CollideWithAreas = false,
@@ -50,7 +52,7 @@ public partial class PhotoelectricSensor : Node3D
                 BottomRadius = 0.012f,
                 Height = Range,
             },
-            Position = new Vector3(0, 0, -Range / 2.0f),
+            Position = new Vector3(0, HeightAboveBelt, -Range / 2.0f),
             MaterialOverride = _beamMaterial,
         };
         _beamMesh.RotateX(Mathf.Pi / 2);

@@ -130,20 +130,31 @@ public partial class SceneView : Node3D
 
     private void AddSensors()
     {
-        _sensorLowBeam = AddSensor(SortingScene.SensorLowPos, 0.10f, "low");
-        _sensorHighBeam = AddSensor(SortingScene.SensorHighPos, 0.30f, "high");
+        _sensorLowBeam = AddSensor(SortingScene.SensorLowPos, 0.12f, "low");
+        _sensorHighBeam = AddSensor(SortingScene.SensorHighPos, 0.32f, "high");
     }
 
     private MeshInstance3D AddSensor(double x, float height, string name)
     {
         var postMat = Mat(new Color(0.85f, 0.85f, 0.88f), metallic: 0.4f);
         float postZ = BeltWidth / 2 + 0.12f;
+        float sensorY = BeltY + height;
+
         AddChild(new MeshInstance3D
         {
             Name = $"sensor_{name}_post",
-            Mesh = new BoxMesh { Size = new Vector3(0.06f, BeltY + height, 0.06f) },
-            Position = new Vector3((float)x, (BeltY + height) / 2, postZ),
+            Mesh = new BoxMesh { Size = new Vector3(0.04f, sensorY, 0.04f) },
+            Position = new Vector3((float)x, sensorY / 2.0f, postZ),
             MaterialOverride = postMat,
+        });
+
+        var sensorBodyMat = Mat(new Color(0.95f, 0.75f, 0.10f), roughness: 0.4f);
+        AddChild(new MeshInstance3D
+        {
+            Name = $"sensor_{name}_head",
+            Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.08f, 0.10f) },
+            Position = new Vector3((float)x, sensorY, postZ - 0.04f),
+            MaterialOverride = sensorBodyMat,
         });
 
         var beamMat = Mat(BeamOff, emission: BeamOff, emissionEnergy: 0.5f);
@@ -156,7 +167,7 @@ public partial class SceneView : Node3D
                 BottomRadius = 0.012f,
                 Height = BeltWidth + 0.24f,
             },
-            Position = new Vector3((float)x, BeltY + height * 0.9f, 0),
+            Position = new Vector3((float)x, sensorY, 0),
             MaterialOverride = beamMat,
         };
         beam.RotateX(Mathf.Pi / 2);

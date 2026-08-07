@@ -21,12 +21,6 @@ public static class IndustrialMeshBuilder
         Roughness = 0.25f,
     };
 
-    private static StandardMaterial3D RubberMat => new()
-    {
-        AlbedoColor = new Color(0.12f, 0.12f, 0.14f),
-        Roughness = 0.85f,
-    };
-
     private static StandardMaterial3D IndustrialYellowMat => new()
     {
         AlbedoColor = new Color(0.95f, 0.75f, 0.10f),
@@ -39,15 +33,41 @@ public static class IndustrialMeshBuilder
         Roughness = 0.50f,
     };
 
-    public static Node3D BuildDetailedConveyor(Vector3 size)
+    public static StandardMaterial3D CreateBeltMaterial(Vector3 size)
+    {
+        var gradient = new Gradient();
+        gradient.AddPoint(0.0f, new Color(0.14f, 0.14f, 0.16f));
+        gradient.AddPoint(0.46f, new Color(0.14f, 0.14f, 0.16f));
+        gradient.AddPoint(0.50f, new Color(0.90f, 0.75f, 0.15f)); // Yellow tread stripe
+        gradient.AddPoint(0.54f, new Color(0.14f, 0.14f, 0.16f));
+        gradient.AddPoint(1.0f, new Color(0.14f, 0.14f, 0.16f));
+
+        var tex = new GradientTexture2D
+        {
+            Gradient = gradient,
+            Width = 64,
+            Height = 64,
+        };
+
+        return new StandardMaterial3D
+        {
+            AlbedoTexture = tex,
+            Uv1Scale = new Vector3(size.X * 3.0f, 1.0f, 1.0f),
+            Roughness = 0.80f,
+        };
+    }
+
+    public static Node3D BuildDetailedConveyor(Vector3 size, out StandardMaterial3D beltMat)
     {
         var container = new Node3D { Name = "ConveyorVisual" };
+        beltMat = CreateBeltMaterial(size);
 
         // 1. Belt surface (center)
         var beltMesh = new MeshInstance3D
         {
+            Name = "BeltSurfaceMesh",
             Mesh = new BoxMesh { Size = new Vector3(size.X, 0.04f, size.Z - 0.08f) },
-            MaterialOverride = RubberMat,
+            MaterialOverride = beltMat,
             Position = new Vector3(0, size.Y / 2 - 0.02f, 0),
         };
         container.AddChild(beltMesh);
@@ -96,40 +116,34 @@ public static class IndustrialMeshBuilder
         return container;
     }
 
-    public static Node3D BuildDetailedSensor(float range)
+    public static Node3D BuildDetailedSensor(float range, float mountHeight = 0.25f)
     {
         var container = new Node3D { Name = "SensorVisual" };
 
-        // 1. Vertical mount post
+        // 1. Vertical mount post matching exact mountHeight
         var post = new MeshInstance3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.04f, 0.5f, 0.04f) },
+            Mesh = new BoxMesh { Size = new Vector3(0.03f, mountHeight, 0.03f) },
             MaterialOverride = SteelMat,
-            Position = new Vector3(0, 0.25f, 0),
+            Position = new Vector3(0, mountHeight / 2.0f, 0),
         };
         container.AddChild(post);
 
-        // 2. Sensor body head
+        // 2. Sensor body head mounted at top of post
         var body = new MeshInstance3D
         {
             Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.08f, 0.10f) },
             MaterialOverride = IndustrialYellowMat,
-            Position = new Vector3(0, 0.50f, -0.04f),
+            Position = new Vector3(0, mountHeight, 0.04f),
         };
         container.AddChild(body);
 
-        // 3. Lens
-        var lensMat = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.1f, 0.6f, 1.0f),
-            Metallic = 0.9f,
-            Roughness = 0.1f,
-        };
+        // 3. Optical Lens
         var lens = new MeshInstance3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.04f, 0.04f, 0.02f) },
-            MaterialOverride = lensMat,
-            Position = new Vector3(0, 0.50f, -0.10f),
+            Mesh = new BoxMesh { Size = new Vector3(0.03f, 0.04f, 0.02f) },
+            MaterialOverride = DarkMetalMat,
+            Position = new Vector3(0, mountHeight, -0.01f),
         };
         container.AddChild(lens);
 
@@ -139,37 +153,53 @@ public static class IndustrialMeshBuilder
     public static Node3D BuildPusherHousing()
     {
         var container = new Node3D { Name = "PusherHousingVisual" };
-        var cylinder = new MeshInstance3D
+        var housingMat = new StandardMaterial3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.18f, 0.18f, 0.32f) },
-            MaterialOverride = DarkMetalMat,
-            Position = new Vector3(0, 0, -0.30f),
+            AlbedoColor = new Color(0.15f, 0.15f, 0.18f),
+            Metallic = 0.90f,
+            Roughness = 0.30f,
         };
-        container.AddChild(cylinder);
+
+        var housing = new MeshInstance3D
+        {
+            Mesh = new BoxMesh { Size = new Vector3(0.18f, 0.18f, 0.35f) },
+            MaterialOverride = housingMat,
+            Position = new Vector3(0, 0, -0.175f),
+        };
+        container.AddChild(housing);
+
         return container;
     }
 
     public static Node3D BuildPusherPistonHead(float strokeLength)
     {
-        var container = new Node3D { Name = "PusherPistonVisual" };
+        var container = new Node3D { Name = "PistonHeadVisual" };
 
-        // 1. Chrome piston shaft rod
+        // Chrome piston rod shaft
+        var shaftMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.90f, 0.92f, 0.95f),
+            Metallic = 0.98f,
+            Roughness = 0.10f,
+        };
+
         var shaft = new MeshInstance3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.05f, 0.05f, strokeLength + 0.15f) },
-            MaterialOverride = SteelMat,
-            Position = new Vector3(0, 0, -(strokeLength + 0.15f) / 2.0f),
+            Mesh = new CylinderMesh { TopRadius = 0.025f, BottomRadius = 0.025f, Height = strokeLength },
+            MaterialOverride = shaftMat,
+            Position = new Vector3(0, 0, -strokeLength / 2.0f),
         };
+        shaft.RotateX(Mathf.Pi / 2);
         container.AddChild(shaft);
 
-        // 2. High-visibility orange pusher face plate
-        var head = new MeshInstance3D
+        // Industrial orange face plate
+        var facePlate = new MeshInstance3D
         {
             Mesh = new BoxMesh { Size = new Vector3(0.35f, 0.16f, 0.04f) },
             MaterialOverride = OrangePusherMat,
-            Position = Vector3.Zero,
+            Position = new Vector3(0, 0, 0),
         };
-        container.AddChild(head);
+        container.AddChild(facePlate);
 
         return container;
     }
