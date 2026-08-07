@@ -80,11 +80,15 @@ public partial class Main : Node
             AddChild(wiringUI);
             wiringUI.Setup(_scene.Tags);
 
+            var driverConnectionUI = new DriverConnectionUI { Name = "DriverConnectionUI" };
+            AddChild(driverConnectionUI);
+
             var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
             toolbarUI.SaveRequested += () => editor.SaveSceneToFile();
             toolbarUI.LoadRequested += () => editor.LoadSceneFromFile();
             toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
             toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
+            toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
             AddChild(toolbarUI);
         }
 
@@ -101,6 +105,11 @@ public partial class Main : Node
             {
                 var wiringUI = GetNodeOrNull<DriverWiringUI>("DriverWiringUI");
                 wiringUI?.ToggleVisibility();
+            }
+            else if (keyEvent.Keycode == Key.F5)
+            {
+                var driverConnectionUI = GetNodeOrNull<DriverConnectionUI>("DriverConnectionUI");
+                driverConnectionUI?.ToggleVisibility();
             }
             else if (keyEvent.Keycode == Key.C)
             {

@@ -12,15 +12,16 @@ public partial class SceneToolbarUI : Control
     [Signal] public delegate void LoadRequestedEventHandler();
     [Signal] public delegate void ClearRequestedEventHandler();
     [Signal] public delegate void WiringRequestedEventHandler();
+    [Signal] public delegate void DriverRequestedEventHandler();
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(440, 44);
+        CustomMinimumSize = new Vector2(560, 44);
         SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.KeepSize, 10);
 
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(440, 44),
+            CustomMinimumSize = new Vector2(560, 44),
         };
         AddChild(panel);
 
@@ -42,6 +43,10 @@ public partial class SceneToolbarUI : Control
         var loadBtn = new Button { Text = "📂 Load Scene", CustomMinimumSize = new Vector2(95, 32) };
         loadBtn.Pressed += () => EmitSignal(SignalName.LoadRequested);
         hbox.AddChild(loadBtn);
+
+        var driverBtn = new Button { Text = "⚡ Driver (F5)", CustomMinimumSize = new Vector2(100, 32) };
+        driverBtn.Pressed += () => EmitSignal(SignalName.DriverRequested);
+        hbox.AddChild(driverBtn);
 
         var wiringBtn = new Button { Text = "🔌 I/O Wiring (F4)", CustomMinimumSize = new Vector2(115, 32) };
         wiringBtn.Pressed += () => EmitSignal(SignalName.WiringRequested);
