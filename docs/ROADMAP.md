@@ -206,9 +206,14 @@ most likely to slip.
       so the inductive sensor sorts metal from cardboard.
 - [x] **Roller conveyor**, and a display that can show an analog reading.
 - [x] **Scene files persist part settings**, not just transforms.
+- [x] **Edit / Run mode separation** (`F1`), because a click cannot both pick a
+      part up and press it.
+- [x] **Clickable operator buttons** — Start, Stop and Reset as true momentary
+      contacts (one scan per click, however long the mouse is held), plus a
+      latching E-stop wired normally closed. The first inputs in the library a
+      human drives rather than the simulation computing them for you.
 
-**Near:** clickable operator buttons in run mode (manual scene control) ·
-edit/run mode separation · part-to-part linking, which an incremental encoder
+**Near:** part-to-part linking, which an incremental encoder
 needs to know which conveyor it is mounted on · more parts driven by what
 contributors ask for · fault injection UI · headless grading mode for coursework ·
 MQTT **Sparkplug B** (the industrial MQTT standard, if plain MQTT proves useful) ·

@@ -76,11 +76,19 @@ tests/           41 tests, no Siemens software or GPU required
 ```bash
 cd C:/Users/masal/source/factoryforge
 
-# Tests (38, ~30s)
+# Tests (41, ~37s)
 python -m pytest -q
 
 # Engine build
 cd engine && dotnet build
+
+# Engine self-tests. Both exit non-zero on failure.
+# Headless: panel tags — momentary pulse width, maintained E-stop, cap picking.
+"<GODOT>" --headless --path engine/ -- --self-test=buttons
+# Needs a display: the whole click path, from a synthesized mouse event to the
+# tag. Keep both — the headless half passed in full while Run-mode clicking was
+# completely dead, because the failure was in the input handler, not the logic.
+"<GODOT>" --path engine/ -- --self-test=click --duration=30
 
 # Engine headless, deterministic — the CI / regression path (no GPU needed)
 "<GODOT>" --headless --path engine/ -- --deterministic --duration=20
@@ -130,6 +138,21 @@ in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
 store a properties map next to the transform. Anything a part reads in `_Ready`
 and is not captured there silently reverts on load — which once cost the
 removers their count tags and the sensors their `VisualOnly` flag.
+
+**A click means one thing at a time.** `SceneEditor.Mode` is `Edit` or `Run`
+(`F1`). Edit mode selects, moves and deletes; Run mode routes a left click to
+`PressControlAt`, which asks each `ButtonPanel` whether the ray hit one of its
+*caps* — not the part's bounding box, which also covers the housing, the
+pedestal and both lamps, and would turn the whole station into one big Start
+button. Everything that reflects the mode (toolbar label, palette visibility)
+listens to `ModeChanged` rather than tracking it separately.
+
+**Momentary means one scan, not one mouse-down.** A click lands on the frame
+clock and tags are written on the physics clock, so `ButtonPanel` *queues*
+presses and `SceneEditor.StepPanelButtons` drains the queue, clearing the
+previous tick's pulse before raising this one's. Holding the mouse down, or
+clicking three times between two ticks, still yields exactly one clean edge.
+Note `panel.estop` is inverted on purpose: **normally closed**, true = healthy.
 
 **Simulation controls are engine-global.** Run/pause and time scale go through
 `Engine.TimeScale`, so one switch covers the fixed-timestep accumulator, Jolt,
@@ -197,6 +220,22 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
    user's own flows. Use a temp userDir with a **junction** to their
    `node_modules`, and remove it with `cmd //c rmdir` (not `rm -rf`, which
    follows the junction and would delete their packages).
+
+10. **A click handler must use the event's position, not the cursor's.**
+    `GetViewport().GetMousePosition()` returns where the pointer *is now*, which
+    for a real click is the same place — and for a synthesized one is not. Run
+    mode's first version used it and worked for nobody except by accident: the
+    headless self-test passed every assertion it could reach while clicking a
+    button did nothing at all. Take the position off the `InputEventMouseButton`.
+    (`SelectPartAtMouse` still reads the cursor; it predates this and is only
+    ever driven by hand.)
+
+11. **A test that cannot see the failure mode is not coverage.** The panel had a
+    correct hit test and a correct pulse dispatch and was still completely dead
+    from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
+    headless for the logic, `--self-test=click` with a display for the input
+    path — and both were checked by deliberately reintroducing the bug and
+    confirming they fail. Do that before trusting a new self-test.
 
 ---
 

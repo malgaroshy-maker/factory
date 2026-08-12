@@ -45,6 +45,7 @@ keys straight away:
 
 | Key | Action |
 |---|---|
+| `F1` | Switch between **Edit** and **Run** mode |
 | `Space` | Pause / resume — freeze the line and read every sensor at that instant |
 | `Ctrl+R` | Reset the run (machines stay where they are) |
 | `C` | Switch between the orbit and fly cameras |
@@ -53,6 +54,33 @@ keys straight away:
 The toolbar also carries a **0.25×–4× rate selector**: slow a fast interlock
 down to watch it, or fast-forward a long cycle. Your PLC stays connected while
 the scene is paused.
+
+### Edit mode and Run mode
+
+A click has to mean one thing at a time. In **Edit** mode it selects a part so
+you can move (`M`) or delete it; in **Run** mode the parts are furniture and the
+only things that answer a click are the controls an operator could reach. The
+toolbar shows which mode you are in, and the parts palette hides itself while
+the line is running.
+
+Press `F1`, then click the buttons on the **control panel** beside the belt:
+
+| Control | Tag | Behaviour |
+|---|---|---|
+| Start (green) | `panel.start` | Momentary — high for exactly one scan per click |
+| Stop (black) | `panel.stop` | Momentary |
+| Reset (blue) | `panel.reset` | Momentary |
+| E-Stop (red mushroom) | `panel.estop` | Maintained — click to strike, click again to release |
+
+Momentary means what it does on a real panel: one click is one clean rising
+edge, however long you hold the mouse down. Write your logic against the edge,
+not the level.
+
+The **E-Stop is wired normally closed**, like the real thing: `panel.estop` is
+**true while the circuit is healthy** and goes false when the mushroom is
+struck. If your program runs happily with that tag false, it would also run with
+the wire to the E-stop cut — which is the exact failure NC wiring exists to
+catch. This is the cheapest place to learn that.
 
 If you need repeatable results — grading an exercise, or comparing two runs — add
 `-- --deterministic` for the fixed-timestep scene. Both expose the same tags, so

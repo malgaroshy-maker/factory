@@ -9,6 +9,11 @@ public partial class PartPaletteUI : Control
 {
     [Signal] public delegate void PartSelectedEventHandler(string partType);
 
+    /// <summary>Hide the palette while the line is running. Offering parts you
+    /// cannot place would be a menu of dead buttons, and it frees the left of
+    /// the screen for the machine you are actually operating.</summary>
+    public void ShowForMode(bool running) => Visible = !running;
+
     public override void _Ready()
     {
         CustomMinimumSize = new Vector2(180, 350);

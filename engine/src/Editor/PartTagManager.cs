@@ -16,6 +16,20 @@ public static class PartTagManager
         TypeCounters.Clear();
     }
 
+    /// <summary>
+    /// Tag suffix for each control on a <see cref="Parts.ButtonPanel"/>. One
+    /// table rather than two literal lists, so registration and dispatch cannot
+    /// drift apart and leave a button that presses nothing.
+    /// </summary>
+    public static string PanelTagSuffix(Parts.PanelButton which) => which switch
+    {
+        Parts.PanelButton.Start => "start",
+        Parts.PanelButton.Stop => "stop",
+        Parts.PanelButton.Reset => "reset",
+        Parts.PanelButton.EmergencyStop => "estop",
+        _ => which.ToString().ToLowerInvariant(),
+    };
+
     /// <summary>Does the table already hold tags for this instance?</summary>
     public static bool HasTagsFor(string instanceId, TagTable tags)
     {
@@ -111,6 +125,15 @@ public static class PartTagManager
             case "ButtonPanel":
                 tags.Add(new Tag($"{instanceId}.green", $"Panel {index} Green Lamp", TagType.Bit, TagKind.Output));
                 tags.Add(new Tag($"{instanceId}.red", $"Panel {index} Red Lamp", TagType.Bit, TagKind.Output));
+                // The panel's buttons are Inputs: the operator drives them and
+                // the controller reads them, exactly like a sensor.
+                tags.Add(new Tag($"{instanceId}.start", $"Panel {index} Start (momentary)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.stop", $"Panel {index} Stop (momentary)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.reset", $"Panel {index} Reset (momentary)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.estop", $"Panel {index} E-Stop OK (NC)", TagType.Bit, TagKind.Input));
+                // Normally closed, so a healthy circuit reads true and the scene
+                // starts in the state a real panel powers up in.
+                tags.Set($"{instanceId}.estop", true);
                 break;
 
             case "StackLight":

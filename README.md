@@ -42,6 +42,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
 * 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
+* 🕹️ **Manual scene control (`F1`)**: switch to **Run** mode and press the operator panel yourself — Start, Stop, Reset and a latching E-stop. Every other input the PLC sees is one the simulation computes for it; these are the ones a human drives, so you can start a cycle, hit the stop mid-run, and inject the fault your logic is supposed to survive.
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal allowing users to drag/click PLC addresses (`%I0.0`, `%Q0.0`) directly to factory component tags.
 * 🏷️ **Live In-Scene Tag Inspection & Floating 3D Badges**: Floating 3D billboard labels above components with interactive live forcing buttons.
@@ -67,7 +68,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 | **Weight Scale Conveyor**| Integrated load cell scale returning box mass | `weighconveyor.weight` (Int, Input) |
 | **Box Emitter** | Spawner emitting tall & short rigid cartons, optionally every Nth in metal | `emitter.emit` (Bit, Output) |
 | **Box Remover** | Area3D zone despawning items & incrementing counters | `counter.tall`, `counter.short` (Int, Input) |
-| **Control Panel** | Industrial operator station with push buttons & lamps | `panel.green`, `panel.red` |
+| **Control Panel** | Operator station you can actually press. Start/Stop/Reset are momentary — one clean scan per click, however long you hold the mouse — and the mushroom is a maintained E-stop wired **normally closed**, so its tag is true while the circuit is healthy | `panel.start`, `.stop`, `.reset`, `.estop` (Bit, Input) · `panel.green`, `.red` (Bit, Output) |
 | **Level Tank** | Analog process tank; outflow follows Torricelli, so process gain varies with level and a PID tuned full overshoots when empty | `tank.fill`, `tank.drain` (Float, Output), `tank.level` (Float, Input) |
 
 ---

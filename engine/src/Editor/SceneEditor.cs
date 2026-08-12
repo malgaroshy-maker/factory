@@ -23,6 +23,14 @@ public partial class SceneEditor : Node3D
     public SortingScene? Scene { get; set; }
     public PartPropertyInspectorUI PropertyInspector { get; set; } = null!;
 
+    /// <summary>Raised when the mode changes, so the toolbar and palette follow
+    /// it rather than each keeping their own idea of what mode we are in.</summary>
+    [Signal] public delegate void ModeChangedEventHandler(bool running);
+
+    /// <summary>Edit or Run. See <see cref="EditorMode"/> for why a click needs
+    /// to mean one thing at a time.</summary>
+    public EditorMode Mode { get; private set; } = EditorMode.Edit;
+
     private string? _activePartType;
     private Node3D? _previewNode;
     private float _previewRotationY;
@@ -41,8 +49,41 @@ public partial class SceneEditor : Node3D
     private readonly HashSet<string> _emitEdges = new();
     private bool _emitAlternate;
 
+    /// <summary>Is a part currently following the cursor, waiting to be placed?</summary>
+    public bool HasPlacementPreview => _previewNode is not null;
+
+    public void ToggleMode() => SetMode(Mode == EditorMode.Edit ? EditorMode.Run : EditorMode.Edit);
+
+    /// <summary>
+    /// Switch mode. Entering Run drops anything half-done in the editor: a
+    /// placement preview left floating under the cursor, or a selection whose
+    /// gizmo would otherwise hang around a part you can no longer move. A move
+    /// in progress is cancelled the same way Escape cancels it, so the part it
+    /// started from stays where it is rather than being lost.
+    /// </summary>
+    public void SetMode(EditorMode mode)
+    {
+        if (Mode == mode) return;
+
+        Mode = mode;
+        if (mode == EditorMode.Run)
+        {
+            ClearPreview();
+            DeselectPart();
+        }
+
+        EmitSignal(SignalName.ModeChanged, mode == EditorMode.Run);
+        GD.Print(mode == EditorMode.Run
+            ? "Run mode — click the controls to operate the line"
+            : "Edit mode — click parts to select, move and delete");
+    }
+
     public void SetPlacementPart(string partType)
     {
+        // The palette is hidden in Run mode, but a stray signal must not sneak a
+        // ghost part into a running line.
+        if (Mode == EditorMode.Run) return;
+
         ClearPreview();
         _activePartType = partType;
         _previewRotationY = 0f;
@@ -57,6 +98,29 @@ public partial class SceneEditor : Node3D
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        // F1 is the one binding that works in both modes; everything else below
+        // is editing, and editing is exactly what Run mode switches off.
+        if (@event is InputEventKey modeKey && modeKey.Pressed && !modeKey.Echo
+            && modeKey.Keycode == Key.F1)
+        {
+            ToggleMode();
+            return;
+        }
+
+        if (Mode == EditorMode.Run)
+        {
+            if (@event is InputEventMouseButton runClick && runClick.Pressed
+                && runClick.ButtonIndex == MouseButton.Left)
+            {
+                // The event's own position, not the live cursor: they agree for a
+                // real click but only the event knows where the click happened,
+                // which is the difference between a testable path and one that
+                // can only be checked by hand.
+                PressControlAt(runClick.Position);
+            }
+            return;
+        }
+
         if (_previewNode is not null && @event is InputEventMouseMotion)
         {
             UpdatePreviewPosition();
@@ -230,6 +294,15 @@ public partial class SceneEditor : Node3D
                 if (Tags is not null && Tags.Contains($"{part.InstanceId}.level"))
                     Tags.Set($"{part.InstanceId}.level", 0.0);
             }
+            if (part.Node is ButtonPanel resetPanel)
+            {
+                // A reset must not start the next run holding a struck E-stop,
+                // and must not deliver a press queued before the reset.
+                resetPanel.ResetButtons();
+                ClearPanelPulses(part.InstanceId);
+                if (Tags is not null && Tags.Contains($"{part.InstanceId}.estop"))
+                    Tags.Set($"{part.InstanceId}.estop", true);
+            }
             if (part.Node is not Remover remover) continue;
 
             remover.ResetCount();
@@ -250,6 +323,7 @@ public partial class SceneEditor : Node3D
         if (part.OwnsTags && Tags is not null)
             PartTagManager.UnregisterPartTags(part.InstanceId, Tags);
 
+        ClearPanelPulses(part.InstanceId);
         part.Node.QueueFree();
         _placedParts.Remove(part);
     }
@@ -320,6 +394,46 @@ public partial class SceneEditor : Node3D
         {
             DeselectPart();
         }
+    }
+
+    /// <summary>
+    /// Run mode's click: find the operator control under the cursor and press it.
+    ///
+    /// The ray is tested against the panel's <em>caps</em>, not its bounding box.
+    /// The box wraps the housing, the pedestal and both lamps, so picking the
+    /// part first and then a button would fire Start when you clicked the floor
+    /// under the pedestal. Panels are asked directly, and each decides whether
+    /// the ray actually hit one of its buttons.
+    /// </summary>
+    public void PressControlAt(Vector2 screenPosition)
+    {
+        var camera = GetViewport().GetCamera3D();
+        if (camera is null) return;
+
+        var from = camera.ProjectRayOrigin(screenPosition);
+        var dir = camera.ProjectRayNormal(screenPosition);
+
+        float nearest = float.MaxValue;
+        ButtonPanel? hitPanel = null;
+        PanelButton hitButton = default;
+
+        foreach (var entry in _placedParts)
+        {
+            if (entry.Node is not ButtonPanel panel) continue;
+            if (panel.HitTest(from, dir) is not { } which) continue;
+
+            // Two panels can overlap on screen; the nearer one wins, measured to
+            // the panel rather than to the cap, which is close enough when the
+            // caps sit within a hand's width of the housing.
+            float distance = from.DistanceTo(panel.GlobalPosition);
+            if (distance >= nearest) continue;
+
+            nearest = distance;
+            hitPanel = panel;
+            hitButton = which;
+        }
+
+        hitPanel?.Press(hitButton);
     }
 
     private void DeselectPart()
@@ -431,6 +545,29 @@ public partial class SceneEditor : Node3D
         };
         GetParent()?.AddChild(lightNode);
         Adopt(lightNode, SortingTags.StackLightId, "StackLight");
+
+        // An operator station at the head of the line. Unlike the parts above it
+        // is not a view of tags SortingScene owns — nothing in the deterministic
+        // scene presses buttons — so it registers its own, in both modes. Without
+        // it in the default scene, Run mode would open onto a line with nothing
+        // to click and look broken.
+        //
+        // On the near side of the line — the same side the default camera looks
+        // from — because a button you cannot see is a button you cannot press.
+        // The caps already face +Z, which is where an operator stands looking at
+        // the machine, so it needs no rotation. Kept at the head of the line so
+        // it neither hides the sorting zone (sensors at 1.5 and 2.0, pusher at
+        // 2.5) nor sits under the parts palette down the left of the screen.
+        var panelNode = new ButtonPanel
+        {
+            Position = new Vector3(lane, y, 2.0f * lane),
+        };
+        GetParent()?.AddChild(panelNode);
+        if (Tags is not null)
+        {
+            var (panelId, panelOwns) = PartTagManager.RegisterPartTags(panelNode, "ButtonPanel", Tags, "panel");
+            _placedParts.Add(new PlacedPart(panelNode, panelId, "ButtonPanel", panelOwns));
+        }
 
         // Only the rigid-body scene needs these: the deterministic scene creates
         // and retires its own boxes in code.
@@ -677,6 +814,8 @@ public partial class SceneEditor : Node3D
                             panel.SetGreenLamp((bool)Tags.Visible($"{instanceId}.green"));
                         if (Tags.Contains($"{instanceId}.red"))
                             panel.SetRedLamp((bool)Tags.Visible($"{instanceId}.red"));
+
+                        StepPanelButtons(panel, instanceId);
                     }
                     break;
 
@@ -735,6 +874,54 @@ public partial class SceneEditor : Node3D
             }
         }
     }
+
+    /// <summary>Tags a panel drove high on the previous tick, so they can be
+    /// dropped on this one. Keyed by instance id.</summary>
+    private readonly Dictionary<string, List<string>> _panelPulses = new();
+
+    /// <summary>
+    /// Drive a panel's button tags for one tick.
+    ///
+    /// Momentary buttons are the delicate part. The click arrives on the frame
+    /// clock, the tags are written on the physics clock, and the two do not line
+    /// up — so the panel queues presses and this drains the queue. Dropping the
+    /// previous tick's pulse *before* raising this tick's is what bounds a press
+    /// to exactly one scan: a program polling the tag sees a clean edge whether
+    /// the mouse was tapped or held down for a second.
+    ///
+    /// The E-stop is level, not edge, and inverted: the contact is normally
+    /// closed, so the tag is true while the circuit is healthy.
+    /// </summary>
+    private void StepPanelButtons(ButtonPanel panel, string instanceId)
+    {
+        if (!_panelPulses.TryGetValue(instanceId, out var lastTick))
+        {
+            lastTick = new List<string>();
+            _panelPulses[instanceId] = lastTick;
+        }
+
+        foreach (string id in lastTick)
+        {
+            if (Tags.Contains(id)) Tags.Set(id, false);
+        }
+        lastTick.Clear();
+
+        foreach (var which in panel.ConsumePresses())
+        {
+            string id = $"{instanceId}.{PartTagManager.PanelTagSuffix(which)}";
+            if (!Tags.Contains(id)) continue;
+
+            Tags.Set(id, true);
+            lastTick.Add(id);
+        }
+
+        string estop = $"{instanceId}.estop";
+        if (Tags.Contains(estop)) Tags.Set(estop, !panel.EmergencyStopEngaged);
+    }
+
+    /// <summary>Forget a panel's pending pulse, so a tag it raised is not
+    /// cleared after the panel it belongs to has gone.</summary>
+    private void ClearPanelPulses(string instanceId) => _panelPulses.Remove(instanceId);
 
     private void ClearPreview()
     {

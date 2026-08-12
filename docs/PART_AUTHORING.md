@@ -146,3 +146,46 @@ else if (node is CustomPart custom)
                       val => custom.Speed = val);
 }
 ```
+
+---
+
+## Step 7: Parts the operator can touch (optional)
+
+Most parts only ever read tags. If yours has controls a human should be able to
+click — buttons, selector switches, a hand valve — three extra things apply.
+`engine/src/Parts/ButtonPanel.cs` is the worked example.
+
+**Register the controls as `TagKind.Input`.** The kind is from the *controller's*
+point of view: the operator drives the button, the controller reads it, so it is
+an input exactly like a sensor.
+
+**Hit-test your own geometry, not your bounding box.** Run mode calls into your
+part rather than picking it first, because a part's box also covers its housing
+and its pedestal — hit-testing that would make the whole station one big Start
+button. Expose something like:
+
+```csharp
+public PanelButton? HitTest(Vector3 worldOrigin, Vector3 worldDirection)
+{
+    var toLocal = GlobalTransform.AffineInverse();
+    Vector3 origin = toLocal * worldOrigin;
+    Vector3 dir = (toLocal.Basis * worldDirection).Normalized();
+    // ...test each control in local space
+}
+```
+
+Take the ray into local space. A test written against world axes passes for an
+unrotated part and misses every control once someone turns it.
+
+**Decide momentary or maintained, and mean it.** A momentary contact is high for
+*one scan*, not for as long as the mouse is down — clicks arrive on the frame
+clock and tags are written on the physics clock, so queue presses in the part
+and let the dispatch drain the queue, clearing the previous tick's pulse before
+raising this tick's. A maintained control latches until it is clicked again.
+Getting this wrong produces a button that looks fine and gives a PLC program a
+rising edge of unpredictable width.
+
+Finally: **the input path needs its own test.** Take the click position from the
+`InputEventMouseButton`, never from `GetViewport().GetMousePosition()`, and
+verify with `--self-test=click`. The logic can be entirely correct while
+clicking does nothing.

@@ -185,3 +185,82 @@ simulated machine animates from the tag and never writes it back.
 4. **Anything a part reads in `_Ready` must be in `PartProperties`**, or saving
    and reloading resets it. This cost the removers their count tags and the
    sensors their `VisualOnly` flag before it was caught by a round-trip test.
+
+---
+
+# 2026-08-12 — the panel you can press
+
+Until this session every input the controller could see was one the simulation
+computed for it. Sensors fired because a box passed them; limit switches
+followed the pusher. There was no way to *start* anything, no stop, and no way
+to inject the fault a program is supposed to survive — you could watch a line
+run, but not operate one. The `ButtonPanel` had two lamp tags, a
+`ButtonPressed` signal nothing emitted, and buttons that were painted on.
+
+## What landed
+
+**Edit / Run mode (`F1`).** A click cannot both pick a part up and press it, so
+the two meanings needed separating before buttons could exist at all. Edit mode
+is the old behaviour; Run mode routes a left click to the operator controls and
+nothing else. Entering Run drops a placement in progress and clears the
+selection, and the palette hides itself. The toolbar and palette both listen to
+`ModeChanged` rather than keeping their own copy of the mode.
+
+**Four real controls.** Start, Stop and Reset are momentary; the mushroom is a
+maintained E-stop that latches when struck and releases when clicked again. All
+four are `TagKind.Input` — the operator drives them, the controller reads them,
+exactly like a sensor.
+
+**`panel.estop` is normally closed**, so it reads *true while the circuit is
+healthy*. That is the real wiring, and it is worth not hiding: a program that
+runs happily with that tag false would also run with the wire to the E-stop cut.
+
+## The two things that were genuinely hard
+
+**Momentary means one scan, not one mouse-down.** A click arrives on the frame
+clock; tags are written on the physics clock. The panel queues presses and the
+dispatch drains the queue, clearing the previous tick's pulse *before* raising
+this tick's. That ordering is the whole guarantee: hold the mouse for a second,
+or click three times between two ticks, and a program still sees exactly one
+clean rising edge.
+
+**Hit-test the caps, not the part.** Picking already existed, but it tests a
+part's bounding box — and the panel's box covers the housing, the pedestal and
+both lamps. Reusing it would have made the entire station one large Start
+button. Run mode asks each panel directly, and the panel tests each cap's own
+sphere in its local space.
+
+## The bug worth remembering
+
+The feature was finished, both halves were correct, and clicking a button did
+nothing.
+
+`PressControlAt` read `GetViewport().GetMousePosition()` — where the pointer is
+*now* — instead of taking the position off the event. For a real click those
+agree, so the code looked fine; for the synthesized click that proves it works,
+they do not. The headless self-test passed every assertion it could reach the
+entire time, because the failure was in the input handler and the headless test
+starts below it.
+
+That is why there are now two self-tests rather than one:
+
+- `--self-test=buttons` — headless, no GPU: pulse width, the maintained latch,
+  cap picking (including at a rotation that lines up with nothing, since a hit
+  test that quietly assumed world axes passes the as-placed case and misses
+  every button once the panel is turned).
+- `--self-test=click` — needs a display: synthesizes a real
+  `InputEventMouseButton` at a cap's projected screen position and asserts the
+  tag moved.
+
+Both were checked by deliberately reintroducing each bug and confirming they
+fail. A self-test nobody has watched fail is a guess.
+
+## Smaller things
+
+- Adding a ninth toolbar button overflowed the bar at the default window size
+  and clipped "Clear Scene" off the right-hand end. Shortcut hints moved from
+  the labels into tooltips.
+- The default scene now ships an operator station at the head of the line, on
+  the side the camera looks from. The first placement put it behind the belt
+  facing away, and the one before that sat under the parts palette — a button
+  you cannot see is a button you cannot press.

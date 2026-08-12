@@ -34,6 +34,7 @@ public partial class Main : Node
     private double _startedAt;
     private string? _screenshotPath;
     private double _screenshotAt = -1;
+    private string? _selfTest;
 
     public override void _Ready()
     {
@@ -51,6 +52,8 @@ public partial class Main : Node
                 _deterministic = false;   // kept: it used to be the opt-in flag
             else if (arg.StartsWith("--time-scale="))
                 _timeScale = arg.Substring("--time-scale=".Length).ToFloat();
+            else if (arg.StartsWith("--self-test="))
+                _selfTest = arg.Substring("--self-test=".Length);
         }
 
         // Rigid bodies by default — the parts are real colliders, so properties,
@@ -90,6 +93,17 @@ public partial class Main : Node
 
         GD.Print($"FactoryForge engine ready — {(_deterministic ? "DETERMINISTIC" : "PHYSICS")} " +
                  $"scene '{SceneName}', {tags.Count} tags");
+
+        // Added last so it runs after the editor each tick, and therefore reads
+        // the tags as the part dispatch left them rather than a tick behind.
+        if (_selfTest == "buttons")
+        {
+            AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
+        }
+        if (_selfTest == "click")
+        {
+            AddChild(new ClickPathSelfTest { Name = "ClickPathSelfTest", Tags = tags, Editor = _editor });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -149,7 +163,18 @@ public partial class Main : Node
         toolbarUI.PauseToggled += () => _sim.TogglePause();
         toolbarUI.ResetRequested += ResetSimulation;
         toolbarUI.RateSelected += (rate) => _sim.SetRate(rate);
+        toolbarUI.ModeToggled += () => editor.ToggleMode();
         AddChild(toolbarUI);
+
+        // Mode lives on the editor; the toolbar and palette only reflect it, so
+        // the F1 key and the button can never disagree about which mode we are in.
+        editor.ModeChanged += (running) =>
+        {
+            toolbarUI.ShowMode(running);
+            paletteUI.ShowForMode(running);
+        };
+        toolbarUI.ShowMode(editor.Mode == EditorMode.Run);
+        paletteUI.ShowForMode(editor.Mode == EditorMode.Run);
 
         // The toolbar mirrors the state rather than owning it, so the keyboard
         // shortcuts and the buttons can never disagree.
