@@ -9,6 +9,14 @@ public partial class Remover : Area3D
 {
     [Export] public Vector3 ZoneSize { get; set; } = new(0.40f, 0.40f, 0.60f);
 
+    /// <summary>
+    /// Tag this remover counts into. Empty means the conventional
+    /// "&lt;instanceId&gt;.count"; the sorting scene points its two removers at
+    /// counter.tall and counter.short so the same PLC program reads the same
+    /// tags whichever scene is running.
+    /// </summary>
+    [Export] public string CountTag { get; set; } = "";
+
     private CollisionShape3D _collisionShape = null!;
 
     /// <summary>Boxes despawned since the scene started.</summary>

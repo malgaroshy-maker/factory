@@ -82,18 +82,19 @@ python -m pytest -q
 # Engine build
 cd engine && dotnet build
 
-# Engine headless (CI-safe, no GPU)
-"<GODOT>" --headless --path engine/ -- --duration=20
+# Engine headless, deterministic — the CI / regression path (no GPU needed)
+"<GODOT>" --headless --path engine/ -- --deterministic --duration=20
 
 # Engine with 3D + screenshot (renders a frame you can then look at)
 "<GODOT>" --path engine/ --resolution 1600x900 -- \
     --duration=26 --screenshot=C:/tmp/shot.png --screenshot-at=18
 
-# Rigid-body scene (Jolt solving real contacts) instead of the fixed-timestep one
-"<GODOT>" --path engine/ -- --physics --duration=40
+# Default launch is the rigid-body scene; nothing to pass
+"<GODOT>" --path engine/
 
-# Parity check: unchanged Python sidecar drives the C# engine
-# (start the engine first, then:)
+# Parity check: unchanged Python sidecar drives the C# engine.
+# The engine MUST be started with --deterministic or the counts are not
+# reproducible and the assertion is meaningless.
 python tools/drive_engine.py
 
 # Drive the Python stub from the real PLC
@@ -122,10 +123,18 @@ have any part land correctly. Never bake a mounting height into a scene position
 in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
 `"conveyor.rotate"` looks up `conveyor.rotate.rotate` and silently disables it.
 
-**`--physics` is not reproducible, by design.** The default scene advances by a
-fixed timestep and is the regression contract (`tools/drive_engine.py` →
-`tall=5 short=5`); `--physics` is Jolt solving contacts. Use it to judge how
-parts behave, never to assert counts.
+**Two scenes, one tag interface.** The engine launches the *rigid-body* scene:
+real colliders, real gravity, a held-out pusher genuinely blocks the line.
+`--deterministic` swaps in the fixed-timestep `SortingScene` instead — that one
+advances by exactly `TickMs`, mirrors `harness/scene.py`, and is the regression
+contract (`tools/drive_engine.py` → `tall=5 short=5`). Jolt cannot promise
+reproducible counts, so **anything asserting exact numbers must pass
+`--deterministic`.**
+
+Both declare the same ten tags via `SortingTags.Declare`, and both report the
+same scene name on the bus, so the same `Sorting.scl` or Node-RED flow drives
+either without noticing. Keep it that way: if you add a tag to one, add it to
+`SortingTags`.
 
 ## Hard-won gotchas — these cost hours, do not rediscover them
 

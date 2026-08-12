@@ -38,6 +38,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 ## ✨ Key Features
 
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
+* 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal allowing users to drag/click PLC addresses (`%I0.0`, `%Q0.0`) directly to factory component tags.
 * 🏷️ **Live In-Scene Tag Inspection & Floating 3D Badges**: Floating 3D billboard labels above components with interactive live forcing buttons.
@@ -86,6 +87,21 @@ cd engine
 dotnet build
 "<GODOT_CONSOLE_EXE>" --path .
 ```
+
+This runs the **physics scene**: Jolt rigid-body cartons, real collisions, and
+components whose properties genuinely change how the line behaves — speed up the
+belt and boxes outrun the diverter; hold the pusher out and the line backs up
+behind it.
+
+```bash
+# Fixed-timestep scene instead: reproducible, and the regression contract.
+"<GODOT_CONSOLE_EXE>" --path . -- --deterministic
+```
+
+Both scenes expose the **same ten tags** and report the same scene name, so a PLC
+program, Node-RED flow or SCADA client drives either one unchanged. Use
+`--deterministic` whenever you need repeatable counts — CI and
+`tools/drive_engine.py` rely on it.
 
 ---
 

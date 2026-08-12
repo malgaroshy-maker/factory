@@ -73,20 +73,7 @@ public sealed class SortingScene
 
     public SortingScene()
     {
-        // PLC outputs — the program writes these.
-        Tags.Add(new Tag("conveyor.rotate", "Belt Conveyor (Rotate)", TagType.Bit, TagKind.Output));
-        Tags.Add(new Tag("emitter.emit", "Emitter (Emit)", TagType.Bit, TagKind.Output));
-        Tags.Add(new Tag("pusher.extend", "Pusher (Extend)", TagType.Bit, TagKind.Output));
-        Tags.Add(new Tag("stack_light.green", "Stack Light (Green)", TagType.Bit, TagKind.Output));
-        // PLC inputs — the simulator writes these.
-        Tags.Add(new Tag("sensor_low.detect", "Diffuse Sensor Low (Detect)", TagType.Bit, TagKind.Input));
-        Tags.Add(new Tag("sensor_high.detect", "Diffuse Sensor High (Detect)", TagType.Bit, TagKind.Input));
-        Tags.Add(new Tag("pusher.extended", "Pusher (Extended)", TagType.Bit, TagKind.Input));
-        Tags.Add(new Tag("pusher.retracted", "Pusher (Retracted)", TagType.Bit, TagKind.Input));
-        Tags.Add(new Tag("counter.tall", "Counter (Tall)", TagType.Int, TagKind.Input));
-        Tags.Add(new Tag("counter.short", "Counter (Short)", TagType.Int, TagKind.Input));
-
-        Tags.Set("pusher.retracted", true);
+        SortingTags.Declare(Tags);
     }
 
     public void Tick(double dt)

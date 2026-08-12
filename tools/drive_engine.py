@@ -5,8 +5,12 @@ that talk to harness/engine_stub.py must talk to the Godot engine with no
 changes at all. If this passes, the engine can be swapped in underneath the
 drivers without touching them.
 
-    godot --headless --path engine/ -- --duration=40 &
+    godot --headless --path engine/ -- --deterministic --duration=60 &
     python tools/drive_engine.py
+
+--deterministic is required. Without it the engine runs the rigid-body scene,
+which is Jolt solving real contacts and cannot reproduce exact counts, so the
+tall=5 short=5 assertion below is meaningless against it.
 """
 from __future__ import annotations
 
@@ -82,8 +86,12 @@ async def main() -> int:
     short = mock.get("counter.short")
     print(f"\nRESULT tall={tall} short={short}")
     ok = tall > 0 and short > 0
-    print("PASS — the Python sidecar drives the Godot engine" if ok
-          else "FAIL — nothing sorted")
+    if ok:
+        print("PASS — the Python sidecar drives the Godot engine")
+    else:
+        print("FAIL — nothing sorted")
+        print("       was the engine started with --deterministic, and did it "
+              "stay up for the whole 35 s run?")
 
     await mock.stop()
     runner.cancel()

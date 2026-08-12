@@ -310,7 +310,18 @@ public partial class SceneEditor : Node3D
         TagInspector?.RebuildTagList();
     }
 
-    public void RegisterDefaultSceneParts()
+    /// <summary>
+    /// Build the sorting line out of real parts.
+    /// </summary>
+    /// <param name="physical">
+    /// When true the parts are authoritative: sensors raycast against real
+    /// cartons, the pusher reports its own limit switches, an emitter spawns
+    /// rigid bodies and removers count them. When false they are views of a
+    /// <see cref="SortingScene"/> that owns the same tags and simulates the
+    /// boxes itself. The layout and the tag interface are identical either way,
+    /// which is the point: the same PLC program drives both.
+    /// </param>
+    public void RegisterDefaultSceneParts(bool physical = false)
     {
         ClearAllPlacedParts();
 
@@ -333,7 +344,7 @@ public partial class SceneEditor : Node3D
             Speed = (float)SortingScene.BeltSpeed,
         };
         GetParent()?.AddChild(beltNode);
-        _placedParts.Add(new PlacedPart(beltNode, "conveyor", "ConveyorBelt", OwnsTags: false));
+        Adopt(beltNode, SortingTags.ConveyorId, "ConveyorBelt");
 
         // Mounting heights are what makes the scene sort: the low beam sees every
         // box, the high beam only clears the tall ones. Range reaches from the
@@ -343,20 +354,20 @@ public partial class SceneEditor : Node3D
             Position = new Vector3((float)SortingScene.SensorLowPos, y, lane),
             Range = 0.75f,
             HeightAboveBelt = 0.04f,
-            VisualOnly = true,
+            VisualOnly = !physical,
         };
         GetParent()?.AddChild(sensorLowNode);
-        _placedParts.Add(new PlacedPart(sensorLowNode, "sensor_low", "PhotoelectricSensor", OwnsTags: false));
+        Adopt(sensorLowNode, SortingTags.SensorLowId, "PhotoelectricSensor");
 
         var sensorHighNode = new PhotoelectricSensor
         {
             Position = new Vector3((float)SortingScene.SensorHighPos, y, lane),
             Range = 0.75f,
             HeightAboveBelt = 0.20f,
-            VisualOnly = true,
+            VisualOnly = !physical,
         };
         GetParent()?.AddChild(sensorHighNode);
-        _placedParts.Add(new PlacedPart(sensorHighNode, "sensor_high", "PhotoelectricSensor", OwnsTags: false));
+        Adopt(sensorHighNode, SortingTags.SensorHighId, "PhotoelectricSensor");
 
         // Beside the belt, not on it: the pusher's origin is its mounting point
         // and it strokes towards +Z, across the lane and onto the chute.
@@ -368,26 +379,61 @@ public partial class SceneEditor : Node3D
             // Match the simulated stroke, so the plate hits its limit exactly
             // when the scene reports pusher.extended.
             ExtendSpeed = pusherStroke / (float)SortingScene.PusherTravelTime,
-            VisualOnly = true,
+            VisualOnly = !physical,
         };
         GetParent()?.AddChild(pusherNode);
-        _placedParts.Add(new PlacedPart(pusherNode, "pusher", "PusherMechanism", OwnsTags: false));
+        Adopt(pusherNode, SortingTags.PusherId, "PusherMechanism");
 
         var chuteNode = new Chute
         {
             Position = new Vector3((float)SortingScene.PusherPos, y, lane),
         };
         GetParent()?.AddChild(chuteNode);
-        _placedParts.Add(new PlacedPart(chuteNode, "chute_1", "Chute", OwnsTags: false));
+        Adopt(chuteNode, "chute_1", "Chute");
 
         var lightNode = new StackLight
         {
             Position = new Vector3(-lane, y, lane),
         };
         GetParent()?.AddChild(lightNode);
-        _placedParts.Add(new PlacedPart(lightNode, "stack_light", "StackLight", OwnsTags: false));
+        Adopt(lightNode, SortingTags.StackLightId, "StackLight");
+
+        // Only the rigid-body scene needs these: the deterministic scene creates
+        // and retires its own boxes in code.
+        if (physical)
+        {
+            var emitterNode = new Emitter
+            {
+                Position = new Vector3((float)SortingScene.EmitterPos, y, 0),
+            };
+            GetParent()?.AddChild(emitterNode);
+            Adopt(emitterNode, SortingTags.EmitterId, "Emitter");
+
+            var shortRemover = new Remover
+            {
+                Position = new Vector3((float)SortingScene.RemoverPos + 0.25f, y - 0.2f, 0),
+                ZoneSize = new Vector3(0.5f, 0.6f, 0.6f),
+                CountTag = SortingTags.CounterShort,
+            };
+            GetParent()?.AddChild(shortRemover);
+            Adopt(shortRemover, "remover_short", "Remover");
+
+            // Under the chute's discharge, so a diverted carton is counted once
+            // it has actually made it down the ramp.
+            var tallRemover = new Remover
+            {
+                Position = new Vector3((float)SortingScene.PusherPos, 0.15f, lane + 0.5f),
+                ZoneSize = new Vector3(0.6f, 0.4f, 0.6f),
+                CountTag = SortingTags.CounterTall,
+            };
+            GetParent()?.AddChild(tallRemover);
+            Adopt(tallRemover, "remover_tall", "Remover");
+        }
 
         TagInspector?.RebuildTagList();
+
+        void Adopt(Node3D node, string instanceId, string partType) =>
+            _placedParts.Add(new PlacedPart(node, instanceId, partType, OwnsTags: false));
     }
 
     public void SaveSceneToFile(string path = "user://custom_scene.json")
@@ -573,9 +619,12 @@ public partial class SceneEditor : Node3D
                     break;
 
                 case "Remover":
-                    if (node is Remover remover && Tags.Contains($"{instanceId}.count"))
+                    if (node is Remover remover)
                     {
-                        Tags.Set($"{instanceId}.count", remover.RemovedCount);
+                        string countTag = remover.CountTag.Length > 0
+                            ? remover.CountTag
+                            : $"{instanceId}.count";
+                        if (Tags.Contains(countTag)) Tags.Set(countTag, remover.RemovedCount);
                     }
                     break;
 

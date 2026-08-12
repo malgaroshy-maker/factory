@@ -17,15 +17,18 @@ public partial class Main : Node
     /// should run visibly slow, not freeze.</summary>
     private const int MaxCatchUpSteps = 5;
 
-    private SortingScene _scene = new();
+    private SortingScene? _scene;
+    private bool _deterministic;
+
+    /// <summary>Both scenes present the same tag interface, so they report the
+    /// same name on the bus — a driver cannot and need not tell them apart.</summary>
+    private const string SceneName = "sorting-by-height";
     private TagBusServer _bus = null!;
     private double _accumulator;
     private double _runFor = -1;   // seconds; -1 = forever
     private double _elapsed;
     private string? _screenshotPath;
     private double _screenshotAt = -1;
-    private bool _physicsMode;
-    private PhysicsScene? _physicsScene;
 
     public override void _Ready()
     {
@@ -37,102 +40,109 @@ public partial class Main : Node
                 _screenshotPath = arg.Substring("--screenshot=".Length);
             else if (arg.StartsWith("--screenshot-at="))
                 _screenshotAt = arg.Substring("--screenshot-at=".Length).ToFloat();
+            else if (arg == "--deterministic")
+                _deterministic = true;
             else if (arg == "--physics")
-                _physicsMode = true;
+                _deterministic = false;   // kept: it used to be the opt-in flag
         }
 
-        // --physics swaps the deterministic scene for the rigid-body one. It is
-        // opt-in precisely because it is *not* reproducible: the default scene
-        // advances by a fixed timestep and is the regression contract, whereas
-        // this one is Jolt solving real contacts. Use it to judge how the parts
-        // behave, not to assert counts.
-        if (_physicsMode)
-        {
-            _physicsScene = new PhysicsScene { Name = "PhysicsScene" };
-            AddChild(_physicsScene);
-            _bus = new TagBusServer
-            {
-                Name = "TagBus",
-                Tags = _physicsScene.Tags,
-                SceneName = _physicsScene.SceneName,
-            };
-            AddChild(_bus);
-            AddPhysicsModeView();
-            GD.Print("FactoryForge engine ready — PHYSICS mode (Jolt rigid bodies)");
-            return;
-        }
+        // Rigid bodies by default — the parts are real colliders, so properties,
+        // collisions and a held-out pusher all behave physically.
+        //
+        // --deterministic swaps in the fixed-timestep scene instead. That one is
+        // the regression contract: it advances by exactly TickMs and mirrors
+        // harness/scene.py, so the same sidecar drives both engines to the same
+        // counts. Jolt cannot promise that, so anything asserting exact numbers
+        // (tools/drive_engine.py, CI) must ask for it explicitly.
+        _scene = _deterministic ? new SortingScene() : null;
 
-        _bus = new TagBusServer { Name = "TagBus", Tags = _scene.Tags, SceneName = _scene.Name };
+        var tags = new TagTable();
+        if (_scene is not null) tags = _scene.Tags;
+        else SortingTags.Declare(tags);
+
+        _bus = new TagBusServer { Name = "TagBus", Tags = tags, SceneName = SceneName };
         AddChild(_bus);
 
         // The renderer is optional: headless CI runs the same scene with no view
         // at all, which is why SceneView only ever reads simulation state.
         if (DisplayServer.GetName() != "headless")
         {
+            BuildView(tags);
+        }
+        else if (!_deterministic)
+        {
+            // Headless physics still needs a floor to land on and parts to run.
+            StudioEnvironment.AddFloor(this, withGrid: false);
+            BuildHeadlessPhysicsParts(tags);
+        }
+
+        GD.Print($"FactoryForge engine ready — {(_deterministic ? "DETERMINISTIC" : "PHYSICS")} " +
+                 $"scene '{SceneName}', {tags.Count} tags");
+    }
+
+    private void BuildView(TagTable tags)
+    {
+        StudioEnvironment.AddEnvironment(this);
+        StudioEnvironment.AddFloor(this);
+
+        // The ghost-box view exists only for the deterministic scene; the
+        // physics scene's cartons are real nodes that draw themselves.
+        if (_scene is not null)
+        {
             var view = new SceneView { Name = "View" };
             AddChild(view);
             view.Build(_scene);
-
-            var orbitCam = new OrbitCamera { Name = "OrbitCamera", Current = true };
-            var flyCam = new FreeLookCamera { Name = "FreeLookCamera", Current = false };
-            AddChild(orbitCam);
-            AddChild(flyCam);
-
-            var inspectorUI = new TagInspectorUI { Name = "TagInspectorUI" };
-            AddChild(inspectorUI);
-            inspectorUI.Setup(_scene.Tags);
-
-            var propertyInspector = new PartPropertyInspectorUI { Name = "PartPropertyInspectorUI" };
-            AddChild(propertyInspector);
-
-            var voxelGrid = view.GetNode<VoxelGrid>("VoxelGrid");
-            var editor = new SceneEditor
-            {
-                Name = "SceneEditor",
-                Grid = voxelGrid,
-                Tags = _scene.Tags,
-                Scene = _scene,
-                TagInspector = inspectorUI,
-                PropertyInspector = propertyInspector
-            };
-            AddChild(editor);
-            editor.RegisterDefaultSceneParts();
-
-            var paletteUI = new PartPaletteUI { Name = "PartPaletteUI" };
-            paletteUI.PartSelected += (partType) => editor.SetPlacementPart(partType);
-            AddChild(paletteUI);
-
-            var wiringUI = new DriverWiringUI { Name = "DriverWiringUI" };
-            AddChild(wiringUI);
-            wiringUI.Setup(_scene.Tags);
-
-            var driverConnectionUI = new DriverConnectionUI { Name = "DriverConnectionUI" };
-            AddChild(driverConnectionUI);
-
-            var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
-            toolbarUI.SaveRequested += () => editor.SaveSceneToFile();
-            toolbarUI.LoadRequested += () => editor.LoadSceneFromFile();
-            toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
-            toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
-            toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
-            AddChild(toolbarUI);
         }
-
-        GD.Print($"FactoryForge engine ready — scene '{_scene.Name}', {_scene.Tags.Count} tags");
-    }
-
-    /// <summary>Cameras and the tag inspector for physics mode; the scene builds
-    /// its own geometry, so there is no SceneView to drive.</summary>
-    private void AddPhysicsModeView()
-    {
-        if (DisplayServer.GetName() == "headless") return;
 
         AddChild(new OrbitCamera { Name = "OrbitCamera", Current = true });
         AddChild(new FreeLookCamera { Name = "FreeLookCamera", Current = false });
 
         var inspectorUI = new TagInspectorUI { Name = "TagInspectorUI" };
         AddChild(inspectorUI);
-        inspectorUI.Setup(_physicsScene!.Tags);
+        inspectorUI.Setup(tags);
+
+        var propertyInspector = new PartPropertyInspectorUI { Name = "PartPropertyInspectorUI" };
+        AddChild(propertyInspector);
+
+        var editor = new SceneEditor
+        {
+            Name = "SceneEditor",
+            Grid = GetNode<VoxelGrid>("VoxelGrid"),
+            Tags = tags,
+            Scene = _scene,
+            TagInspector = inspectorUI,
+            PropertyInspector = propertyInspector
+        };
+        AddChild(editor);
+        editor.RegisterDefaultSceneParts(physical: !_deterministic);
+
+        var paletteUI = new PartPaletteUI { Name = "PartPaletteUI" };
+        paletteUI.PartSelected += (partType) => editor.SetPlacementPart(partType);
+        AddChild(paletteUI);
+
+        var wiringUI = new DriverWiringUI { Name = "DriverWiringUI" };
+        AddChild(wiringUI);
+        wiringUI.Setup(tags);
+
+        var driverConnectionUI = new DriverConnectionUI { Name = "DriverConnectionUI" };
+        AddChild(driverConnectionUI);
+
+        var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
+        toolbarUI.SaveRequested += () => editor.SaveSceneToFile();
+        toolbarUI.LoadRequested += () => editor.LoadSceneFromFile();
+        toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
+        toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
+        toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
+        AddChild(toolbarUI);
+    }
+
+    /// <summary>Physics mode without a renderer: no UI, but the parts still have
+    /// to exist or nothing moves.</summary>
+    private void BuildHeadlessPhysicsParts(TagTable tags)
+    {
+        var editor = new SceneEditor { Name = "SceneEditor", Tags = tags };
+        AddChild(editor);
+        editor.RegisterDefaultSceneParts(physical: true);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -186,9 +196,9 @@ public partial class Main : Node
         int steps = 0;
         while (_accumulator >= interval && steps < MaxCatchUpSteps)
         {
-            // In physics mode the scene advances itself in _PhysicsProcess, on
-            // Jolt's clock; this loop only paces the bus.
-            if (!_physicsMode) _scene.Tick(interval);
+            // The physics scene advances itself on Jolt's clock; this loop then
+            // only paces the bus.
+            _scene?.Tick(interval);
             _bus.CountTick();
             _accumulator -= interval;
             steps++;
@@ -204,12 +214,13 @@ public partial class Main : Node
 
         if (_runFor > 0 && _elapsed >= _runFor)
         {
-            if (_physicsMode)
-                GD.Print($"done: tick={_bus.TickCount} tall={_physicsScene!.TallCount} " +
-                         $"short={_physicsScene.ShortCount}");
+            if (_scene is { } scene)
+                GD.Print($"done: tick={_bus.TickCount} tall={scene.SortedTall.Count} " +
+                         $"short={scene.SortedShort.Count} belt={scene.Boxes.Count}");
             else
-                GD.Print($"done: tick={_bus.TickCount} tall={_scene.SortedTall.Count} " +
-                         $"short={_scene.SortedShort.Count} belt={_scene.Boxes.Count}");
+                GD.Print($"done: tick={_bus.TickCount} " +
+                         $"tall={_bus.Tags.Visible(SortingTags.CounterTall)} " +
+                         $"short={_bus.Tags.Visible(SortingTags.CounterShort)}");
             GetTree().Quit();
         }
     }
