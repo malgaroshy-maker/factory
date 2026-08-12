@@ -24,7 +24,10 @@ __pycache__/
 build/
 dist/
 
-# Temporary screenshots & logs
+# Temporary screenshots & logs. Working screenshots land in the repo root and
+# are throwaway; anything under docs/images/ is documentation and belongs in
+# the repo, so it is exempted rather than force-added case by case.
 *.png
+!docs/images/**/*.png
 *.log
 scratch/
