@@ -76,6 +76,29 @@ public sealed class SortingScene
         SortingTags.Declare(Tags);
     }
 
+    /// <summary>
+    /// Return the line to its start state: no boxes anywhere, counters back to
+    /// zero, pusher home. The TagTable instance is kept — replacing it would
+    /// bump the bus epoch and force every connected driver to re-handshake,
+    /// which is not what "reset the scene" should mean to a PLC.
+    /// </summary>
+    public void Reset()
+    {
+        Boxes.Clear();
+        SortedTall.Clear();
+        SortedShort.Clear();
+        _emitIndex = 0;
+        _emitEdge = false;
+        _pusherExtension = 0.0;
+
+        Tags.Set(SortingTags.CounterTall, 0);
+        Tags.Set(SortingTags.CounterShort, 0);
+        Tags.Set(SortingTags.SensorLowDetect, false);
+        Tags.Set(SortingTags.SensorHighDetect, false);
+        Tags.Set(SortingTags.PusherExtended, false);
+        Tags.Set(SortingTags.PusherRetracted, true);
+    }
+
     public void Tick(double dt)
     {
         StepEmitter();

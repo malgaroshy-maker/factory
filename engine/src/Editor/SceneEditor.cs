@@ -209,6 +209,34 @@ public partial class SceneEditor : Node3D
         }
     }
 
+    /// <summary>
+    /// Clear the rigid-body scene back to its start state: despawn every carton
+    /// and zero the removers. The machines themselves stay exactly where they
+    /// are — resetting a simulation restarts the run, it does not undo the scene
+    /// you built.
+    /// </summary>
+    public void ResetItems()
+    {
+        foreach (var node in GetParent()?.GetChildren() ?? new Godot.Collections.Array<Node>())
+        {
+            if (node is BoxPhysics box) box.QueueFree();
+        }
+
+        foreach (var part in _placedParts)
+        {
+            if (part.Node is not Remover remover) continue;
+
+            remover.ResetCount();
+            string countTag = remover.CountTag.Length > 0
+                ? remover.CountTag
+                : $"{part.InstanceId}.count";
+            if (Tags is not null && Tags.Contains(countTag)) Tags.Set(countTag, 0);
+        }
+
+        _emitEdges.Clear();
+        _emitAlternate = false;
+    }
+
     /// <summary>Detach a part from the scene, taking its tags with it if it owns
     /// them. A view of simulation-owned tags leaves them alone.</summary>
     private void ForgetPart(PlacedPart part)

@@ -37,6 +37,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 
 ## ✨ Key Features
 
+* ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
 * 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
@@ -54,7 +55,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 | **Conveyor Belt** | Surface-velocity belt with side rails and legs | `conveyor.rotate` (Bit, Output) |
 | **Photoelectric Sensor** | Optic lens RayCast3D beam sensor | `sensor.detect` (Bit, Input) |
 | **Pneumatic Pusher** | Cylinder housing, chrome shaft & orange face plate | `pusher.extend`, `pusher.extended`, `pusher.retracted` |
-| **Inclined Ramp (Chute)** | 12° gravity sliding chute | Physical static body |
+| **Inclined Ramp (Chute)** | 30° gravity chute with guide rails; incline and friction are a matched pair so cartons actually slide | Physical static body |
 | **Stack Light** | 3-stage industrial tower light (Green, Yellow, Red) | `stacklight.green`, `yellow`, `red` |
 | **Digital Display** | 3D 7-segment LED panel displaying live integer counts | `display.value` (Int, Output) |
 | **Weight Scale Conveyor**| Integrated load cell scale returning box mass | `weighconveyor.weight` (Int, Input) |

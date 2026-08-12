@@ -1,6 +1,7 @@
 using Godot;
 using FactoryForge.Editor;
 using FactoryForge.Scenes;
+using FactoryForge.Sim;
 using FactoryForge.TagBus;
 using FactoryForge.View;
 
@@ -18,7 +19,10 @@ public partial class Main : Node
     private const int MaxCatchUpSteps = 5;
 
     private SortingScene? _scene;
+    private SceneEditor? _editor;
+    private SimulationControls _sim = null!;
     private bool _deterministic;
+    private float _timeScale = 1.0f;
 
     /// <summary>Both scenes present the same tag interface, so they report the
     /// same name on the bus — a driver cannot and need not tell them apart.</summary>
@@ -27,6 +31,7 @@ public partial class Main : Node
     private double _accumulator;
     private double _runFor = -1;   // seconds; -1 = forever
     private double _elapsed;
+    private double _startedAt;
     private string? _screenshotPath;
     private double _screenshotAt = -1;
 
@@ -44,6 +49,8 @@ public partial class Main : Node
                 _deterministic = true;
             else if (arg == "--physics")
                 _deterministic = false;   // kept: it used to be the opt-in flag
+            else if (arg.StartsWith("--time-scale="))
+                _timeScale = arg.Substring("--time-scale=".Length).ToFloat();
         }
 
         // Rigid bodies by default — the parts are real colliders, so properties,
@@ -62,6 +69,11 @@ public partial class Main : Node
 
         _bus = new TagBusServer { Name = "TagBus", Tags = tags, SceneName = SceneName };
         AddChild(_bus);
+
+        _sim = new SimulationControls { Name = "SimulationControls" };
+        AddChild(_sim);
+        if (_timeScale > 0.0f) _sim.SetRate(_timeScale);
+        _startedAt = Time.GetTicksMsec() / 1000.0;
 
         // The renderer is optional: headless CI runs the same scene with no view
         // at all, which is why SceneView only ever reads simulation state.
@@ -115,6 +127,7 @@ public partial class Main : Node
         };
         AddChild(editor);
         editor.RegisterDefaultSceneParts(physical: !_deterministic);
+        _editor = editor;
 
         var paletteUI = new PartPaletteUI { Name = "PartPaletteUI" };
         paletteUI.PartSelected += (partType) => editor.SetPlacementPart(partType);
@@ -133,7 +146,15 @@ public partial class Main : Node
         toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
         toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
         toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
+        toolbarUI.PauseToggled += () => _sim.TogglePause();
+        toolbarUI.ResetRequested += ResetSimulation;
+        toolbarUI.RateSelected += (rate) => _sim.SetRate(rate);
         AddChild(toolbarUI);
+
+        // The toolbar mirrors the state rather than owning it, so the keyboard
+        // shortcuts and the buttons can never disagree.
+        _sim.StateChanged += (paused, rate) => toolbarUI.ShowState(paused, rate);
+        toolbarUI.ShowState(_sim.Paused, _sim.Rate);
     }
 
     /// <summary>Physics mode without a renderer: no UI, but the parts still have
@@ -143,6 +164,7 @@ public partial class Main : Node
         var editor = new SceneEditor { Name = "SceneEditor", Tags = tags };
         AddChild(editor);
         editor.RegisterDefaultSceneParts(physical: true);
+        _editor = editor;
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -160,6 +182,15 @@ public partial class Main : Node
             {
                 var driverConnectionUI = GetNodeOrNull<DriverConnectionUI>("DriverConnectionUI");
                 driverConnectionUI?.ToggleVisibility();
+            }
+            else if (keyEvent.Keycode == Key.Space)
+            {
+                _sim.TogglePause();
+                GD.Print(_sim.Paused ? "Simulation paused" : "Simulation running");
+            }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.R)
+            {
+                ResetSimulation();
             }
             else if (keyEvent.Keycode == Key.C)
             {
@@ -183,15 +214,29 @@ public partial class Main : Node
         }
     }
 
+    /// <summary>Restart the run without disturbing the scene you built: boxes
+    /// cleared, counters zeroed, machines left where they are.</summary>
+    private void ResetSimulation()
+    {
+        _scene?.Reset();
+        _editor?.ResetItems();
+        _bus.SendUpdates();
+        GD.Print("Simulation reset");
+    }
+
     public override void _Process(double delta)
     {
         // Fixed timestep with a wall-clock accumulator. The scene always
         // advances by exactly TickMs, never by measured elapsed time: a
         // variable dt would make runs non-reproducible and defeat the
         // regression scene. See docs/PLAN.md.
+        // The accumulator runs on *simulation* time, so the time-scale control
+        // speeds the line up and down. --duration and --screenshot-at run on
+        // wall-clock: they are harness controls, and a paused run whose clock
+        // also stopped would never reach its duration and would hang forever.
         double interval = _bus.TickMs / 1000.0;
         _accumulator += delta;
-        _elapsed += delta;
+        _elapsed = Time.GetTicksMsec() / 1000.0 - _startedAt;
 
         int steps = 0;
         while (_accumulator >= interval && steps < MaxCatchUpSteps)

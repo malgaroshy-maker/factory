@@ -22,6 +22,8 @@ public partial class Remover : Area3D
     /// <summary>Boxes despawned since the scene started.</summary>
     public int RemovedCount { get; private set; }
 
+    public void ResetCount() => RemovedCount = 0;
+
     public override void _Ready()
     {
         _collisionShape = new CollisionShape3D

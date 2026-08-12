@@ -92,6 +92,9 @@ cd engine && dotnet build
 # Default launch is the rigid-body scene; nothing to pass
 "<GODOT>" --path engine/
 
+# Fast-forward or slow down a headless run (Space / the toolbar do it live)
+"<GODOT>" --headless --path engine/ -- --deterministic --time-scale=4 --duration=30
+
 # Parity check: unchanged Python sidecar drives the C# engine.
 # The engine MUST be started with --deterministic or the counts are not
 # reproducible and the assertion is meaningless.
@@ -122,6 +125,14 @@ have any part land correctly. Never bake a mounting height into a scene position
 **A part's instance id is a tag *prefix*, never a whole tag name.** The dispatch
 in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
 `"conveyor.rotate"` looks up `conveyor.rotate.rotate` and silently disables it.
+
+**Simulation controls are engine-global.** Run/pause and time scale go through
+`Engine.TimeScale`, so one switch covers the fixed-timestep accumulator, Jolt,
+and every part animation. The tag bus is deliberately exempt — it polls from
+`_Process`, which Godot still calls at time scale 0, so a paused scene keeps its
+PLC session instead of dropping it. `--duration` and `--screenshot-at` run on
+wall-clock for the same reason: a paused run whose clock also stopped would
+never terminate.
 
 **Two scenes, one tag interface.** The engine launches the *rigid-body* scene:
 real colliders, real gravity, a held-out pusher genuinely blocks the line.
