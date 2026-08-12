@@ -93,6 +93,11 @@ public partial class PartPropertyInspectorUI : Control
             AddSliderProperty("Stroke Length (m)", pusher.StrokeLength, 0.1f, 1.0f, 0.05f,
                               val => pusher.StrokeLength = val);
         }
+        else if (node is LightArray curtain)
+        {
+            AddSliderProperty("Curtain Height (m)", curtain.CurtainHeight, 0.1f, 1.0f, 0.02f,
+                              val => curtain.CurtainHeight = val);
+        }
         else if (node is LevelTank tank)
         {
             AddSliderProperty("Fill Rate (%/s)", tank.FillRate, 1.0f, 60.0f, 1.0f,

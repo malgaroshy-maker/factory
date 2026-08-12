@@ -60,9 +60,18 @@ public partial class Emitter : Node3D
         });
     }
 
+    /// <summary>Every Nth item is metal, so a material-sensing scene has
+    /// something to sort. 0 disables it, which is the default and leaves
+    /// existing scenes emitting cardboard only.</summary>
+    [Export] public int MetalEvery { get; set; }
+
+    private int _emitted;
+
     public BoxPhysics SpawnBox(bool isTall)
     {
-        var box = new BoxPhysics { IsTall = isTall };
+        _emitted++;
+        bool metal = MetalEvery > 0 && _emitted % MetalEvery == 0;
+        var box = new BoxPhysics { IsTall = isTall, IsMetal = metal };
         GetParent()?.AddChild(box);
 
         // Height is only known once IsTall is set, so the resting position is

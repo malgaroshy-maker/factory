@@ -40,11 +40,15 @@ public partial class PartPaletteUI : Control
 
         AddPaletteButton(mainBox, "Conveyor Belt", "ConveyorBelt");
         AddPaletteButton(mainBox, "Photoelectric Sensor", "PhotoelectricSensor");
+        AddPaletteButton(mainBox, "Retroreflective Sensor", "RetroreflectiveSensor");
+        AddPaletteButton(mainBox, "Inductive Sensor", "InductiveSensor");
+        AddPaletteButton(mainBox, "Light Array", "LightArray");
         AddPaletteButton(mainBox, "Pneumatic Pusher", "PusherMechanism");
         AddPaletteButton(mainBox, "Ramp (Chute)", "Chute");
         AddPaletteButton(mainBox, "Stack Light", "StackLight");
         AddPaletteButton(mainBox, "Digital Display", "DigitalDisplay");
         AddPaletteButton(mainBox, "Weight Conveyor", "WeighingConveyor");
+        AddPaletteButton(mainBox, "Roller Conveyor", "RollerConveyor");
         AddPaletteButton(mainBox, "Box Emitter", "Emitter");
         AddPaletteButton(mainBox, "Box Remover", "Remover");
         AddPaletteButton(mainBox, "Control Panel", "ButtonPanel");

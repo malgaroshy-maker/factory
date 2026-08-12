@@ -8,18 +8,30 @@ namespace FactoryForge.Parts;
 public partial class DigitalDisplay : Node3D
 {
     private Label3D _label3D = null!;
-    private int _value;
+    private double _value;
+    private bool _isAnalog;
 
+    /// <summary>Integer reading, for the counter tags that drive it.</summary>
     [Export]
     public int Value
     {
-        get => _value;
-        set
-        {
-            _value = value;
-            UpdateDisplay();
-        }
+        get => (int)System.Math.Round(_value);
+        set { _value = value; _isAnalog = false; UpdateDisplay(); }
     }
+
+    /// <summary>
+    /// Analog reading. Separate from <see cref="Value"/> so the panel knows
+    /// whether it shows a count or a measurement and formats accordingly — a
+    /// level of 61.4 % rendered as "061" would be a lie.
+    /// </summary>
+    public double AnalogValue
+    {
+        get => _value;
+        set { _value = value; _isAnalog = true; UpdateDisplay(); }
+    }
+
+    /// <summary>Unit suffix drawn after the reading, e.g. "%" or "mm".</summary>
+    [Export] public string Unit { get; set; } = "";
 
     /// <summary>Panel centre above the work-plane origin, so the display stands
     /// at reading height on its own post instead of floating at belt level.</summary>
@@ -96,7 +108,8 @@ public partial class DigitalDisplay : Node3D
     {
         if (_label3D is not null)
         {
-            _label3D.Text = _value.ToString("D3");
+            string text = _isAnalog ? _value.ToString("0.0") : Value.ToString("D3");
+            _label3D.Text = Unit.Length > 0 ? $"{text} {Unit}" : text;
         }
     }
 }

@@ -10,6 +10,13 @@ public partial class BoxPhysics : RigidBody3D
 {
     [Export] public bool IsTall { get; set; }
 
+    /// <summary>
+    /// Metal items read on an inductive sensor; cardboard does not. Giving items
+    /// a material is what makes material-discriminating sensors mean anything —
+    /// without it an inductive sensor is just a second diffuse sensor.
+    /// </summary>
+    [Export] public bool IsMetal { get; set; }
+
     // Dimensions match the headless SortingScene constants, so the physics scene
     // and the deterministic scene sort the same cartons.
     [Export] public float Length { get; set; } = 0.20f;
@@ -21,18 +28,23 @@ public partial class BoxPhysics : RigidBody3D
     /// which is what a belt of this size would actually carry.</summary>
     private const float CartonDensity = 150.0f;
 
+    /// <summary>Hollow steel item, not solid billet — a solid one this size
+    /// would weigh 100 kg and behave nothing like a handled part.</summary>
+    private const float MetalDensity = 900.0f;
+
     private CollisionShape3D _collisionShape = null!;
     private MeshInstance3D _meshInstance = null!;
     private StandardMaterial3D _material = null!;
 
     private static readonly Color ShortColour = new(0.30f, 0.55f, 0.85f);
     private static readonly Color TallColour = new(0.95f, 0.55f, 0.15f);
+    private static readonly Color MetalColour = new(0.72f, 0.74f, 0.78f);
 
     public override void _Ready()
     {
         var boxSize = new Vector3(Length, Height, Width);
 
-        Mass = boxSize.X * boxSize.Y * boxSize.Z * CartonDensity;
+        Mass = boxSize.X * boxSize.Y * boxSize.Z * (IsMetal ? MetalDensity : CartonDensity);
         ContinuousCd = true;
 
         // Damping is air drag, not a stability crutch. The old 0.5 linear damp
@@ -53,8 +65,9 @@ public partial class BoxPhysics : RigidBody3D
 
         _material = new StandardMaterial3D
         {
-            AlbedoColor = IsTall ? TallColour : ShortColour,
-            Roughness = 0.55f,
+            AlbedoColor = IsMetal ? MetalColour : (IsTall ? TallColour : ShortColour),
+            Roughness = IsMetal ? 0.30f : 0.55f,
+            Metallic = IsMetal ? 0.75f : 0.0f,
         };
 
         _meshInstance = new MeshInstance3D

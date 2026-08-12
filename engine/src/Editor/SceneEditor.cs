@@ -599,6 +599,7 @@ public partial class SceneEditor : Node3D
         {
             switch (partType)
             {
+                case "RollerConveyor":
                 case "ConveyorBelt":
                     if (node is ConveyorBelt belt && Tags.Contains($"{instanceId}.rotate"))
                     {
@@ -623,6 +624,8 @@ public partial class SceneEditor : Node3D
                     }
                     break;
 
+                case "RetroreflectiveSensor":
+                case "InductiveSensor":
                 case "PhotoelectricSensor":
                     if (node is PhotoelectricSensor sensor && Tags.Contains($"{instanceId}.detect"))
                     {
@@ -693,6 +696,16 @@ public partial class SceneEditor : Node3D
                     }
                     break;
 
+                case "LightArray":
+                    if (node is LightArray curtain)
+                    {
+                        if (Tags.Contains($"{instanceId}.height"))
+                            Tags.Set($"{instanceId}.height", (double)curtain.MeasuredHeight);
+                        if (Tags.Contains($"{instanceId}.blocked"))
+                            Tags.Set($"{instanceId}.blocked", curtain.IsBlocked);
+                    }
+                    break;
+
                 case "LevelTank":
                     if (node is LevelTank tank && Tags.Contains($"{instanceId}.level"))
                     {
@@ -744,6 +757,16 @@ public partial class SceneEditor : Node3D
             "DigitalDisplay" => new DigitalDisplay(),
             "WeighingConveyor" => new WeighingConveyor { Size = new Vector3(1.5f, 0.12f, 0.5f) },
             "LevelTank" => new LevelTank(),
+            "LightArray" => new LightArray(),
+            "RollerConveyor" => new RollerConveyor { Size = new Vector3(1.5f, 0.12f, 0.5f) },
+            "RetroreflectiveSensor" => new PhotoelectricSensor
+            {
+                Range = 0.75f, HeightAboveBelt = 0.08f, Mode = SensingMode.Retroreflective,
+            },
+            "InductiveSensor" => new PhotoelectricSensor
+            {
+                Range = 0.75f, HeightAboveBelt = 0.06f, Mode = SensingMode.Inductive,
+            },
             _ => null
         };
     }

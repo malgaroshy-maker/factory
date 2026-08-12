@@ -87,6 +87,8 @@ public static class PartTagManager
                 tags.Add(new Tag($"{instanceId}.rotate", $"Conveyor {index} (Rotate)", TagType.Bit, TagKind.Output));
                 break;
 
+            case "RetroreflectiveSensor":
+            case "InductiveSensor":
             case "PhotoelectricSensor":
                 tags.Add(new Tag($"{instanceId}.detect", $"Sensor {index} (Detect)", TagType.Bit, TagKind.Input));
                 break;
@@ -119,6 +121,17 @@ public static class PartTagManager
 
             case "DigitalDisplay":
                 tags.Add(new Tag($"{instanceId}.value", $"Display {index} Value", TagType.Int, TagKind.Output));
+                break;
+
+            case "LightArray":
+                // A measurement, not a bit: how far up the curtain the tallest
+                // blocked beam sits.
+                tags.Add(new Tag($"{instanceId}.height", $"Light Array {index} Height (m)", TagType.Float, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.blocked", $"Light Array {index} Blocked", TagType.Bit, TagKind.Input));
+                break;
+
+            case "RollerConveyor":
+                tags.Add(new Tag($"{instanceId}.rotate", $"Roller Conveyor {index} (Rotate)", TagType.Bit, TagKind.Output));
                 break;
 
             case "LevelTank":

@@ -133,7 +133,9 @@ public static class IndustrialMeshBuilder
     /// <param name="postDrop">How far below the node the post continues, so the
     /// sensor stands on the floor instead of hovering beside the belt.</param>
     public static Node3D BuildDetailedSensor(float range, float mountHeight = 0.25f,
-                                             float postDrop = 0.0f)
+                                             float postDrop = 0.0f,
+                                             Color? headTint = null,
+                                             bool withReflector = false)
     {
         var container = new Node3D { Name = "SensorVisual" };
 
@@ -159,13 +161,40 @@ public static class IndustrialMeshBuilder
         }
 
         // 2. Sensor body head mounted at top of post
+        var headMat = headTint is { } tint
+            ? new StandardMaterial3D { AlbedoColor = tint, Roughness = 0.40f }
+            : IndustrialYellowMat;
         var body = new MeshInstance3D
         {
             Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.08f, 0.10f) },
-            MaterialOverride = IndustrialYellowMat,
+            MaterialOverride = headMat,
             Position = new Vector3(0, mountHeight, 0.04f),
         };
         container.AddChild(body);
+
+        if (withReflector)
+        {
+            var reflectorMat = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.85f, 0.85f, 0.90f),
+                Metallic = 0.55f,
+                Roughness = 0.15f,
+            };
+            container.AddChild(new MeshInstance3D
+            {
+                Name = "Reflector",
+                Mesh = new BoxMesh { Size = new Vector3(0.05f, 0.10f, 0.02f) },
+                MaterialOverride = reflectorMat,
+                Position = new Vector3(0, mountHeight, -range),
+            });
+            container.AddChild(new MeshInstance3D
+            {
+                Name = "ReflectorPost",
+                Mesh = new BoxMesh { Size = new Vector3(0.03f, mountHeight + postDrop, 0.03f) },
+                MaterialOverride = SteelMat,
+                Position = new Vector3(0, mountHeight - (mountHeight + postDrop) / 2, -range),
+            });
+        }
 
         // 3. Optical Lens
         var lens = new MeshInstance3D
