@@ -176,8 +176,33 @@ python -m factoryforge_sidecar browse opc.tcp://192.168.1.20:4840
 ```bash
 cd sidecar
 python -m factoryforge_sidecar connect --driver opcua-client \
-    -o url opc.tcp://192.168.1.20:4840 --mapping <your io_mapping.json>
+    -o url opc.tcp://192.168.1.20:4840 --mapping ../examples/opcua_mapping.json
 ```
+
+**Verified end to end against a virtual S7-1500 driving the 3D scene.**
+
+---
+
+### Method C: Snap7 (ISO-on-TCP, no OPC UA licence)
+
+Also verified. Needs two things beyond Method B:
+
+```bash
+pip install -e "sidecar[siemens]"
+cd sidecar
+python -m factoryforge_sidecar connect --driver s7-snap7 \
+    -o host 192.168.1.20 -o db 1 --mapping ../examples/snap7_mapping.json
+```
+
+1. **`FF_IO` must not be an "optimized block access" DB.** An optimized block
+   has no absolute byte addresses, and snap7 addresses bytes. Right-click the DB
+   → *Properties* → *Attributes*, uncheck it, recompile, download.
+2. **The mapping holds byte addresses** — `DBX0.0` for a Bool, `DBD2` for a
+   DInt — which are the values in TIA's *Offset* column. They move if you
+   reorder the DB.
+
+If every read fails with `Invalid address (0x05)`, the usual cause is the read
+running past the end of the DB, not the optimized-access setting.
 
 ---
 

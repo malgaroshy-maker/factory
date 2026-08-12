@@ -475,3 +475,54 @@ why it was the path that worked today.
   counters climbing, screenshot in the record.
 - 41 pytest tests and 19/19 test-plan checks still pass after the `write()`
   change.
+
+---
+
+# 2026-08-12 (night) — all three Siemens drivers, verified
+
+With the PLCSIM instance moved to the Virtual Ethernet Adapter, the remaining
+two drivers could be tested. Both had never run either.
+
+**OPC UA client** worked first try against the 3D engine — the NodeIds in
+`examples/opcua_mapping.json` matched the live CPU exactly (`ns=3`, quoted). The
+only fix needed was cosmetic: a clean run ended in a traceback, because
+cancelling the bus client mid-`recv` leaves websockets holding a
+`ConnectionClosedOK` nobody retrieves. `connect` now asks the client to stop
+instead of cancelling it.
+
+**snap7** had the same three API mistakes as the PLCSIM driver — `TagTable.outputs()`,
+`tag.kind.value`, `bus.update()` — none of which exist, which is conclusive that
+the two were written together and neither was ever run. Beyond that its
+addressing was invented: every bit packed into byte 0 in tag order, wrapped with
+`% 8` so the ninth silently overwrote the first, and the DInt counters ignored
+entirely. Tag order has nothing to do with a DB's layout. It now takes a
+`DBX0.0` / `DBD2` mapping file like the other drivers take theirs.
+
+Also: `-o db 1` passes the *string* `"1"`, and `db: int` in the signature does
+not make it an int. The failure was "required argument is not an integer" from
+ctypes, which points nowhere near argparse.
+
+## A wrong diagnosis, corrected
+
+I read 12 bytes from `FF_IO`, got `Invalid address (0x05)`, and concluded the DB
+was an optimized-access block that snap7 could never read. It was not. FF_IO is
+10 bytes and the read simply overran it. Once the driver read exactly the span
+its mapping covers, everything worked. Worth remembering: that error is about
+the *request*, not the block's attributes.
+
+## The hazard the raw bytes revealed
+
+Dumping DB1 showed `89 00 00 00 00 03 00 00 00 03` — outputs in bits 0–3 of byte
+0, inputs in bits 4–7 of the same byte. Bits are not individually addressable
+over S7, so writing a simulator bit means read-modify-write of a byte the PLC
+also writes, and the first version rewrote the *whole DB* every push. That
+window is now one byte, and the mapping file says plainly that a DB you design
+yourself should separate the two directions.
+
+## Cross-checked rather than trusted
+
+The live status line shows the sidecar's own table, so it would look identical
+whether or not writes reached the CPU. Reading `FF_IO` directly off the PLC
+after a run gave `CounterTall=7 CounterShort=7`, matching the simulation's final
+state exactly. An earlier run was off by one write; that discrepancy disappeared
+once the writes were narrowed.

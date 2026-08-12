@@ -1,0 +1,26 @@
+{
+  "_comment": "FactoryForge tag id -> absolute S7 address inside the FF_IO datablock, for the snap7 driver. DBX<byte>.<bit> for a Bool, DBD<byte> for a DInt or Real. These are the addresses TIA shows in the DB's Offset column.",
+
+  "_usage": "cd sidecar && python -m factoryforge_sidecar connect --driver s7-snap7 -o host 192.168.1.20 -o db <FF_IO's DB number> --mapping ../examples/snap7_mapping.json",
+
+  "_requires": "FF_IO must have 'Optimized block access' UNCHECKED (right-click the DB -> Properties -> Attributes), then recompiled and downloaded. An optimized DB has no absolute byte addresses at all, and snap7 cannot read it however correct this file is.",
+
+  "_layout": "Matches examples/tia/FF_IO_datablock.md: eight Bools packed into byte 0, then two DInts. A DInt aligns to an even byte, so the first lands at byte 2 rather than byte 1, and the DB is 10 bytes total. VERIFIED against a live CPU. If you reorder the DB these move — check TIA's Offset column.",
+
+  "_note_invalid_address": "'Invalid address (0x05)' usually means the read ran off the end of the DB, not that the DB is optimized. FF_IO is 10 bytes; asking for 12 fails exactly that way.",
+
+  "_note_shared_bytes": "Byte 0 holds both directions: bits 0-3 are PLC-written, bits 4-7 simulator-written. Bits are not individually addressable over S7, so writing a simulator bit means read-modify-write of a byte the PLC also writes. The driver keeps that window to a single byte, but if you are designing your own DB, put the two directions in different bytes and the race disappears.",
+
+  "conveyor.rotate":    "DBX0.0",
+  "emitter.emit":       "DBX0.1",
+  "pusher.extend":      "DBX0.2",
+  "stack_light.green":  "DBX0.3",
+
+  "sensor_low.detect":  "DBX0.4",
+  "sensor_high.detect": "DBX0.5",
+  "pusher.extended":    "DBX0.6",
+  "pusher.retracted":   "DBX0.7",
+
+  "counter.tall":       "DBD2",
+  "counter.short":      "DBD6"
+}

@@ -102,26 +102,40 @@ python -m factoryforge_sidecar connect --driver plcsim-advanced \
     -o instance <your instance name> --mapping ../examples/plcsim_mapping.json
 ```
 
-**Result:** the rigid-body 3D scene driven by a real S7-1500 CPU. Belt running,
-emitter pulsing, sensors reporting back, pusher diverting tall cartons down the
-chute, `counter.tall` and `counter.short` both climbing. The first time the 3D
-engine has ever been driven by a real protocol driver rather than a script.
+**All three Siemens drivers now drive the rigid-body 3D scene from a real
+virtual S7-1500** — belt running, emitter pulsing, sensors reporting back,
+pusher diverting tall cartons down the chute, both counters climbing.
 
-The instance name is whatever the PLCSIM control panel shows — not necessarily
-the CPU name in TIA. List them with `SimulationRuntimeManager.RegisteredInstanceInfo`.
+| Driver | Command | Notes |
+|---|---|---|
+| `plcsim-advanced` | `-o instance <name> --mapping ../examples/plcsim_mapping.json` | Works in either communication mode; talks to the API, not the network |
+| `opcua-client` | `-o url opc.tcp://<ip>:4840 --mapping ../examples/opcua_mapping.json` | Needs the CPU on the **Virtual Ethernet Adapter** and the OPC UA server enabled |
+| `s7-snap7` | `-o host <ip> -o db <n> --mapping ../examples/snap7_mapping.json` | Needs the Virtual Ethernet Adapter and a **non-optimized** DB |
 
-Still unverified with hardware: `opcua-client` **against the 3D engine**
-(previously verified against the Python harness scene), and `s7-snap7`.
+Cross-checked rather than taken on trust: after a snap7 run, reading `FF_IO`
+straight off the CPU showed `CounterTall=7 CounterShort=7`, matching the
+simulation's final state exactly — so the DInt writes really landed in the PLC
+rather than only in the sidecar's copy.
+
+Two setup traps that cost time here:
+
+- **The PLCSIM instance name is the one in the control panel**, not necessarily
+  the CPU name in TIA. A mismatch surfaces as `InstanceNotRunning`.
+- **In Softbus (local) mode the virtual CPU has no IP at all**, so neither OPC UA
+  nor snap7 can reach it however the TIA project is configured. The native API
+  driver does not care.
 
 ### I. Not automated
 
 Honest list of what this plan does **not** prove:
 
-- **OPC UA and snap7 against a PLC.** Only the native PLCSIM Advanced path has
-  been run end to end against the 3D engine. Reaching a PLCSIM CPU over OPC UA
-  needs the instance on a **PLCSIM Virtual Ethernet Adapter**; in the default
-  *Softbus* (local) mode the virtual CPU has no IP at all, so the endpoint
-  configured in TIA is not listening no matter what the project says.
+- **Physical hardware.** Everything in section H ran against a *virtual* S7-1500
+  in PLCSIM Advanced. That exercises the real protocols and the real firmware
+  behaviour the drivers were written for, but it is not a physical CPU on a
+  real network, and it says nothing about PROFINET timing or cable-level faults.
+- **Any non-Siemens controller.** OpenPLC over Modbus is implemented and
+  unit-tested, never run against the real thing.
+- **Long runs with a PLC.** The longest verified run is 45 seconds.
 - **Packaging.** No binary has ever been exported (`docs/PACKAGING.md`).
 - **Visual correctness.** Screenshots are rendered and read by hand; nothing
   compares them automatically.

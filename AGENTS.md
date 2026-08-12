@@ -313,6 +313,23 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     project shows. Switch the instance to **PLCSIM Virtual Ethernet Adapter** if
     you need OPC UA or snap7; the native API driver works either way.
 
+19b. **Driver options from `-o` arrive as strings.** `-o db 1` gives `"1"`, and a
+    type hint of `db: int` does not make it one. snap7 failed with "required
+    argument is not an integer", which points at ctypes and not at argparse.
+    Coerce numeric options in the driver's `__init__`.
+
+19c. **snap7's "Invalid address (0x05)" usually means the read overran the DB**,
+    not that the block is optimized. FF_IO is 10 bytes; asking for 12 fails
+    exactly that way. I misdiagnosed this as optimized block access and was
+    wrong — check the DB's length before believing it.
+
+19d. **A read-modify-write over S7 can stomp bits the PLC owns.** Bits are not
+    individually addressable on the wire, so writing a simulator-owned bit means
+    rewriting the whole byte, including any PLC-owned bits in it. FF_IO packs
+    both directions into byte 0. The driver now writes the narrowest byte range
+    it can; a DB you design yourself should put the two directions in separate
+    bytes.
+
 20. **The PLCSIM API assembly is not on .NET's probing path.** `clr.AddReference`
     by bare name fails on a normal install; load it by path from
     `C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\<ver>\`.
@@ -351,8 +368,11 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
    **Done and now actually verified**: it drives the 3D scene from a real
    virtual S7-1500. It had never run before 2026-08-12; it called
    `TagTable.outputs()` and `tag.kind.value`, neither of which exists, had no
-   tag→symbol mapping at all, and swallowed every resulting exception. Snap7
-   driver implemented, still unverified against hardware.
+   tag→symbol mapping at all, and swallowed every resulting exception. **The
+   snap7 driver had the same three API mistakes** plus an addressing scheme that
+   packed every bit into byte 0 in tag order, wrapped at 8 with `% 8`, and
+   ignored the DInt counters — it now takes a `DBX0.0` / `DBD2` mapping file.
+   All three Siemens drivers are verified against a virtual S7-1500.
 6. **M6 — v1 Release**: student getting-started guide, part & driver authoring
    guides — **Done**. **Packaging is not**: `engine/export_presets.cfg` now
    exists but no binary has ever been produced from it (the export templates are

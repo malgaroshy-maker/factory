@@ -156,7 +156,12 @@ async def connect(args) -> int:
 
     url = f"ws://{args.host}:{args.port}/tagbus"
     bus = TagBusClient(url)
-    runner = asyncio.create_task(bus.run())
+    # Shut the client down by asking it to stop rather than cancelling it
+    # mid-recv: a hard cancel leaves websockets' pending recv holding a
+    # ConnectionClosedOK nobody retrieves, and asyncio prints it as an unhandled
+    # task exception — so a perfectly clean run ends in a traceback.
+    stop = asyncio.Event()
+    runner = asyncio.create_task(bus.run(stop))
 
     try:
         await asyncio.wait_for(bus.connected.wait(), timeout=args.timeout)
@@ -202,9 +207,13 @@ async def connect(args) -> int:
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        for task in (printer, runner):
-            task.cancel()
+        printer.cancel()
         await driver.stop()
+        stop.set()
+        try:
+            await asyncio.wait_for(runner, timeout=5)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            runner.cancel()
     return 0
 
 
