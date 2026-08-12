@@ -46,7 +46,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal allowing users to drag/click PLC addresses (`%I0.0`, `%Q0.0`) directly to factory component tags.
 * 🏷️ **Live In-Scene Tag Inspection & Floating 3D Badges**: Floating 3D billboard labels above components with interactive live forcing buttons.
-* 🏭 **Native Siemens Integration**: Supports Siemens PLCSIM Advanced Simulation Runtime API (shared memory, zero network latency, no OPC UA licence needed) and Snap7 ISO-on-TCP.
+* 🏭 **Native Siemens Integration**: the PLCSIM Advanced Simulation Runtime API driver (shared memory, no network, no OPC UA licence) is **verified driving the 3D scene from a real virtual S7-1500** — belt, emitter, sensors, diverter and counters all running off the CPU's own program. Snap7 ISO-on-TCP is implemented but not yet verified against hardware.
 * 📊 **Multi-Protocol SCADA Support**: Built-in OPC UA client/server, Modbus TCP server, and Node-RED integration.
 
 ---

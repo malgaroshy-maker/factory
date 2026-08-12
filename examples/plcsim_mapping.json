@@ -1,0 +1,19 @@
+{
+  "_comment": "FactoryForge tag id -> PLCSIM Advanced tag name, for the native Simulation Runtime API driver (--driver plcsim-advanced). These are the names the API's own tag list reports: dotted, and WITHOUT the quotes an OPC UA NodeId needs. See examples/opcua_mapping.json for the OPC UA form of the same DB.",
+
+  "_usage": "cd sidecar && python -m factoryforge_sidecar connect --driver plcsim-advanced -o instance <name> --mapping ../examples/plcsim_mapping.json",
+
+  "_instance": "The instance name is whatever the PLCSIM Advanced control panel shows, not necessarily the CPU name in TIA. List them with SimulationRuntimeManager.RegisteredInstanceInfo if unsure.",
+
+  "conveyor.rotate":    "FF_IO.ConveyorRotate",
+  "emitter.emit":       "FF_IO.EmitterEmit",
+  "pusher.extend":      "FF_IO.PusherExtend",
+  "stack_light.green":  "FF_IO.StackLightGreen",
+
+  "sensor_low.detect":  "FF_IO.SensorLow",
+  "sensor_high.detect": "FF_IO.SensorHigh",
+  "pusher.extended":    "FF_IO.PusherExtended",
+  "pusher.retracted":   "FF_IO.PusherRetracted",
+  "counter.tall":       "FF_IO.CounterTall",
+  "counter.short":      "FF_IO.CounterShort"
+}

@@ -301,7 +301,23 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     An engine "driven by mock" with nothing else correctly does nothing, which
     is easy to misread as a broken scene.
 
-18. **A test that cannot see the failure mode is not coverage.** The panel had a
+18. **Never `PowerOff()` a PLCSIM instance the sidecar did not start.** The
+    driver's `stop()` used to do it, so a 40-second test run switched off the
+    user's CPU. Attaching to a controller is not owning it — no PowerOn, no Run,
+    no PowerOff. (Recovery: `PowerOn()` then `Run()`; the downloaded program
+    does survive the power cycle, but do not rely on that.)
+
+19. **PLCSIM Advanced in Softbus mode has no IP.** The default communication
+    interface is local softbus, so the virtual CPU is unreachable over the
+    network and its OPC UA endpoint is not listening — whatever address the TIA
+    project shows. Switch the instance to **PLCSIM Virtual Ethernet Adapter** if
+    you need OPC UA or snap7; the native API driver works either way.
+
+20. **The PLCSIM API assembly is not on .NET's probing path.** `clr.AddReference`
+    by bare name fails on a normal install; load it by path from
+    `C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\<ver>\`.
+
+21. **A test that cannot see the failure mode is not coverage.** The panel had a
     correct hit test and a correct pulse dispatch and was still completely dead
     from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
     headless for the logic, `--self-test=click` with a display for the input
@@ -331,7 +347,12 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
 2. **Finish M2**: integer voxel grid, free-look camera, C# protocol tests in CI — **Done**.
 3. **M3 — physics**: surface-velocity belt constraint, non-jittering rigid boxes, raycast sensors, pusher mechanism, emitter/remover, control panel — **Done**.
 4. **M4 — Scene Editor**: part palette, place/rotate/delete with grid snapping, save/load JSON format, top toolbar, live tag forcing UI, property inspector — **Done**.
-5. **M5 — Siemens Breadth**: PLCSIM Advanced Simulation Runtime API driver, Snap7 S7-protocol driver — **Done**.
+5. **M5 — Siemens Breadth**: PLCSIM Advanced Simulation Runtime API driver —
+   **Done and now actually verified**: it drives the 3D scene from a real
+   virtual S7-1500. It had never run before 2026-08-12; it called
+   `TagTable.outputs()` and `tag.kind.value`, neither of which exists, had no
+   tag→symbol mapping at all, and swallowed every resulting exception. Snap7
+   driver implemented, still unverified against hardware.
 6. **M6 — v1 Release**: student getting-started guide, part & driver authoring
    guides — **Done**. **Packaging is not**: `engine/export_presets.cfg` now
    exists but no binary has ever been produced from it (the export templates are

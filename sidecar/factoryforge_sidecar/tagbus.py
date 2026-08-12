@@ -70,8 +70,16 @@ class TagBusClient:
             raise ValueError(
                 f"{tag_id} is an input (simulator-owned); use force() to override it"
             )
+        coerced = tag.coerce(value)
         async with self._pending_lock:
-            self._pending[tag_id] = tag.coerce(value)
+            self._pending[tag_id] = coerced
+
+        # Reflect it locally too. For an output tag the client is the authority
+        # — the engine never echoes one back, because the controller is what
+        # drives it — so without this, read() on an output returns its default
+        # forever. That made a live status display show `rotate=0` while the
+        # belt it commands was visibly running.
+        self.table.set(tag_id, coerced)
 
     async def write_many(self, values: dict[str, TagValue]) -> None:
         for tag_id, value in values.items():

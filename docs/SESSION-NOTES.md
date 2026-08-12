@@ -413,3 +413,65 @@ every part type** with deliberately non-default settings, then re-saves and
 compares. Verified by reintroducing both historical save/load bugs — a sensor
 losing `visual_only`, a remover losing the tag it counts into — and confirming
 it names each one.
+
+---
+
+# 2026-08-12 (evening) — the 3D engine, driven by a real PLC
+
+The gap recorded earlier — "the 3D engine has never been driven by a real
+protocol driver" — is now closed. A virtual S7-1500 in PLCSIM Advanced runs the
+rigid-body scene: belt turning, emitter pulsing, sensors reporting back, the
+diverter sending tall cartons down the chute, both counters climbing.
+
+## The native driver had never run
+
+Not "was buggy" — had never executed a single successful poll. In one file:
+
+- `TagTable.outputs()` — no such method (it is `by_kind("output")`)
+- `tag.kind.value` / `tag.type.value` — both are plain strings in `tags.py`
+- `bus.update()` — no such method (it is `write_many`)
+- **no tag→symbol mapping at all**: it passed FactoryForge ids straight to
+  `ReadBool("conveyor.rotate")`, asking the CPU for a variable no PLC has
+- `clr.AddReference` by bare assembly name, which fails on a normal install
+  because the API DLL is not on .NET's probing path
+
+Every one of those was hidden by two things: a bare `except Exception: pass` in
+the poll loop, and a `start()` that logged a warning and returned normally when
+pythonnet was missing or the connection failed. The driver reported itself
+started and drove nothing, forever.
+
+It now fails loudly, takes a `--mapping` file like the OPC UA driver, finds the
+API DLL by path, and warns once per tag rather than per scan — plus a specific
+"connected but not one tag could be read" when the whole map is wrong.
+
+## The one I broke
+
+`stop()` called `PowerOff()`. So a 40-second verification run **switched off the
+user's CPU**. Attaching to a controller is not owning it: no PowerOn, no Run, no
+PowerOff. Recovered with `PowerOn()` + `Run()` — the downloaded program does
+survive a power cycle, but that is luck, not a design.
+
+## A live display that lied
+
+With everything working, the status line still showed `rotate=0` while the belt
+it commands was visibly running. `TagBusClient.write()` queued the value and
+never updated the local table, and the engine never echoes an output back
+because the *controller* owns it — so `read()` on any output returned its
+default forever. For an output tag the client is the authority; it now reflects
+its own writes.
+
+## Softbus has no IP
+
+The TIA project configures OPC UA at 192.168.1.20, and nothing was listening —
+no route, no ping. The instance was in PLCSIM's default **Softbus** (local)
+communication mode, where the virtual CPU has no network interface at all. The
+address in the project is aspirational until the instance is switched to the
+PLCSIM Virtual Ethernet Adapter. The native API driver does not care, which is
+why it was the path that worked today.
+
+## Verified
+
+- `--driver plcsim-advanced` driving the physics scene from instance `plc`,
+  counters climbing, screenshot in the record.
+- 41 pytest tests and 19/19 test-plan checks still pass after the `write()`
+  change.

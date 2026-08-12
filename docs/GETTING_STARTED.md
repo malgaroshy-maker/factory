@@ -125,20 +125,43 @@ FactoryForge supports **two direct connection methods** to Siemens S7-1500 PLCs:
 
 ### Method A: Direct PLCSIM Advanced Native API Driver (Recommended — Zero Licence Cost)
 
-1. Open **S7-PLCSIM Advanced Control Panel**.
-2. Set Interface to **PLCSIM Virtual Ethernet Adapter**.
-3. Start a virtual CPU named `Sorting_PLC` with IP `192.168.1.20`.
-4. Download your TIA Portal SCL program (e.g. [`examples/tia/Sorting.scl`](../examples/tia/Sorting.scl)).
-5. With the engine running, attach the native PLCSIM driver to it:
+**Verified end to end against a real PLCSIM Advanced CPU driving the 3D scene.**
+
+```bash
+pip install -e "sidecar[plcsim]"     # needs pythonnet; Windows only
+```
+
+1. Open **S7-PLCSIM Advanced Control Panel** and start a virtual CPU. Either
+   communication mode works for this driver — it talks to the API directly, so
+   the default local **Softbus** mode is fine and no IP is needed.
+2. Download your TIA Portal program and the `FF_IO` datablock
+   ([`examples/tia/`](../examples/tia/)) to it.
+3. With the engine running, attach the driver:
 
 ```bash
 cd sidecar
-python -m factoryforge_sidecar connect --driver plcsim-advanced -o instance Sorting_PLC
+python -m factoryforge_sidecar connect --driver plcsim-advanced \
+    -o instance <instance name> --mapping ../examples/plcsim_mapping.json
 ```
+
+Two things that will cost you time otherwise:
+
+- **The instance name is the one in the PLCSIM control panel**, which is not
+  necessarily the CPU's name in TIA. If `connect` reports `InstanceNotRunning`,
+  that mismatch is the usual reason.
+- **The mapping is required and holds PLC symbols, not NodeIds** — `FF_IO.ConveyorRotate`,
+  dotted and unquoted. That is the form the API's own tag list reports, and it
+  differs from the OPC UA spelling (`ns=3;s="FF_IO"."ConveyorRotate"`).
 
 ---
 
 ### Method B: OPC UA Server Connection
+
+> **PLCSIM Advanced must be on the Virtual Ethernet Adapter for this.** In the
+> default local *Softbus* mode the virtual CPU has no IP at all, so nothing
+> listens on 4840 no matter what address the TIA project shows. Switch the
+> instance's communication interface in the PLCSIM control panel, then start it
+> and download again.
 
 1. Enable **OPC UA Server** in TIA Portal CPU properties under *Protection & Security -> OPC UA*.
 2. Compile and download to PLCSIM Advanced (`192.168.1.20:4840`).

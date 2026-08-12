@@ -87,13 +87,41 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | G2 | Unknown CLI arg does not prevent startup | |
 | G3 | Loading a scene saved by a *newer* build (unknown property keys) still opens | forward compatibility is claimed in `SceneData`'s docs |
 
-### H. Not automated
+### H. With a PLC — manual, verified 2026-08-12
+
+Not in the runner: it needs S7-PLCSIM Advanced, which CI does not have. Run by
+hand, and **passing**:
+
+```bash
+# 1. PLCSIM Advanced: instance started, examples/tia/ downloaded to it
+# 2. Terminal 1
+godot --path engine/
+# 3. Terminal 2
+cd sidecar
+python -m factoryforge_sidecar connect --driver plcsim-advanced \
+    -o instance <your instance name> --mapping ../examples/plcsim_mapping.json
+```
+
+**Result:** the rigid-body 3D scene driven by a real S7-1500 CPU. Belt running,
+emitter pulsing, sensors reporting back, pusher diverting tall cartons down the
+chute, `counter.tall` and `counter.short` both climbing. The first time the 3D
+engine has ever been driven by a real protocol driver rather than a script.
+
+The instance name is whatever the PLCSIM control panel shows — not necessarily
+the CPU name in TIA. List them with `SimulationRuntimeManager.RegisteredInstanceInfo`.
+
+Still unverified with hardware: `opcua-client` **against the 3D engine**
+(previously verified against the Python harness scene), and `s7-snap7`.
+
+### I. Not automated
 
 Honest list of what this plan does **not** prove:
 
-- **Any real PLC.** No S7-1500, PLCSIM Advanced or Snap7 target is reachable
-  from CI. `opcua-client`, `s7-snap7` and `plcsim-advanced` are only checked as
-  far as "the driver constructs and fails cleanly without one".
+- **OPC UA and snap7 against a PLC.** Only the native PLCSIM Advanced path has
+  been run end to end against the 3D engine. Reaching a PLCSIM CPU over OPC UA
+  needs the instance on a **PLCSIM Virtual Ethernet Adapter**; in the default
+  *Softbus* (local) mode the virtual CPU has no IP at all, so the endpoint
+  configured in TIA is not listening no matter what the project says.
 - **Packaging.** No binary has ever been exported (`docs/PACKAGING.md`).
 - **Visual correctness.** Screenshots are rendered and read by hand; nothing
   compares them automatically.
