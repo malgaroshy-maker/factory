@@ -480,7 +480,8 @@ public partial class SceneEditor : Node3D
                 Id = part.InstanceId,
                 Type = part.PartType,
                 Position = new float[] { part.Node.Position.X, part.Node.Position.Y, part.Node.Position.Z },
-                Rotation = new float[] { part.Node.Rotation.X, part.Node.Rotation.Y, part.Node.Rotation.Z }
+                Rotation = new float[] { part.Node.Rotation.X, part.Node.Rotation.Y, part.Node.Rotation.Z },
+                Properties = PartProperties.Capture(part.Node)
             });
         }
 
@@ -512,6 +513,10 @@ public partial class SceneEditor : Node3D
             {
                 node.Position = new Vector3(p.Position[0], p.Position[1], p.Position[2]);
                 node.Rotation = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
+                // Before AddChild: parts build their geometry from these in
+                // _Ready, so applying afterwards would leave the mesh showing
+                // the old configuration.
+                PartProperties.Apply(node, p.Properties);
                 GetParent()?.AddChild(node);
 
                 // Reuse the saved id so the reloaded scene keeps its wiring.

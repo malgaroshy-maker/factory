@@ -10,7 +10,14 @@ public class PartInstanceData
     [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
     [JsonPropertyName("position")] public float[] Position { get; set; } = new float[3];
     [JsonPropertyName("rotation")] public float[] Rotation { get; set; } = new float[3];
-    [JsonPropertyName("size")] public float[]? Size { get; set; }
+
+    /// <summary>
+    /// Everything the part was tuned to. Without it a scene file described only
+    /// where the machines stood, not how they were set up, so reloading reset
+    /// every value to its default. Unknown keys are ignored on load, so a scene
+    /// from a newer build still opens.
+    /// </summary>
+    [JsonPropertyName("properties")] public Dictionary<string, string>? Properties { get; set; }
 }
 
 public class SceneData
