@@ -189,7 +189,27 @@ most likely to slip.
 
 ## Beyond v1
 
-**Near:** analog parts (tank, level meter, PID) · more parts driven by what
+**Done since v1:**
+
+- [x] **Rigid-body scene by default**, with the fixed-timestep scene behind
+      `--deterministic` as the regression contract. One tag interface, two
+      solvers — the same SCL drives either.
+- [x] **Run / pause / reset and time scale** (0.25x–4x, `--time-scale=N`
+      headless). The tag bus stays connected while paused, so a frozen scene is
+      still readable from the PLC.
+- [x] **Analog parts** — Level Tank with modulating fill and drain valves and a
+      level transmitter, all Float. Outflow follows Torricelli, so process gain
+      varies with level and a PID tuned full overshoots when empty. Verified by
+      closing a PI loop over the bus: holds 60.0% within 0.15%.
+- [x] **Sensor family** — diffuse, retroreflective and inductive modes, plus a
+      Light Array reporting measured height as a Float. Items carry a material,
+      so the inductive sensor sorts metal from cardboard.
+- [x] **Roller conveyor**, and a display that can show an analog reading.
+- [x] **Scene files persist part settings**, not just transforms.
+
+**Near:** clickable operator buttons in run mode (manual scene control) ·
+edit/run mode separation · part-to-part linking, which an incremental encoder
+needs to know which conveyor it is mounted on · more parts driven by what
 contributors ask for · fault injection UI · headless grading mode for coursework ·
 MQTT **Sparkplug B** (the industrial MQTT standard, if plain MQTT proves useful) ·
 an example Node-RED flow and dashboard shipped with the docs

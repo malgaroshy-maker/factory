@@ -66,7 +66,7 @@ sidecar/         Python package: bus client, drivers, minimal Modbus server
 examples/tia/    Sorting.scl, FF_IO DB spec, setup walkthrough
 examples/nodered/ flow that replaces the PLC entirely
 tools/           drive_engine.py (parity check), drv_trace.py (driver tracing)
-tests/           38 tests, no Siemens software or GPU required
+tests/           41 tests, no Siemens software or GPU required
 ```
 
 ---
@@ -125,6 +125,11 @@ have any part land correctly. Never bake a mounting height into a scene position
 **A part's instance id is a tag *prefix*, never a whole tag name.** The dispatch
 in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
 `"conveyor.rotate"` looks up `conveyor.rotate.rotate` and silently disables it.
+
+**A part's settings must be in `PartProperties`, or they are lost.** Scene files
+store a properties map next to the transform. Anything a part reads in `_Ready`
+and is not captured there silently reverts on load — which once cost the
+removers their count tags and the sensors their `VisualOnly` flag.
 
 **Simulation controls are engine-global.** Run/pause and time scale go through
 `Engine.TimeScale`, so one switch covers the fixed-timestep accumulator, Jolt,
@@ -204,7 +209,7 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
 - Node-RED replacing the PLC entirely — **9 tall / 9 short, perfect split**
 - Godot C# engine with 3D geometry driven by tags, screenshot in README
 - The unchanged Python sidecar drives the C# engine (`tools/drive_engine.py`)
-- 38 tests passing; CI needs no Siemens software and no GPU
+- 41 tests passing; CI needs no Siemens software and no GPU
 
 **Resolved imperfection:** In SCL v0.3, ~12% of tall boxes slipped past the pusher due to timing margin (0.6s catch window vs ~100ms OPC UA round-trip jitter). Fixed in SCL v0.4 by setting `PUSH_HOLD` `T#500MS` → `T#1S500MS`, verified live on real S7-1500 (99 tall / 99 short).
 

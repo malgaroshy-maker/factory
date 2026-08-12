@@ -1,4 +1,4 @@
-# Session notes — 2026-08-07
+# Session notes
 
 New agents should read [`../AGENTS.md`](../AGENTS.md) first — it has the paths,
 commands, and the gotcha list. This file is the narrative of what happened and
@@ -7,16 +7,26 @@ the code.
 
 ## Status
 
-M0 and M1 complete, M2 substantially done. **38 tests passing**, engine builds
+All milestones M0–M6 complete; v1 shipped. **41 tests passing**, engine builds
 clean, verified end to end against a real S7-1500.
 
 | Milestone | State |
 |---|---|
 | M0 — tag bus | ✅ complete |
-| M1 — OPC UA | ✅ complete (one cosmetic timing item open) |
+| M1 — OPC UA | ✅ complete |
 | M1.5 — MQTT | optional, not started |
-| **M2 — Godot engine** | 🔶 bus + scene + 3D + camera done; voxel grid and CI parity left |
-| M3 — physics | not started |
+| M2 — Godot engine | ✅ complete |
+| M3 — physics | ✅ complete |
+| M4 — scene editor | ✅ complete |
+| M5 — Siemens breadth | ✅ complete |
+| M6 — v1 release | ✅ complete |
+
+Post-v1 work is tracked in [`ROADMAP.md`](ROADMAP.md); the narrative below is
+kept per session because the *reasoning* is not obvious from the code.
+
+---
+
+# 2026-08-07 — first sessions (M0–M6)
 
 ## What was proven
 
@@ -111,3 +121,67 @@ Recommended: (1) now, (3) when M3 revisits the geometry anyway.
 ## Next
 
 See "Next steps" in [`../AGENTS.md`](../AGENTS.md).
+
+
+---
+
+# 2026-08-12 — parts overhaul, physics by default, analog I/O
+
+## What was wrong, and how it was found
+
+**Every default part was inert.** They were registered with an instance id equal
+to a whole tag name (`"pusher.extend"`), but the dispatch appends the suffix
+itself, so it looked up `pusher.extend.extend` and matched nothing. The pusher
+never animated, the belt never scrolled, the sensor beams never lit. Only the
+stack light moved, through a hardcoded fallback that masked the bug for everyone
+else. Found by rendering a burst of frames across a full extend/retract cycle
+and seeing the plate in an identical position in both.
+
+**Lesson:** a part that draws correctly tells you nothing about whether it is
+wired. Render motion, not stills.
+
+**The chute could never work.** It had no physics material, so it inherited
+Godot's default µ = 1.0 on a 12° ramp; a box needs µ < tan(12°) = 0.21 to slide.
+Once that was fixed the *next* bug became visible: the diverter plate was
+shorter than the carton, so it pushed below the centre of mass and toppled every
+box onto the ramp instead of sliding it. Sizing the plate to the tallest carton
+and aligning it with the centre of mass took diverted-and-counted from 1 to 5.
+
+**Two authors on one value.** Making the parts live exposed the fact that a
+raycast sensor and the logical scene both wanted to write `sensor_low.detect` —
+and the raycast would have won with a permanent `false`, since the deterministic
+scene's boxes have no colliders. Hence `VisualOnly`: a part that mirrors a
+simulated machine animates from the tag and never writes it back.
+
+## Decisions worth not re-litigating
+
+- **The rigid-body scene is the default; `--deterministic` is the flag.** The
+  parts were always real colliders, so the two scenes were never separate
+  implementations — `PhysicsScene` was a duplicate and is gone. Reproducibility
+  is not lost, only made explicit: `drive_engine.py` and CI pass the flag and
+  still get `tall=5 short=5`, and `harness/scene.py` keeps its C# counterpart.
+- **Simulation controls go through `Engine.TimeScale`**, so one switch covers
+  the accumulator, Jolt and every animation. The tag bus is deliberately exempt:
+  it polls from `_Process`, which Godot still calls at time scale 0, so a paused
+  scene keeps its PLC session. `--duration` moved to wall-clock for the same
+  reason — a paused run whose clock stopped would never terminate.
+- **Every part's origin sits on the work plane** and offsets its own geometry.
+  That is what lets the editor snap X/Z to the grid, pin Y, and have any part
+  land correctly.
+
+## Things that bit, and would bite again
+
+1. **A test harness that outlives the engine reports stale values.** The tank's
+   PI loop "stalled" and then "passed" on successive runs; both verdicts were
+   the probe reading its last cached value after the engine had quit. Always
+   give the engine a longer duration than the probe, and corroborate against the
+   engine's own trace.
+2. **Clamping to a boundary then testing `< boundary` lets everything through.**
+   A box held at the pusher's face failed `position < face` on the very next
+   tick and slipped past. Compare against the obstacle's centre, not its face.
+3. **`new Gradient()` ships with default black→white points**, and `AddPoint`
+   keeps them. That turned a "subtle tread line" into broad white ramps sweeping
+   down the belt.
+4. **Anything a part reads in `_Ready` must be in `PartProperties`**, or saving
+   and reloading resets it. This cost the removers their count tags and the
+   sensors their `VisualOnly` flag before it was caught by a round-trip test.

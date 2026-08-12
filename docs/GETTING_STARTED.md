@@ -40,6 +40,24 @@ dotnet build
 "<GODOT_CONSOLE_EXE>" --path .
 ```
 
+You get the **physics scene**: rigid-body cartons on a real conveyor. Useful
+keys straight away:
+
+| Key | Action |
+|---|---|
+| `Space` | Pause / resume — freeze the line and read every sensor at that instant |
+| `Ctrl+R` | Reset the run (machines stay where they are) |
+| `C` | Switch between the orbit and fly cameras |
+| `F4` / `F5` | I/O wiring panel · driver connection |
+
+The toolbar also carries a **0.25×–4× rate selector**: slow a fast interlock
+down to watch it, or fast-forward a long cycle. Your PLC stays connected while
+the scene is paused.
+
+If you need repeatable results — grading an exercise, or comparing two runs — add
+`-- --deterministic` for the fixed-timestep scene. Both expose the same tags, so
+your program does not change.
+
 ---
 
 ## 🔌 Connecting to Siemens S7-PLCSIM Advanced
