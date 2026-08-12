@@ -100,6 +100,10 @@ public partial class Main : Node
         {
             AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
         }
+        if (_selfTest == "io")
+        {
+            AddChild(new IoSelfTest { Name = "IoSelfTest", Tags = tags, Editor = _editor });
+        }
         if (_selfTest == "click")
         {
             AddChild(new ClickPathSelfTest { Name = "ClickPathSelfTest", Tags = tags, Editor = _editor });
@@ -140,6 +144,7 @@ public partial class Main : Node
             PropertyInspector = propertyInspector
         };
         AddChild(editor);
+        propertyInspector.Editor = editor;
         editor.RegisterDefaultSceneParts(physical: !_deterministic);
         _editor = editor;
 
@@ -155,8 +160,15 @@ public partial class Main : Node
         AddChild(driverConnectionUI);
 
         var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
-        toolbarUI.SaveRequested += () => editor.SaveSceneToFile();
-        toolbarUI.LoadRequested += () => editor.LoadSceneFromFile();
+        toolbarUI.SaveRequested += (path) => editor.SaveSceneToFile(path);
+        toolbarUI.LoadRequested += (path) =>
+        {
+            editor.LoadSceneFromFile(path);
+            // A loaded scene is a different scene: republish under its own name
+            // so a connected driver is not still told this is the sorting demo.
+            _bus.SceneName = editor.SceneName;
+            _bus.SendDescribe();
+        };
         toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
         toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
         toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
@@ -168,6 +180,15 @@ public partial class Main : Node
 
         // Mode lives on the editor; the toolbar and palette only reflect it, so
         // the F1 key and the button can never disagree about which mode we are in.
+        // Placing, deleting or renaming a part changes the I/O list. Republish
+        // it, or a driver connected while you build keeps working from the tag
+        // list it was handed at connect time and never sees the new parts.
+        editor.TagsChanged += () =>
+        {
+            wiringUI.RebuildWiringList();
+            _bus.SendDescribe();
+        };
+
         editor.ModeChanged += (running) =>
         {
             toolbarUI.ShowMode(running);

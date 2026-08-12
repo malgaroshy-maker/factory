@@ -116,21 +116,32 @@ program, Node-RED flow or SCADA client drives either one unchanged. Use
 
 ## 🔌 Driver Execution Commands
 
-Launch the sidecar with any driver target:
+The engine speaks only its own tag bus; every PLC protocol lives in the Python
+sidecar. **`connect` attaches to a running engine — that is the one to use with
+the 3D view.** (`demo` starts its own headless Python scene instead, which is
+for checking a driver with no Godot in the picture.) The **F5 Driver dialog**
+runs these for you and copies the command.
 
 ```bash
+cd sidecar
+
 # Siemens PLCSIM Advanced (Shared Memory API — Zero Licence Cost)
-python -m factoryforge_sidecar demo --driver plcsim-advanced
+python -m factoryforge_sidecar connect --driver plcsim-advanced -o instance Sorting_PLC
 
 # Siemens S7 ISO-on-TCP (Snap7)
-python -m factoryforge_sidecar demo --driver s7-snap7
+python -m factoryforge_sidecar connect --driver s7-snap7 -o host 192.168.1.20 -o db 1
 
-# OPC UA Client (Connecting to S7-1500 @ 192.168.1.20)
-python -m factoryforge_sidecar demo --driver opcua-client -o url opc.tcp://192.168.1.20:4840
+# OPC UA Client (connecting to an S7-1500 @ 192.168.1.20)
+python -m factoryforge_sidecar connect --driver opcua-client \
+    -o url opc.tcp://192.168.1.20:4840 --mapping io_mapping.json
 
-# OPC UA Server (Exposing scene to Node-RED / SCADA)
-python -m factoryforge_sidecar demo --driver opcua-server
+# OPC UA Server (exposing the scene to Node-RED / SCADA)
+python -m factoryforge_sidecar connect --driver opcua-server
 ```
+
+Building your own scene? Name your parts in the inspector, then **F4 → Export**
+writes `io_mapping.json` and `io_tags.csv` for the tags that scene actually has.
+See [Getting Started](docs/GETTING_STARTED.md#-connecting-a-scene-you-built-yourself).
 
 ---
 

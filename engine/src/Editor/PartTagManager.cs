@@ -58,6 +58,61 @@ public static class PartTagManager
     }
 
     /// <summary>
+    /// Is this a usable instance id? Ids become tag prefixes, so a dot would
+    /// make <c>a.b</c> + <c>.rotate</c> read as a three-level name nothing
+    /// matches, and whitespace makes a mapping file miserable to hand-edit.
+    /// </summary>
+    public static bool IsValidInstanceId(string id) =>
+        id.Length > 0
+        && id.IndexOf('.') < 0
+        && id.IndexOf(' ') < 0
+        && !id.StartsWith("_");
+
+    /// <summary>
+    /// Move every tag under <paramref name="oldId"/> to <paramref name="newId"/>,
+    /// keeping each one's type, kind and current value.
+    ///
+    /// Renaming matters because the auto-generated ids
+    /// (<c>pushermechanism_2</c>) are what a PLC program has to be written
+    /// against, and they are both unreadable and unstable — delete a part and
+    /// re-place it and the number moves, silently breaking a mapping file that
+    /// still points at the old one.
+    ///
+    /// Returns false and changes nothing if the target id is already taken, so a
+    /// rejected rename cannot half-apply and leave a part driven by a mixture of
+    /// two prefixes.
+    /// </summary>
+    public static bool RenameInstance(string oldId, string newId, TagTable tags)
+    {
+        if (oldId == newId) return true;
+        if (!IsValidInstanceId(newId)) return false;
+
+        string oldPrefix = oldId + ".";
+        string newPrefix = newId + ".";
+
+        var moving = new List<Tag>();
+        foreach (var tag in tags)
+        {
+            if (tag.Id.StartsWith(oldPrefix)) moving.Add(tag);
+        }
+
+        // Check every destination before touching anything.
+        foreach (var tag in moving)
+        {
+            if (tags.Contains(newPrefix + tag.Id[oldPrefix.Length..])) return false;
+        }
+
+        foreach (var tag in moving)
+        {
+            string suffix = tag.Id[oldPrefix.Length..];
+            tags.Remove(tag.Id);
+            tags.Add(new Tag(newPrefix + suffix, tag.Name, tag.Type, tag.Kind, tag.Value));
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Register the tags a part type exposes.
     /// </summary>
     /// <param name="preferredId">Id to reuse instead of minting a fresh one —

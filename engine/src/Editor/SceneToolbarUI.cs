@@ -8,8 +8,8 @@ namespace FactoryForge.Editor;
 /// </summary>
 public partial class SceneToolbarUI : Control
 {
-    [Signal] public delegate void SaveRequestedEventHandler();
-    [Signal] public delegate void LoadRequestedEventHandler();
+    [Signal] public delegate void SaveRequestedEventHandler(string path);
+    [Signal] public delegate void LoadRequestedEventHandler(string path);
     [Signal] public delegate void ClearRequestedEventHandler();
     [Signal] public delegate void WiringRequestedEventHandler();
     [Signal] public delegate void DriverRequestedEventHandler();
@@ -47,6 +47,48 @@ public partial class SceneToolbarUI : Control
         {
             if (Mathf.IsEqualApprox(Sim.SimulationControls.Rates[i], rate)) _rateBox.Selected = i;
         }
+    }
+
+    /// <summary>
+    /// Pick a scene file. Save and Load used to be hardwired to a single
+    /// <c>user://custom_scene.json</c>, so there was exactly one saved scene and
+    /// Save silently overwrote it — you could not keep two lines, and the file
+    /// lived somewhere nobody could find to share it.
+    /// </summary>
+    private void ShowFileDialog(FileDialog.FileModeEnum mode)
+    {
+        var dialog = new FileDialog
+        {
+            FileMode = mode,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Filters = new[] { "*.json ; FactoryForge scene" },
+            CurrentDir = DefaultSceneDir(),
+            CurrentFile = mode == FileDialog.FileModeEnum.SaveFile ? "my_scene.json" : "",
+            Title = mode == FileDialog.FileModeEnum.SaveFile ? "Save scene as" : "Open scene",
+            Size = new Vector2I(760, 520),
+        };
+
+        dialog.FileSelected += (path) =>
+        {
+            EmitSignal(mode == FileDialog.FileModeEnum.SaveFile
+                ? SignalName.SaveRequested
+                : SignalName.LoadRequested, path);
+            dialog.QueueFree();
+        };
+        dialog.Canceled += dialog.QueueFree;
+
+        AddChild(dialog);
+        dialog.PopupCentered();
+    }
+
+    /// <summary>Scenes go beside the project by default, where a person can
+    /// actually find and share them.</summary>
+    private static string DefaultSceneDir()
+    {
+        string documents = OS.GetSystemDir(OS.SystemDir.Documents);
+        string dir = documents.Length > 0 ? $"{documents}/FactoryForge" : "user://";
+        if (!DirAccess.DirExistsAbsolute(dir)) DirAccess.MakeDirRecursiveAbsolute(dir);
+        return dir;
     }
 
     public override void _Ready()
@@ -118,19 +160,19 @@ public partial class SceneToolbarUI : Control
         var saveBtn = new Button
         {
             Text = "💾 Save",
-            TooltipText = "Save the scene to user://custom_scene.json",
+            TooltipText = "Save this scene to a file you choose",
             CustomMinimumSize = new Vector2(78, 32),
         };
-        saveBtn.Pressed += () => EmitSignal(SignalName.SaveRequested);
+        saveBtn.Pressed += () => ShowFileDialog(FileDialog.FileModeEnum.SaveFile);
         hbox.AddChild(saveBtn);
 
         var loadBtn = new Button
         {
             Text = "📂 Load",
-            TooltipText = "Load the scene from user://custom_scene.json",
+            TooltipText = "Open a saved scene",
             CustomMinimumSize = new Vector2(78, 32),
         };
-        loadBtn.Pressed += () => EmitSignal(SignalName.LoadRequested);
+        loadBtn.Pressed += () => ShowFileDialog(FileDialog.FileModeEnum.OpenFile);
         hbox.AddChild(loadBtn);
 
         var driverBtn = new Button

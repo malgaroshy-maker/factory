@@ -1,7 +1,15 @@
 """FactoryForge sidecar CLI.
 
-    factoryforge-sidecar demo   [--driver ...] [options]   run a scene + driver
-    factoryforge-sidecar browse <url>                      dump an OPC UA address space
+    factoryforge-sidecar connect [--driver ...] [options]  drive a RUNNING engine
+    factoryforge-sidecar demo    [--driver ...] [options]  run a scene + driver
+    factoryforge-sidecar browse  <url>                     dump an OPC UA address space
+
+`connect` is the one to use with the 3D engine. `demo` starts its *own* Python
+scene on the bus port, which is right for a headless check with no Godot in the
+picture and wrong for everything else: with the engine already running, `demo`
+finds the port taken, and if it did bind it would drive the Python scene while
+you watched the 3D one sit still. `connect` attaches to an engine that is
+already listening and drives that.
 
 `browse` exists because the hardest part of connecting to a real PLC is finding
 the right NodeIds. An S7-1500 exposes tags as `ns=3;s="DB"."Member"`, and the
@@ -134,6 +142,100 @@ async def demo(args) -> int:
     return 0
 
 
+async def connect(args) -> int:
+    """Attach a driver to an engine that is already running.
+
+    Everything here is the same driver stack `demo` uses; the only difference is
+    who owns the scene. That is the point — the drivers were always independent
+    of which engine is on the other end of the bus, but until now the CLI gave
+    you no way to say so, and the 3D engine could only ever be driven by the
+    bespoke script in tools/.
+    """
+    from . import drivers
+    from .tagbus import TagBusClient
+
+    url = f"ws://{args.host}:{args.port}/tagbus"
+    bus = TagBusClient(url)
+    runner = asyncio.create_task(bus.run())
+
+    try:
+        await asyncio.wait_for(bus.connected.wait(), timeout=args.timeout)
+    except asyncio.TimeoutError:
+        runner.cancel()
+        print(f"no engine listening on {url} after {args.timeout:g}s.\n"
+              f"Start it first:  godot --path engine/", file=sys.stderr)
+        return 1
+
+    # The hello arrives before the scene description, so `connected` alone means
+    # only that the socket is up. Waiting for the tag table avoids reporting
+    # "scene None, 0 tags" a beat before the real answer turns up, and means the
+    # driver starts against a table that already has something in it.
+    for _ in range(int(args.timeout / 0.05)):
+        if bus.scene is not None and len(bus.table) > 0:
+            break
+        await asyncio.sleep(0.05)
+
+    config = dict(args.option or [])
+    if args.mapping:
+        config["mapping_file"] = args.mapping
+    driver = drivers.create(args.driver, bus, **config)
+    await driver.start()
+
+    print(f"connected to scene '{bus.scene}' — {len(bus.table)} tags", flush=True)
+    print(f"driver '{args.driver}' started: {config or 'defaults'}", flush=True)
+
+    if args.driver == "modbus-tcp":
+        await asyncio.sleep(0.5)
+        print("\nModbus address map:\n" + driver.address_table(), flush=True)
+    elif args.driver == "opcua-server":
+        print(f"\nOPC UA server: {driver.endpoint}", flush=True)
+        print("connect Node-RED / UaExpert / Ignition here; node ids are ns=2;s=<tag id>",
+              flush=True)
+
+    print("\nCtrl-C to stop.\n", flush=True)
+    printer = asyncio.create_task(_bus_print_loop(bus))
+    try:
+        if args.duration:
+            await asyncio.sleep(args.duration)
+        else:
+            await asyncio.Event().wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        for task in (printer, runner):
+            task.cancel()
+        await driver.stop()
+    return 0
+
+
+async def _bus_print_loop(bus) -> None:
+    """Live status for a scene we do not own, so it reports what the bus shows
+    rather than reaching into a local simulation object."""
+    last = None
+    while True:
+        await asyncio.sleep(0.25)
+        outputs = " ".join(
+            f"{t.id.split('.')[-1]}={_short(bus.table.visible(t.id))}"
+            for t in bus.table.by_kind("output")
+        )
+        inputs = " ".join(
+            f"{t.id.split('.')[-1]}={_short(bus.table.visible(t.id))}"
+            for t in bus.table.by_kind("input")
+        )
+        line = f"OUT {outputs} | IN {inputs}"
+        if line != last:
+            print(line, flush=True)
+            last = line
+
+
+def _short(value) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, float):
+        return f"{value:.1f}"
+    return str(value)
+
+
 async def _print_loop(sim, engine) -> None:
     """Live one-line status. Sleeps well above Windows' 15.6ms timer floor."""
     last = None
@@ -165,7 +267,23 @@ def main(argv: list[str] | None = None) -> int:
     p_browse.add_argument("--timeout", type=float, default=10.0,
                           help="seconds; a real S7-1500 needs more than asyncua's default 4")
 
-    p_demo = sub.add_parser("demo", help="run the sorting scene with a driver")
+    p_connect = sub.add_parser(
+        "connect", help="drive an ALREADY RUNNING engine (use this with the 3D engine)")
+    p_connect.add_argument("--driver", default="opcua-client",
+                           help="mock | modbus-tcp | opcua-client | opcua-server | "
+                                "plcsim-advanced | s7-snap7")
+    p_connect.add_argument("--mapping", help="JSON tag->NodeId map (opcua-client)")
+    p_connect.add_argument("--host", default="127.0.0.1", help="engine's tag bus host")
+    p_connect.add_argument("--port", type=int, default=7411, help="engine's tag bus port")
+    p_connect.add_argument("--duration", type=float,
+                           help="stop after N seconds; without this it runs until Ctrl-C")
+    p_connect.add_argument("--timeout", type=float, default=15.0,
+                           help="seconds to wait for the engine")
+    p_connect.add_argument("-o", "--option", nargs=2, action="append",
+                           metavar=("KEY", "VALUE"),
+                           help="driver option, e.g. -o url opc.tcp://...")
+
+    p_demo = sub.add_parser("demo", help="run the built-in Python scene with a driver")
     p_demo.add_argument("--driver", default="opcua-server",
                         help="mock | modbus-tcp | opcua-client | opcua-server | plcsim-advanced | s7-snap7")
     p_demo.add_argument("--mapping", help="JSON tag->NodeId map (opcua-client)")
@@ -190,6 +308,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "browse":
             return asyncio.run(browse(args.url, args.depth, args.timeout))
+        if args.command == "connect":
+            return asyncio.run(connect(args))
         return asyncio.run(demo(args))
     except KeyboardInterrupt:
         return 0

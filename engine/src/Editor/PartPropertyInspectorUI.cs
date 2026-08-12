@@ -11,6 +11,11 @@ public partial class PartPropertyInspectorUI : Control
     private VBoxContainer _contentContainer = null!;
     private Node3D? _selectedNode;
 
+    /// <summary>The editor that owns the selection, so the name field can act on
+    /// it. Set by Main; null in headless builds, where the inspector never
+    /// exists.</summary>
+    public SceneEditor? Editor { get; set; }
+
     public override void _Ready()
     {
         CustomMinimumSize = new Vector2(280, 220);
@@ -60,9 +65,11 @@ public partial class PartPropertyInspectorUI : Control
             return;
         }
 
-        var header = new Label { Text = $"{partType} ({instanceId})" };
+        var header = new Label { Text = partType };
         header.AddThemeFontSizeOverride("font_size", 13);
         _contentContainer.AddChild(header);
+
+        AddNameRow(instanceId);
 
         // Every property here must actually reach the simulation. Anything whose
         // value is only read when the part is built needs a Rebuild() alongside
@@ -114,13 +121,68 @@ public partial class PartPropertyInspectorUI : Control
         }
     }
 
+    /// <summary>
+    /// The part's id, editable. This is the string that ends up in a mapping
+    /// file and in the PLC program, so it is worth being able to write
+    /// "reject_pusher" instead of living with "pushermechanism_2".
+    ///
+    /// Committing on Enter only, never on every keystroke: renaming per
+    /// character would fire a rename for "r", "re", "rej"… each one moving the
+    /// tags again.
+    /// </summary>
+    private void AddNameRow(string instanceId)
+    {
+        var row = new HBoxContainer();
+        _contentContainer.AddChild(row);
+        row.AddChild(new Label { Text = "Name", CustomMinimumSize = new Vector2(46, 0) });
+
+        var field = new LineEdit
+        {
+            Text = instanceId,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = "Tag prefix for this part. Press Enter to apply.",
+        };
+        row.AddChild(field);
+
+        var status = new Label { Text = "" };
+        status.AddThemeFontSizeOverride("font_size", 11);
+        _contentContainer.AddChild(status);
+
+        field.TextSubmitted += (text) =>
+        {
+            if (Editor is null) return;
+
+            if (Editor.TryRenameSelectedPart(text, out string problem))
+            {
+                status.AddThemeColorOverride("font_color", new Color(0.45f, 0.95f, 0.55f));
+                status.Text = $"renamed to {text.Trim()}";
+            }
+            else
+            {
+                // Put the old name back, so the field never shows an id the
+                // scene does not actually have.
+                field.Text = instanceId;
+                status.AddThemeColorOverride("font_color", new Color(1.0f, 0.55f, 0.45f));
+                status.Text = problem;
+            }
+        };
+    }
+
     private void ShowNoSelection()
     {
         foreach (var child in _contentContainer.GetChildren())
         {
             child.QueueFree();
         }
-        _contentContainer.AddChild(new Label { Text = "Click a placed part to inspect & edit properties." });
+        // Wrapped, not clipped: the panel is anchored to the bottom-right, so an
+        // unwrapped label wider than the panel pushes the whole thing off the
+        // edge of the screen and takes its own last words with it.
+        _contentContainer.AddChild(new Label
+        {
+            Text = "Click a placed part to inspect and rename it.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(260, 0),
+        });
     }
 
     private void AddSliderProperty(string labelText, float initialValue, float min, float max, float step, System.Action<float> onChanged)

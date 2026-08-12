@@ -264,3 +264,88 @@ fail. A self-test nobody has watched fail is a guess.
   the side the camera looks from. The first placement put it behind the belt
   facing away, and the one before that sat under the parts palette — a button
   you cannot see is a button you cannot press.
+
+---
+
+# 2026-08-12 (later) — the seam between the engine and a PLC
+
+Walking the path a new user takes — download it, build a line, connect a PLC —
+turned up a set of failures that were invisible from inside the project because
+every existing test drove the *demo* scene through a bespoke script.
+
+## The one that mattered most
+
+**Nothing could attach a driver to the running 3D engine.** The sidecar's only
+run command, `demo`, starts its *own* Python `EngineStub` on the bus port. With
+the engine already running it finds 7411 taken; if it bound first it would drive
+the Python scene while the 3D one sat still. The only thing that ever drove the
+Godot engine was `tools/drive_engine.py`, which uses the mock driver.
+
+So the S7-1500 and Node-RED results in the README are real, but they were the
+*harness* scene. The 3D engine had never been driven by a real protocol driver,
+and no documented command could do it.
+
+Fixed with a `connect` subcommand: attach to an engine already listening, run
+any driver against it. Same driver stack, same client — the drivers were always
+independent of which engine was on the other end, and the CLI simply gave no way
+to say so.
+
+## Two UIs that configured nothing
+
+`DriverWiringUI` kept its mappings in a `Dictionary` that nothing outside that
+one file ever read. `DriverConnectionUI.ApplyConnectionSettings` assigned four
+fields, printed a line, and hid the dialog. Both looked like they worked, and
+both were the first thing a person would reach for.
+
+They now write and consume `io_mapping.json`, and Apply & Connect really starts
+the sidecar (`OS.CreateProcess`), reporting the pid or saying plainly that
+python was not found, with the command on the clipboard either way.
+
+The wiring panel's address column was also a hardcoded list of nine Siemens
+addresses describing the sorting demo — so a scene you built yourself had
+nothing to wire to. It is generated from the live tag table now.
+
+## The rest
+
+- **Parts could not be named.** The id a PLC program is written against was
+  `pushermechanism_2`, and unstable: delete and re-place a part and the number
+  moves, silently breaking a mapping that points at the old one.
+- **No way to get the I/O list out.** Twenty auto-generated tag ids, read off
+  the inspector and retyped into TIA Portal. A typo there produces an input that
+  is false forever, which looks exactly like a sensor that never triggers. F4
+  now exports `io_mapping.json` and `io_tags.csv`.
+- **Editor changes were never announced.** `SendDescribe` existed and bumped the
+  epoch; nothing called it. A driver connected while you built kept working from
+  the tag list it got at connect time.
+- **Save/Load was one hardcoded slot** — one scene, silently overwritten, in a
+  directory nobody could find.
+- **Every scene reported as `sorting-by-height`**, a `const` in `Main`.
+- **Packaging was marked done and was not.** No `export_presets.cfg` existed and
+  no binary had ever been built. The presets are written now, but still unbuilt:
+  the export templates are not installed here. `docs/PACKAGING.md` records that
+  honestly, including the open question of how to ship the Python sidecar.
+
+## Traps this session added to AGENTS.md
+
+1. **A crashing self-test can exit 0.** An exception in `_PhysicsProcess` is
+   logged by Godot and execution continues, so the test never reports, the run
+   ends via `--duration`, and the exit code says success. Found by mutation
+   testing, not by reasoning.
+2. **`Quit()` is deferred to end of frame**, so a self-test body runs again next
+   tick against state it already mutated, burying the real failure.
+3. **A failed `dotnet build` leaves the old binary**, and Godot runs it happily.
+   A run that produces *no* output where you expected some is more likely stale
+   than wrong.
+4. **A guard at a higher layer can mask a mutation.** Removing the collision
+   check inside `RenameInstance` changed nothing observable, because the editor
+   checks the whole prefix first. The lower guard needed testing directly, or
+   its all-or-nothing promise was guarded by nothing.
+
+## Verification note
+
+Two probes were written, used, and deleted: one that drives the F5 dialog to
+confirm a `cmd` → `python` process really starts, and one that submits the
+inspector's Name field the way a user would. The second reported a stale value
+that turned out to be the probe's fault — `QueueFree` is deferred, so a
+same-frame search finds the old LineEdit. Worth remembering before believing a
+probe over the code.

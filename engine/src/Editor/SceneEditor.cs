@@ -49,8 +49,30 @@ public partial class SceneEditor : Node3D
     private readonly HashSet<string> _emitEdges = new();
     private bool _emitAlternate;
 
+    /// <summary>
+    /// Raised whenever the set of tags changes — a part placed, deleted, renamed,
+    /// or a whole scene loaded.
+    ///
+    /// A connected driver has a copy of the tag list from the last describe, so
+    /// without this it never learns that the belt you just placed exists. The
+    /// bus already knew how to republish (<c>SendDescribe</c> bumps the epoch);
+    /// nothing was asking it to.
+    /// </summary>
+    [Signal] public delegate void TagsChangedEventHandler();
+
+    /// <summary>The scene's name, as reported on the bus. Loading a file adopts
+    /// the name it was saved under, so a driver is not told every custom line is
+    /// the sorting demo.</summary>
+    public string SceneName { get; private set; } = "sorting-by-height";
+
     /// <summary>Is a part currently following the cursor, waiting to be placed?</summary>
     public bool HasPlacementPreview => _previewNode is not null;
+
+    private void NotifyTagsChanged()
+    {
+        TagInspector?.RebuildTagList();
+        EmitSignal(SignalName.TagsChanged);
+    }
 
     public void ToggleMode() => SetMode(Mode == EditorMode.Edit ? EditorMode.Run : EditorMode.Edit);
 
@@ -248,7 +270,7 @@ public partial class SceneEditor : Node3D
         if (Tags is not null)
         {
             (instanceId, owns) = PartTagManager.RegisterPartTags(node, partType, Tags, preferredId);
-            TagInspector?.RebuildTagList();
+            NotifyTagsChanged();
         }
 
         var placed = new PlacedPart(node, instanceId, partType, owns);
@@ -268,7 +290,7 @@ public partial class SceneEditor : Node3D
 
             if (_selectedPart == part) DeselectPart();
             ForgetPart(part);
-            TagInspector?.RebuildTagList();
+            NotifyTagsChanged();
             return;
         }
     }
@@ -436,6 +458,102 @@ public partial class SceneEditor : Node3D
         hitPanel?.Press(hitButton);
     }
 
+    /// <summary>
+    /// Give a part a name you would willingly write into a PLC program.
+    ///
+    /// Fails, with a reason, rather than half-succeeding: an id already in use
+    /// would collide on the tag table, and a part that only *views* tags the
+    /// simulation owns cannot be renamed at all — <see cref="SortingScene"/>
+    /// writes <c>conveyor.rotate</c> by that exact name every tick, so moving
+    /// the tag would leave the scene talking to nothing.
+    /// </summary>
+    public bool TryRenameSelectedPart(string newId, out string problem)
+    {
+        if (_selectedPart is not { } selected) { problem = "nothing selected"; return false; }
+        return TryRenamePart(selected.InstanceId, newId, out problem);
+    }
+
+    /// <summary>Rename by id, so the rules can be exercised without a mouse.</summary>
+    public bool TryRenamePart(string instanceId, string newId, out string problem)
+    {
+        problem = "";
+        if (Tags is null) { problem = "no tag table"; return false; }
+
+        int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
+        if (index < 0) { problem = $"no part called '{instanceId}'"; return false; }
+        var entry = _placedParts[index];
+
+        newId = newId.Trim();
+        if (newId == entry.InstanceId) return true;
+
+        if (!PartTagManager.IsValidInstanceId(newId))
+        {
+            problem = "use letters, digits and underscores — no dots or spaces";
+            return false;
+        }
+        if (!entry.OwnsTags)
+        {
+            problem = "this part mirrors tags the simulation owns and cannot be renamed";
+            return false;
+        }
+        if (PartTagManager.HasTagsFor(newId, Tags))
+        {
+            problem = $"'{newId}' is already taken";
+            return false;
+        }
+        if (!PartTagManager.RenameInstance(entry.InstanceId, newId, Tags))
+        {
+            problem = "rename rejected by the tag table";
+            return false;
+        }
+
+        // Anything holding the old id has to follow it, or it points at a tag
+        // that no longer exists: the remover's count tag, and any button pulse
+        // waiting to be cleared on the next tick.
+        if (entry.Node is Remover remover
+            && remover.CountTag.StartsWith(entry.InstanceId + "."))
+        {
+            remover.CountTag = newId + remover.CountTag[entry.InstanceId.Length..];
+        }
+        ClearPanelPulses(entry.InstanceId);
+
+        var renamed = entry with { InstanceId = newId };
+        _placedParts[index] = renamed;
+        if (_selectedPart == entry)
+        {
+            _selectedPart = renamed;
+            // Rebuild the inspector so its name field and its idea of the
+            // "previous" name both move on. Without this a second rename in a
+            // row would restore the *original* id if it were rejected.
+            PropertyInspector?.InspectNode(renamed.Node, newId, renamed.PartType);
+        }
+
+        NotifyTagsChanged();
+        GD.Print($"Renamed '{entry.InstanceId}' to '{newId}'");
+        return true;
+    }
+
+    /// <summary>Select a part by id and show it in the inspector — what a click
+    /// does, without needing a camera to click through.</summary>
+    public bool SelectPartForInspection(string instanceId)
+    {
+        int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
+        if (index < 0) return false;
+
+        _selectedPart = _placedParts[index];
+        _gizmo?.AttachToNode(_selectedPart.Node);
+        PropertyInspector?.InspectNode(_selectedPart.Node, instanceId, _selectedPart.PartType);
+        return true;
+    }
+
+    /// <summary>Instance ids currently in the scene, for tests and tooling.</summary>
+    public IReadOnlyList<string> PlacedPartIds()
+    {
+        var ids = new List<string>();
+        foreach (var part in _placedParts) ids.Add(part.InstanceId);
+        return ids;
+    }
+
     private void DeselectPart()
     {
         _selectedPart = null;
@@ -455,7 +573,7 @@ public partial class SceneEditor : Node3D
         DeselectPart();
         _history.ExecuteCommand(new PartCommand(this, partType, position, rotation,
                                                 isPlacement: false, instanceId: entry.InstanceId));
-        TagInspector?.RebuildTagList();
+        NotifyTagsChanged();
     }
 
     /// <summary>
@@ -601,7 +719,7 @@ public partial class SceneEditor : Node3D
             Adopt(tallRemover, "remover_tall", "Remover");
         }
 
-        TagInspector?.RebuildTagList();
+        NotifyTagsChanged();
 
         void Adopt(Node3D node, string instanceId, string partType) =>
             _placedParts.Add(new PlacedPart(node, instanceId, partType, OwnsTags: false));
@@ -609,7 +727,13 @@ public partial class SceneEditor : Node3D
 
     public void SaveSceneToFile(string path = "user://custom_scene.json")
     {
-        var data = new SceneData { Name = "custom-factory-scene" };
+        // Name the scene after the file it lives in, so saving as "palletiser"
+        // makes the bus report "palletiser" rather than every scene claiming to
+        // be the sorting demo.
+        string stem = System.IO.Path.GetFileNameWithoutExtension(path);
+        if (stem.Length > 0 && stem != "custom_scene") SceneName = stem;
+
+        var data = new SceneData { Name = SceneName };
         foreach (var part in _placedParts)
         {
             data.Parts.Add(new PartInstanceData
@@ -643,6 +767,8 @@ public partial class SceneEditor : Node3D
         var data = SceneData.FromJson(json);
         if (data is null) return;
 
+        if (data.Name is { Length: > 0 }) SceneName = data.Name;
+
         foreach (var p in data.Parts)
         {
             var node = CreatePartNode(p.Type);
@@ -662,7 +788,7 @@ public partial class SceneEditor : Node3D
             }
         }
 
-        TagInspector?.RebuildTagList();
+        NotifyTagsChanged();
         GD.Print($"Loaded scene from {path} ({_placedParts.Count} parts)");
     }
 
@@ -679,7 +805,7 @@ public partial class SceneEditor : Node3D
         _history.Clear();   // its commands refer to parts that are now gone
         _movingPart = null;
         DeselectPart();
-        TagInspector?.RebuildTagList();
+        NotifyTagsChanged();
         GD.Print("Cleared all editor placed parts");
     }
 

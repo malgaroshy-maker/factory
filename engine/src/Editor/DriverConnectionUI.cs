@@ -12,6 +12,11 @@ namespace FactoryForge.Editor;
 public partial class DriverConnectionUI : Control
 {
     private OptionButton _driverDropdown = null!;
+    private Label _commandLabel = null!;
+
+    /// <summary>Process id of the sidecar started from this dialog, so it can be
+    /// stopped and is not left holding a PLC session when the window closes.</summary>
+    private int _sidecarPid;
     private LineEdit _ipInput = null!;
     private LineEdit _portInput = null!;
     private LineEdit _instanceInput = null!;
@@ -128,19 +133,42 @@ public partial class DriverConnectionUI : Control
 
         _statusLabel = new Label
         {
-            Text = "Active Driver: Siemens PLCSIM Advanced (Ready)",
+            // Not "Ready": nothing is connected until the sidecar is started,
+            // and saying otherwise is how this dialog used to mislead people.
+            Text = "No driver running. Apply & Connect starts the Python sidecar.",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
-        _statusLabel.AddThemeColorOverride("font_color", new Color(0.3f, 1.0f, 0.4f));
+        _statusLabel.AddThemeColorOverride("font_color", new Color(0.80f, 0.80f, 0.85f));
         footer.AddChild(_statusLabel);
 
         var autoBtn = new Button { Text = " 🔍 Auto-Detect Now " };
         autoBtn.Pressed += () => _ = RunAutoDetectAsync();
         footer.AddChild(autoBtn);
 
+        var stopBtn = new Button
+        {
+            Text = " ⏹ Stop Sidecar ",
+            TooltipText = "Stop the driver process started from this dialog",
+        };
+        stopBtn.Pressed += StopSidecar;
+        footer.AddChild(stopBtn);
+
         var connectBtn = new Button { Text = " ⚡ Apply & Connect " };
         connectBtn.Pressed += ApplyConnectionSettings;
         footer.AddChild(connectBtn);
+
+        // Show the command as well as running it. Half the value of this dialog
+        // is teaching what it is doing, and the other half is still working when
+        // the launch fails because python is not on PATH.
+        _commandLabel = new Label
+        {
+            Text = "The engine speaks only the tag bus; PLC protocols live in the "
+                 + "Python sidecar. Apply & Connect starts it and copies the command.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        _commandLabel.AddThemeFontSizeOverride("font_size", 11);
+        _commandLabel.AddThemeColorOverride("font_color", new Color(0.70f, 0.80f, 0.95f));
+        mainBox.AddChild(_commandLabel);
     }
 
     public void ToggleVisibility()
@@ -228,15 +256,137 @@ public partial class DriverConnectionUI : Control
         }
     }
 
-    private void ApplyConnectionSettings()
+    /// <summary>
+    /// The sidecar arguments this dialog's settings amount to.
+    ///
+    /// <c>connect</c>, never <c>demo</c>: demo starts its own Python scene on
+    /// the bus port, so against a running engine it either fails to bind or
+    /// drives a scene you cannot see.
+    /// </summary>
+    public string BuildSidecarArguments()
     {
-        IpAddress = _ipInput.Text;
-        PortOrUrl = _portInput.Text;
-        InstanceName = _instanceInput.Text;
+        var args = new System.Text.StringBuilder("-m factoryforge_sidecar connect");
+        args.Append($" --driver {SelectedDriver}");
+
+        switch (SelectedDriver)
+        {
+            case "opcua-client":
+                string url = PortOrUrl.StartsWith("opc.tcp://")
+                    ? PortOrUrl
+                    : $"opc.tcp://{IpAddress}:4840";
+                args.Append($" -o url {url}");
+                if (Godot.FileAccess.FileExists(DriverWiringUI.MappingPath))
+                {
+                    string mapping = ProjectSettings.GlobalizePath(DriverWiringUI.MappingPath);
+                    args.Append($" --mapping \"{mapping}\"");
+                }
+                break;
+
+            case "s7-snap7":
+                args.Append($" -o host {IpAddress} -o db {DbNumber}");
+                break;
+
+            case "plcsim-advanced":
+                args.Append($" -o instance {InstanceName}");
+                break;
+
+            case "modbus-tcp":
+            case "opcua-server":
+                // Both are servers: the controller connects to them, so there is
+                // nothing to point at.
+                break;
+        }
+
+        return args.ToString();
+    }
+
+    /// <summary>Read the form, start the sidecar, and report what happened.</summary>
+    public void ApplyConnectionSettings()
+    {
+        IpAddress = _ipInput.Text.Trim();
+        PortOrUrl = _portInput.Text.Trim();
+        InstanceName = _instanceInput.Text.Trim();
         if (int.TryParse(_dbInput.Text, out int db)) DbNumber = db;
 
-        _statusLabel.Text = $"Active Driver: {SelectedDriver} ({IpAddress})";
-        GD.Print($"Applied Driver Settings: Driver={SelectedDriver}, IP={IpAddress}, Instance={InstanceName}");
+        string sidecarDir = ProjectSettings.GlobalizePath("res://").TrimEnd('/', '\\');
+        // res:// is engine/; the sidecar package sits beside it in the checkout.
+        sidecarDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(sidecarDir) ?? "", "sidecar");
+
+        string arguments = BuildSidecarArguments();
+        string display = $"cd \"{sidecarDir}\" && python {arguments}";
+        _commandLabel.Text = display;
+        DisplayServer.ClipboardSet(display);
+        GD.Print($"Sidecar command (copied to clipboard):\n  {display}");
+
+        if (!System.IO.Directory.Exists(sidecarDir))
+        {
+            Warn($"Command copied, but {sidecarDir} does not exist — run the sidecar from your checkout.");
+            return;
+        }
+
+        LaunchSidecar(sidecarDir, arguments);
+    }
+
+    /// <summary>
+    /// Start the sidecar as a detached process.
+    ///
+    /// The engine speaks the tag bus and nothing else — every PLC protocol lives
+    /// in the Python sidecar — so "connect" has to mean "start that". If python
+    /// is not on PATH this says so and falls back to the copied command, rather
+    /// than the previous behaviour of printing a line and pretending.
+    /// </summary>
+    private void LaunchSidecar(string workingDir, string arguments)
+    {
+        if (_sidecarPid > 0 && OS.IsProcessRunning(_sidecarPid))
+        {
+            OS.Kill(_sidecarPid);
+            _sidecarPid = 0;
+        }
+
+        string[] argv =
+        {
+            "/d", "/s", "/c",
+            $"cd /d \"{workingDir}\" && python {arguments}",
+        };
+
+        // A console window is wanted here: the sidecar's live status is how you
+        // see whether the PLC is actually answering.
+        int pid = OS.CreateProcess("cmd.exe", argv, openConsole: true);
+        if (pid <= 0)
+        {
+            Warn("Could not start python. The command is on your clipboard — run it yourself.");
+            return;
+        }
+
+        _sidecarPid = pid;
+        _statusLabel.AddThemeColorOverride("font_color", new Color(0.3f, 1.0f, 0.4f));
+        _statusLabel.Text = $"Sidecar running (pid {pid}) — driver '{SelectedDriver}'";
         Visible = false;
+    }
+
+    private void Warn(string message)
+    {
+        _statusLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.65f, 0.35f));
+        _statusLabel.Text = message;
+        GD.PrintErr(message);
+    }
+
+    private void StopSidecar()
+    {
+        if (_sidecarPid <= 0 || !OS.IsProcessRunning(_sidecarPid))
+        {
+            _statusLabel.Text = "No sidecar started from here.";
+            return;
+        }
+
+        OS.Kill(_sidecarPid);
+        _statusLabel.Text = $"Stopped sidecar (pid {_sidecarPid})";
+        _sidecarPid = 0;
+    }
+
+    public override void _ExitTree()
+    {
+        // Don't leave a driver holding an OPC UA session after the window closes.
+        if (_sidecarPid > 0 && OS.IsProcessRunning(_sidecarPid)) OS.Kill(_sidecarPid);
     }
 }

@@ -17,7 +17,14 @@ public partial class DriverWiringUI : Control
     private VBoxContainer _plcTagsList = null!;
     private VBoxContainer _simTagsList = null!;
     private Label _statusLabel = null!;
+    private Label _commandLabel = null!;
     private string? _selectedPlcAddress;
+
+    /// <summary>Where the wiring lives between sessions. <c>user://</c> is
+    /// Godot's per-user data directory; the export prints the absolute path
+    /// because nobody can be expected to guess where that is.</summary>
+    public const string MappingPath = "user://io_mapping.json";
+    public const string CsvPath = "user://io_tags.csv";
 
     public override void _Ready()
     {
@@ -133,18 +140,43 @@ public partial class DriverWiringUI : Control
         _statusLabel.AddThemeColorOverride("font_color", new Color(0.4f, 0.9f, 0.4f));
         footer.AddChild(_statusLabel);
 
-        var autoMapBtn = new Button { Text = " ⚡ Auto-Map Siemens S7 Standard " };
+        var autoMapBtn = new Button
+        {
+            Text = " ⚡ Auto-Map Suggested Addresses ",
+            TooltipText = "Give every tag in this scene an IEC address, allocated in tag order",
+        };
         autoMapBtn.Pressed += AutoMapByName;
         footer.AddChild(autoMapBtn);
+
+        var exportBtn = new Button
+        {
+            Text = " 💾 Export & Copy Command ",
+            TooltipText = "Write io_mapping.json and io_tags.csv, and copy the sidecar command",
+        };
+        exportBtn.Pressed += ExportMappings;
+        footer.AddChild(exportBtn);
 
         var clearBtn = new Button { Text = " 🗑️ Clear Mappings " };
         clearBtn.Pressed += ClearAllMappings;
         footer.AddChild(clearBtn);
+
+        // The engine does not talk to a PLC by itself — the Python sidecar does.
+        // Saying so, with the exact command, is the difference between a panel
+        // that configures something and one that only looks as though it does.
+        _commandLabel = new Label
+        {
+            Text = "Export to generate the sidecar command for this scene.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        _commandLabel.AddThemeFontSizeOverride("font_size", 11);
+        _commandLabel.AddThemeColorOverride("font_color", new Color(0.70f, 0.80f, 0.95f));
+        mainBox.AddChild(_commandLabel);
     }
 
     public void Setup(TagTable tags)
     {
         _tags = tags;
+        LoadMappings();
         RebuildWiringList();
     }
 
@@ -161,30 +193,25 @@ public partial class DriverWiringUI : Control
         foreach (Node child in _plcTagsList.GetChildren()) child.QueueFree();
         foreach (Node child in _simTagsList.GetChildren()) child.QueueFree();
 
-        // Sample PLC Address List
-        string[] samplePlcAddrs = new string[]
-        {
-            "%Q0.0 (Conveyor 1 Motor)",
-            "%Q0.1 (Pusher 1 Solenoid)",
-            "%Q0.2 (Stack Light Green)",
-            "%Q0.3 (Stack Light Yellow)",
-            "%Q0.4 (Stack Light Red)",
-            "%I0.0 (Sensor Low Optical)",
-            "%I0.1 (Sensor High Optical)",
-            "%I0.2 (Pusher 1 Retracted)",
-            "%I0.3 (Pusher 1 Extended)",
-        };
+        // The address column is generated from the scene's own tags. It used to
+        // be a hardcoded list of nine Siemens addresses describing the sorting
+        // demo, which meant a scene you built yourself had nothing to wire to.
+        var suggested = IoExport.SuggestIecAddresses(_tags);
 
-        foreach (string addr in samplePlcAddrs)
+        foreach (var tag in _tags)
         {
-            string addressKey = addr.Split(' ')[0];
+            string addressKey = suggested.GetValueOrDefault(tag.Id, "");
+            if (addressKey.Length == 0) continue;
+
             bool isSelected = _selectedPlcAddress == addressKey;
+            string label = $"{addressKey}  ({tag.Name})";
 
             var btn = new Button
             {
-                Text = isSelected ? $"👉 {addr}" : addr,
+                Text = isSelected ? $"👉 {label}" : label,
                 CustomMinimumSize = new Vector2(400, 36),
                 Alignment = HorizontalAlignment.Left,
+                TooltipText = "Suggested address. Click, then click a tag on the right to bind it.",
             };
 
             btn.Pressed += () => SelectPlcAddress(addressKey);
@@ -242,22 +269,22 @@ public partial class DriverWiringUI : Control
         _statusLabel.Text = $"Mapped '{_selectedPlcAddress}' ➔ '{tagId}'";
     }
 
+    /// <summary>
+    /// Give every tag its suggested address. Derived from the live tag table, so
+    /// it works on any scene — the previous version assigned a fixed list of ids
+    /// from the sorting demo, most of which do not exist in a scene you built.
+    /// </summary>
     private void AutoMapByName()
     {
         if (_tags is null) return;
-        _mappings["conveyor.rotate"] = "%Q0.0";
-        _mappings["pusher.extend"] = "%Q0.1";
-        _mappings["stack_light.green"] = "%Q0.2";
-        _mappings["stacklight_1.green"] = "%Q0.2";
-        _mappings["stacklight_1.yellow"] = "%Q0.3";
-        _mappings["stacklight_1.red"] = "%Q0.4";
-        _mappings["sensor_low.detect"] = "%I0.0";
-        _mappings["sensor_high.detect"] = "%I0.1";
-        _mappings["pusher.retracted"] = "%I0.2";
-        _mappings["pusher.extended"] = "%I0.3";
+
+        foreach (var (tagId, address) in IoExport.SuggestIecAddresses(_tags))
+        {
+            _mappings[tagId] = address;
+        }
 
         RebuildWiringList();
-        _statusLabel.Text = "Auto-mapped active tags to Siemens S7 I/O addresses";
+        _statusLabel.Text = $"Auto-mapped {_mappings.Count} tags to suggested IEC addresses";
     }
 
     private void ClearAllMappings()
@@ -266,6 +293,57 @@ public partial class DriverWiringUI : Control
         _selectedPlcAddress = null;
         RebuildWiringList();
         _statusLabel.Text = "Cleared all I/O mappings";
+    }
+
+    /// <summary>
+    /// Write the wiring out where the sidecar and the person building the PLC
+    /// side can both reach it. Until this existed the mappings lived in a
+    /// dictionary nothing outside this file ever read — the panel looked like it
+    /// configured something and configured nothing.
+    /// </summary>
+    private void ExportMappings()
+    {
+        if (_tags is null) return;
+
+        string mapPath = IoExport.WriteMappingFile(_tags, MappingPath, _mappings);
+        string csvPath = IoExport.WriteTagCsv(_tags, CsvPath);
+
+        if (mapPath.Length == 0)
+        {
+            _statusLabel.Text = "Export failed — see the console for the reason";
+            return;
+        }
+
+        _statusLabel.Text = $"Wrote {mapPath} and {csvPath}";
+        _commandLabel.Text =
+            "python -m factoryforge_sidecar demo --driver opcua-client " +
+            $"--mapping \"{mapPath}\" -o url opc.tcp://<cpu-ip>:4840";
+        GD.Print($"I/O exported:\n  {mapPath}\n  {csvPath}");
+        DisplayServer.ClipboardSet(_commandLabel.Text);
+    }
+
+    /// <summary>Reload mappings written by a previous session, so the wiring
+    /// survives closing the program.</summary>
+    private void LoadMappings()
+    {
+        if (!Godot.FileAccess.FileExists(MappingPath)) return;
+
+        using var file = Godot.FileAccess.Open(MappingPath, Godot.FileAccess.ModeFlags.Read);
+        string json = file?.GetAsText() ?? "";
+        if (Json.ParseString(json).Obj is not Godot.Collections.Dictionary parsed) return;
+
+        foreach (var key in parsed.Keys)
+        {
+            string id = key.AsString();
+            // Leading underscore marks the comment keys the file carries for
+            // whoever edits it by hand; they are not tags.
+            if (id.StartsWith("_")) continue;
+
+            string address = parsed[key].AsString();
+            if (address.Length > 0) _mappings[id] = address;
+        }
+
+        GD.Print($"Loaded {_mappings.Count} I/O mappings from {MappingPath}");
     }
 
     private void UpdateStatus()

@@ -79,5 +79,5 @@ from . import mock, modbus_tcp, plcsim_advanced, s7_snap7, custom_driver
 Run the sidecar with your custom driver:
 
 ```bash
-python -m factoryforge_sidecar demo --driver custom-protocol
+python -m factoryforge_sidecar connect --driver custom-protocol
 ```

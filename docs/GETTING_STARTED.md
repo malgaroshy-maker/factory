@@ -88,6 +88,37 @@ your program does not change.
 
 ---
 
+## 🔌 `connect` vs `demo` — read this first
+
+The engine speaks one protocol: its own tag bus. **Every PLC protocol lives in
+the Python sidecar**, so connecting a PLC always means starting the sidecar
+alongside the running engine.
+
+There are two subcommands and picking the wrong one wastes an afternoon:
+
+| | |
+|---|---|
+| **`connect`** | Attaches to an engine that is **already running**. This is the one you want with the 3D engine. |
+| **`demo`** | Starts its **own** headless Python scene on the bus port. For a quick driver check with no Godot involved. |
+
+Run `demo` while the 3D engine is up and it finds port 7411 taken — or worse,
+binds first and drives a scene you cannot see while the 3D one sits still.
+
+```bash
+# Terminal 1
+godot --path engine/
+
+# Terminal 2
+cd sidecar
+python -m factoryforge_sidecar connect --driver plcsim-advanced -o instance Sorting_PLC
+```
+
+The **F5 Driver dialog** does exactly this for you: pick a driver, fill in the
+address, and *Apply & Connect* starts the sidecar and copies the command to your
+clipboard in case you would rather run it yourself.
+
+---
+
 ## 🔌 Connecting to Siemens S7-PLCSIM Advanced
 
 FactoryForge supports **two direct connection methods** to Siemens S7-1500 PLCs:
@@ -98,10 +129,11 @@ FactoryForge supports **two direct connection methods** to Siemens S7-1500 PLCs:
 2. Set Interface to **PLCSIM Virtual Ethernet Adapter**.
 3. Start a virtual CPU named `Sorting_PLC` with IP `192.168.1.20`.
 4. Download your TIA Portal SCL program (e.g. [`examples/tia/Sorting.scl`](../examples/tia/Sorting.scl)).
-5. Launch the FactoryForge sidecar with the native PLCSIM driver:
+5. With the engine running, attach the native PLCSIM driver to it:
 
 ```bash
-python -m factoryforge_sidecar demo --driver plcsim-advanced
+cd sidecar
+python -m factoryforge_sidecar connect --driver plcsim-advanced -o instance Sorting_PLC
 ```
 
 ---
@@ -116,11 +148,56 @@ python -m factoryforge_sidecar demo --driver plcsim-advanced
 python -m factoryforge_sidecar browse opc.tcp://192.168.1.20:4840
 ```
 
-4. Launch the sidecar with your OPC UA mapping:
+4. Attach the sidecar to the running engine with your OPC UA mapping:
 
 ```bash
-python -m factoryforge_sidecar demo --driver opcua-client -o url opc.tcp://192.168.1.20:4840
+cd sidecar
+python -m factoryforge_sidecar connect --driver opcua-client \
+    -o url opc.tcp://192.168.1.20:4840 --mapping <your io_mapping.json>
 ```
+
+---
+
+## 🏭 Connecting a scene you built yourself
+
+The sorting demo ships with a mapping file. A line you build in the editor does
+not — it has its own parts and its own tag ids, and nothing on the PLC side
+knows them yet. The path is:
+
+**1. Name your parts.** Click a part and edit **Name** in the properties panel.
+The name is the tag prefix, so a pusher called `reject_pusher` gives you
+`reject_pusher.extend`. Do this before writing any PLC code: the default ids
+(`pushermechanism_2`) are unreadable, and worse, unstable — delete a part and
+re-place it and the number moves, silently breaking a mapping that points at the
+old one.
+
+Renaming is refused, with a reason, for parts that only mirror tags the
+simulation owns — the sorting demo's belt and sensors.
+
+**2. Export the I/O.** Open **F4 Wiring** and press **Export & Copy Command**.
+You get two files, and the absolute path to both:
+
+* `io_mapping.json` — every tag id with a blank address, ready to fill in.
+  Re-exporting after adding a part keeps the addresses you already typed and
+  only adds new blanks.
+* `io_tags.csv` — the same list with descriptions, direction, and a suggested
+  IEC address. Open it in a spreadsheet and build your PLC symbol table from it.
+
+The direction column is worth reading carefully. It is written from the
+**controller's** point of view: an *Input* is something the PLC reads (a sensor,
+a button) and the simulation writes.
+
+**3. Find your NodeIds** (OPC UA only) and paste them into `io_mapping.json`:
+
+```bash
+cd sidecar
+python -m factoryforge_sidecar browse opc.tcp://192.168.1.20:4840
+```
+
+**4. Connect**, via the F5 dialog or the command it copies.
+
+Add or delete a part while a driver is connected and the engine republishes the
+I/O list automatically, so the driver sees the new tags without a reconnect.
 
 ---
 
@@ -131,5 +208,8 @@ python -m factoryforge_sidecar demo --driver opcua-client -o url opc.tcp://192.1
 * **`M`**: Move selected component to a new voxel location.
 * **`Delete` / `Backspace`**: Delete selected component.
 * **`Ctrl+Z` / `Ctrl+Y`**: Undo / Redo placement or deletion.
-* **`F4`**: Open the **Visual I/O Driver Wiring Panel** to map PLC addresses (`%I0.0`, `%Q0.0`) directly to component tags.
+* **`F1`**: Switch between **Edit** and **Run** mode.
+* **`F4`**: **I/O Wiring** — map PLC addresses to tags, and export `io_mapping.json` / `io_tags.csv`.
+* **`F5`**: **Driver** — pick a protocol and start the sidecar against this engine.
+* **Save / Load**: choose a file, so you can keep more than one line and share it. The filename becomes the scene name reported on the tag bus.
 * **`C`**: Toggle between **Orbit Camera** and **Free-Look Fly Camera** (WASD + Right-Click drag).

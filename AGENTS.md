@@ -82,13 +82,22 @@ python -m pytest -q
 # Engine build
 cd engine && dotnet build
 
-# Engine self-tests. Both exit non-zero on failure.
+# Drive a RUNNING engine from a real driver. This is the one to use with the
+# 3D engine; `demo` starts its own Python scene on the bus port, so against a
+# live engine it either fails to bind or drives a scene you cannot see.
+cd sidecar && python -m factoryforge_sidecar connect --driver opcua-client \
+    --mapping <exported io_mapping.json> -o url opc.tcp://192.168.1.20:4840
+
+# Engine self-tests. All exit non-zero on failure.
 # Headless: panel tags — momentary pulse width, maintained E-stop, cap picking.
 "<GODOT>" --headless --path engine/ -- --self-test=buttons
 # Needs a display: the whole click path, from a synthesized mouse event to the
 # tag. Keep both — the headless half passed in full while Run-mode clicking was
 # completely dead, because the failure was in the input handler, not the logic.
 "<GODOT>" --path engine/ -- --self-test=click --duration=30
+# Headless: renaming parts and the I/O export — the path from a scene you built
+# to a PLC you can wire.
+"<GODOT>" --headless --path engine/ -- --self-test=io --duration=25
 
 # Engine headless, deterministic — the CI / regression path (no GPU needed)
 "<GODOT>" --headless --path engine/ -- --deterministic --duration=20
@@ -153,6 +162,25 @@ presses and `SceneEditor.StepPanelButtons` drains the queue, clearing the
 previous tick's pulse before raising this one's. Holding the mouse down, or
 clicking three times between two ticks, still yields exactly one clean edge.
 Note `panel.estop` is inverted on purpose: **normally closed**, true = healthy.
+
+**The engine speaks the tag bus and nothing else.** Every PLC protocol lives in
+the Python sidecar, so "connect to a PLC" always means "start the sidecar
+against the running engine" — `factoryforge_sidecar connect`, never `demo`. The
+F5 dialog does exactly that (`DriverConnectionUI.LaunchSidecar`) and copies the
+command, because the launch can fail for reasons the engine cannot fix, such as
+python not being on PATH.
+
+**An instance id is a name, so let people choose it.** `SceneEditor.TryRenamePart`
+moves every tag under the old prefix, keeping types, kinds and values, and
+refuses rather than half-applying. Parts that only *view* simulation-owned tags
+cannot be renamed at all — `SortingScene` writes `conveyor.rotate` by that exact
+name every tick.
+
+**Changing the scene has to be announced.** Placing, deleting or renaming a part
+changes the I/O list, and a connected driver is working from the tag list it was
+handed at connect time. `SceneEditor` raises `TagsChanged`; `Main` answers it
+with `_bus.SendDescribe()`. The bus always knew how to republish — for a long
+time nothing asked it to.
 
 **Simulation controls are engine-global.** Run/pause and time scale go through
 `Engine.TimeScale`, so one switch covers the fixed-timestep accumulator, Jolt,
@@ -230,7 +258,28 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     (`SelectPartAtMouse` still reads the cursor; it predates this and is only
     ever driven by hand.)
 
-11. **A test that cannot see the failure mode is not coverage.** The panel had a
+11. **A UI that configures nothing is worse than no UI.** The F4 wiring panel
+    kept its mappings in a dictionary nothing outside that file ever read, and
+    F5's "Apply & Connect" assigned four fields and hid the dialog. Both looked
+    like they worked. If a panel implies an effect, follow the value to whoever
+    consumes it before believing it — `grep` for the field, not for the button.
+
+12. **A crashing self-test can exit 0.** An exception inside `_PhysicsProcess`
+    is logged by Godot and execution continues, so a test that throws before its
+    report never reports, the run ends via `--duration`, and the exit code is
+    success. Wrap the body in try/catch and count a throw as a failure.
+
+13. **`Quit()` takes effect at the end of the frame.** A self-test that does its
+    work in `_PhysicsProcess` runs again on the next tick — against state the
+    first pass already mutated — burying the real failure under repeats. Latch a
+    `_done` flag.
+
+14. **A failed `dotnet build` leaves the previous binary in place**, and Godot
+    runs it without complaint. A run that produces no output where you expected
+    some is more likely a stale binary than a logic error; check the build
+    result before debugging the code.
+
+15. **A test that cannot see the failure mode is not coverage.** The panel had a
     correct hit test and a correct pulse dispatch and was still completely dead
     from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
     headless for the logic, `--self-test=click` with a display for the input
@@ -261,7 +310,14 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
 3. **M3 — physics**: surface-velocity belt constraint, non-jittering rigid boxes, raycast sensors, pusher mechanism, emitter/remover, control panel — **Done**.
 4. **M4 — Scene Editor**: part palette, place/rotate/delete with grid snapping, save/load JSON format, top toolbar, live tag forcing UI, property inspector — **Done**.
 5. **M5 — Siemens Breadth**: PLCSIM Advanced Simulation Runtime API driver, Snap7 S7-protocol driver — **Done**.
-6. **M6 — v1 Release**: Windows/Linux packaging, student getting-started guide, part & driver authoring guides — **Done**.
+6. **M6 — v1 Release**: student getting-started guide, part & driver authoring
+   guides — **Done**. **Packaging is not**: `engine/export_presets.cfg` now
+   exists but no binary has ever been produced from it (the export templates are
+   not installed on the dev machine), so running FactoryForge still means
+   installing Godot-mono and the .NET SDK and building from source. See
+   `docs/PACKAGING.md`, including the unanswered question of how to ship the
+   Python sidecar — without it the engine can render a factory and talk to
+   nothing. This entry previously claimed packaging was done; it was not.
 
 Deliberately skipped at the user's request: OpenPLC/Modbus cross-check.
 
