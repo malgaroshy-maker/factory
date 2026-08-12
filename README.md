@@ -28,7 +28,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 │                            │          │                          │
 │  3D render + Jolt physics  │  tag bus │  asyncua      (OPC UA)   │
 │  scene editor / voxel grid │ ◄──────► │  pythonnet    (PLCSIM)   │
-│  10-part library           │    WS    │  python-snap7 (S7)       │
+│  11-part library           │    WS    │  python-snap7 (S7)       │
 │  tag registry (authority)  │   JSON   │  built-in     (Modbus)   │
 └────────────────────────────┘          └──────────────────────────┘
 ```
@@ -37,6 +37,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 
 ## ✨ Key Features
 
+* 🎚️ **Analog I/O**: Float tags end to end — a modulating valve and a level transmitter, so you can write a real PID against a nonlinear process rather than only on/off logic.
 * ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
 * 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
@@ -48,7 +49,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 
 ---
 
-## 📦 10-Part Industrial Component Library
+## 📦 11-Part Industrial Component Library
 
 | Component | Description | Tag Bus Interface |
 |---|---|---|
@@ -62,6 +63,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 | **Box Emitter** | Spawner emitting tall & short physics rigid boxes | `emitter.emit` (Bit, Output) |
 | **Box Remover** | Area3D zone despawning items & incrementing counters | `counter.tall`, `counter.short` (Int, Input) |
 | **Control Panel** | Industrial operator station with push buttons & lamps | `panel.green`, `panel.red` |
+| **Level Tank** | Analog process tank; outflow follows Torricelli, so process gain varies with level and a PID tuned full overshoots when empty | `tank.fill`, `tank.drain` (Float, Output), `tank.level` (Float, Input) |
 
 ---
 

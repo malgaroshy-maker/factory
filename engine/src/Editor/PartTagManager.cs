@@ -121,6 +121,14 @@ public static class PartTagManager
                 tags.Add(new Tag($"{instanceId}.value", $"Display {index} Value", TagType.Int, TagKind.Output));
                 break;
 
+            case "LevelTank":
+                // The library's first analog part: valve openings and a level
+                // transmitter, all in percent, all Float.
+                tags.Add(new Tag($"{instanceId}.fill", $"Tank {index} Fill Valve (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.drain", $"Tank {index} Drain Valve (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.level", $"Tank {index} Level (%)", TagType.Float, TagKind.Input));
+                break;
+
             case "WeighingConveyor":
                 tags.Add(new Tag($"{instanceId}.rotate", $"WeighConveyor {index} Rotate", TagType.Bit, TagKind.Output));
                 tags.Add(new Tag($"{instanceId}.weight", $"WeighConveyor {index} Weight", TagType.Int, TagKind.Input));

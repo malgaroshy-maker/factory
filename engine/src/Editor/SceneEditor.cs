@@ -224,6 +224,12 @@ public partial class SceneEditor : Node3D
 
         foreach (var part in _placedParts)
         {
+            if (part.Node is LevelTank levelTank)
+            {
+                levelTank.ResetLevel();
+                if (Tags is not null && Tags.Contains($"{part.InstanceId}.level"))
+                    Tags.Set($"{part.InstanceId}.level", 0.0);
+            }
             if (part.Node is not Remover remover) continue;
 
             remover.ResetCount();
@@ -687,6 +693,18 @@ public partial class SceneEditor : Node3D
                     }
                     break;
 
+                case "LevelTank":
+                    if (node is LevelTank tank && Tags.Contains($"{instanceId}.level"))
+                    {
+                        // dt is scaled simulation time, so the tank obeys pause
+                        // and the time-scale control like everything else.
+                        tank.Step((float)System.Convert.ToDouble(Tags.Visible($"{instanceId}.fill")),
+                                  (float)System.Convert.ToDouble(Tags.Visible($"{instanceId}.drain")),
+                                  dt);
+                        Tags.Set($"{instanceId}.level", (double)tank.Level);
+                    }
+                    break;
+
                 case "WeighingConveyor":
                     if (node is WeighingConveyor weighBelt)
                     {
@@ -725,6 +743,7 @@ public partial class SceneEditor : Node3D
             "StackLight" => new StackLight(),
             "DigitalDisplay" => new DigitalDisplay(),
             "WeighingConveyor" => new WeighingConveyor { Size = new Vector3(1.5f, 0.12f, 0.5f) },
+            "LevelTank" => new LevelTank(),
             _ => null
         };
     }

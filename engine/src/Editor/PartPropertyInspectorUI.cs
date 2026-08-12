@@ -93,6 +93,13 @@ public partial class PartPropertyInspectorUI : Control
             AddSliderProperty("Stroke Length (m)", pusher.StrokeLength, 0.1f, 1.0f, 0.05f,
                               val => pusher.StrokeLength = val);
         }
+        else if (node is LevelTank tank)
+        {
+            AddSliderProperty("Fill Rate (%/s)", tank.FillRate, 1.0f, 60.0f, 1.0f,
+                              val => tank.FillRate = val);
+            AddSliderProperty("Drain Rate (%/s)", tank.DrainRate, 1.0f, 60.0f, 1.0f,
+                              val => tank.DrainRate = val);
+        }
         else if (node is Chute chute)
         {
             AddSliderProperty("Incline (deg)", chute.InclineAngleDegrees, 5.0f, 55.0f, 1.0f,

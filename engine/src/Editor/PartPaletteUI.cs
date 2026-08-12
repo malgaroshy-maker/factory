@@ -48,6 +48,7 @@ public partial class PartPaletteUI : Control
         AddPaletteButton(mainBox, "Box Emitter", "Emitter");
         AddPaletteButton(mainBox, "Box Remover", "Remover");
         AddPaletteButton(mainBox, "Control Panel", "ButtonPanel");
+        AddPaletteButton(mainBox, "Level Tank", "LevelTank");
     }
 
     private void AddPaletteButton(VBoxContainer container, string labelText, string partType)
