@@ -31,3 +31,6 @@ dist/
 !docs/images/**/*.png
 *.log
 scratch/
+
+# test_plan.py engine output
+.test_plan_engine.log

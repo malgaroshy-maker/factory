@@ -76,6 +76,10 @@ tests/           41 tests, no Siemens software or GPU required
 ```bash
 cd C:/Users/masal/source/factoryforge
 
+# The whole test plan: build, pytest, engine self-tests, determinism, the
+# engine/sidecar seam, robustness. Needs no PLC. See docs/TEST_PLAN.md.
+python tools/test_plan.py            # add --gui for the display-dependent check
+
 # Tests (41, ~37s)
 python -m pytest -q
 
@@ -98,6 +102,8 @@ cd sidecar && python -m factoryforge_sidecar connect --driver opcua-client \
 # Headless: renaming parts and the I/O export — the path from a scene you built
 # to a PLC you can wire.
 "<GODOT>" --headless --path engine/ -- --self-test=io --duration=25
+# Headless: scene save/load round-trip across every part type in the palette.
+"<GODOT>" --headless --path engine/ -- --self-test=scene --duration=25
 
 # Engine headless, deterministic — the CI / regression path (no GPU needed)
 "<GODOT>" --headless --path engine/ -- --deterministic --duration=20
@@ -279,7 +285,23 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     some is more likely a stale binary than a logic error; check the build
     result before debugging the code.
 
-15. **A test that cannot see the failure mode is not coverage.** The panel had a
+15. **Godot hangs if its stdout is a pipe nobody drains**, and it fills that
+    buffer *before* it binds the tag bus — so a piped engine prints its banner
+    and then waits forever, listening on nothing. Measured: inherited stdout or
+    a file, port open in 0.25s; bare `Popen(stdout=PIPE)`, never. `subprocess.run`
+    is safe because `communicate()` drains concurrently. Redirect to a file.
+
+16. **A test that passes while the simulation does nothing is not a test.** A
+    determinism check compared two *undriven* runs and asserted `(0,0) == (0,0)`
+    for weeks' worth of confidence it never earned. Assert that real work
+    happened, not only that two runs agree.
+
+17. **`--driver mock` runs no control logic.** It is a passthrough that lets a
+    Python script drive tags; the logic lives in the script (`drive_engine.py`).
+    An engine "driven by mock" with nothing else correctly does nothing, which
+    is easy to misread as a broken scene.
+
+18. **A test that cannot see the failure mode is not coverage.** The panel had a
     correct hit test and a correct pulse dispatch and was still completely dead
     from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
     headless for the logic, `--self-test=click` with a display for the input

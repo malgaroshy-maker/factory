@@ -89,6 +89,13 @@ pip install -e "sidecar[dev,opcua]"
 python -m pytest -q
 ```
 
+Or the full plan — build, the Python suite, the engine's own self-tests,
+determinism, the engine↔sidecar seam and robustness. No PLC needed:
+
+```bash
+python tools/test_plan.py          # --gui adds the display-dependent check
+```
+
 ### 3. Launch 3D Simulation Engine
 
 ```bash
@@ -152,6 +159,8 @@ See [Getting Started](docs/GETTING_STARTED.md#-connecting-a-scene-you-built-your
 | 🚀 **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** | Step-by-step setup for PLCSIM Advanced, TIA Portal & Node-RED |
 | 🛠️ **[PART_AUTHORING.md](docs/PART_AUTHORING.md)** | Guide & template for building custom 3D factory components |
 | 🔌 **[DRIVER_AUTHORING.md](docs/DRIVER_AUTHORING.md)** | Guide for adding custom Python protocol drivers |
+| ✅ **[TEST_PLAN.md](docs/TEST_PLAN.md)** | What is tested, what is not, and the last run's results |
+| 📦 **[PACKAGING.md](docs/PACKAGING.md)** | Building a distributable binary (not yet verified) |
 | 📋 **[PLAN.md](docs/PLAN.md)** | Architectural specifications, design choices, and status |
 | 🗺️ **[ROADMAP.md](docs/ROADMAP.md)** | Milestone completion tracking |
 | 📑 **[PRD.md](docs/PRD.md)** | Problem statement, target audience, and success criteria |

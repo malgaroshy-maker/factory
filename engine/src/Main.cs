@@ -91,14 +91,22 @@ public partial class Main : Node
             BuildHeadlessPhysicsParts(tags);
         }
 
+        // Report the bus state rather than announcing "ready" regardless: an
+        // instance that could not bind the port simulates perfectly and is
+        // unreachable, and saying "ready" sends people to debug their PLC.
         GD.Print($"FactoryForge engine ready — {(_deterministic ? "DETERMINISTIC" : "PHYSICS")} " +
-                 $"scene '{SceneName}', {tags.Count} tags");
+                 $"scene '{SceneName}', {tags.Count} tags" +
+                 (_bus.IsListening ? "" : "  [NO TAG BUS — port in use, drivers cannot connect]"));
 
         // Added last so it runs after the editor each tick, and therefore reads
         // the tags as the part dispatch left them rather than a tick behind.
         if (_selfTest == "buttons")
         {
             AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
+        }
+        if (_selfTest == "scene")
+        {
+            AddChild(new SceneSelfTest { Name = "SceneSelfTest", Tags = tags, Editor = _editor });
         }
         if (_selfTest == "io")
         {

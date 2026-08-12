@@ -28,6 +28,10 @@ public partial class TagBusServer : Node
 
     public TagTable Tags { get; set; } = new();
     public string SceneName { get; set; } = "untitled";
+    /// <summary>Did the socket actually bind? False means no driver can ever
+    /// connect to this instance, however healthy the rest of it looks.</summary>
+    public bool IsListening { get; private set; }
+
     public int Epoch { get; private set; }
     public long TickCount { get; private set; }
     public bool HasClient => _client is not null &&
@@ -35,17 +39,32 @@ public partial class TagBusServer : Node
 
     public override void _Ready()
     {
+        // Retry for a few seconds. Closing the app and reopening it is an
+        // ordinary thing to do, and the previous instance's socket is not
+        // always released by the time the new one asks for it — a single short
+        // retry left the restarted engine silently unreachable.
         var err = _listener.Listen((ushort)Port, "127.0.0.1");
-        if (err != Error.Ok)
+        for (int attempt = 0; err != Error.Ok && attempt < 6; attempt++)
         {
-            System.Threading.Thread.Sleep(500); // 500ms wait for socket TIME_WAIT release
+            System.Threading.Thread.Sleep(500);
             err = _listener.Listen((ushort)Port, "127.0.0.1");
         }
 
-        if (err != Error.Ok)
-            GD.PushError($"tag bus could not listen on port {Port}: {err}");
+        IsListening = err == Error.Ok;
+        if (!IsListening)
+        {
+            // Almost always a second engine already running. Worth saying so:
+            // the scene still renders and still simulates, so without this the
+            // window looks perfectly healthy and no controller can ever reach
+            // it — which reads as "the PLC connection is broken".
+            GD.PushError($"tag bus could not listen on port {Port}: {err}. " +
+                         "Another FactoryForge engine is probably already running — " +
+                         "close it, or this instance will render but no driver can connect.");
+        }
         else
+        {
             GD.Print($"tag bus listening on ws://127.0.0.1:{Port}/tagbus");
+        }
     }
 
     public override void _Process(double delta)

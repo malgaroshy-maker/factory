@@ -349,3 +349,67 @@ inspector's Name field the way a user would. The second reported a stale value
 that turned out to be the probe's fault — `QueueFree` is deferred, so a
 same-frame search finds the old LineEdit. Worth remembering before believing a
 probe over the code.
+
+---
+
+# 2026-08-12 (later still) — a test plan, and what writing it found
+
+`docs/TEST_PLAN.md` describes what is covered; `tools/test_plan.py` runs all of
+it in one command and exits non-zero on failure. **20 checks, all passing, 227s,
+no PLC required.**
+
+The shape is deliberate. Three layers fail differently, and this project has
+twice shipped something broken while the tests for one layer were green:
+
+- the Python sidecar fails by putting wrong values on the wire — pytest covers it
+- the C# engine fails with right values and wrong physics — self-tests cover it
+- **the seam** fails with both sides correct and nothing connected — and until
+  now nothing covered it at all
+
+## What it found in the engine
+
+**A second instance reported "ready" with no tag bus.** The bind failure was
+pushed as an error and then ignored; the scene rendered, the parts simulated,
+and no driver could ever connect. Someone hitting this goes and debugs their
+PLC. The startup line now says `[NO TAG BUS — port in use]`.
+
+**The engine could not be restarted promptly.** The previous instance's socket
+is not always released by the time the new one asks for it, and the retry was a
+single 500 ms attempt — so close-and-reopen produced a silently unreachable
+engine. Retried over ~3 s now.
+
+**Godot hangs when its stdout is a pipe nobody drains**, and it fills that
+buffer *before* binding the bus. Measured: inherited stdout or a file, port open
+in 0.25 s; bare `Popen(stdout=PIPE)`, never opens. `subprocess.run` is safe
+because `communicate()` drains concurrently. This cost an hour of thinking the
+engine was broken when the harness was.
+
+## What it found in my own tests
+
+Both would have shipped as false confidence, which is worse than no test:
+
+**A determinism check that passed vacuously.** It compared two *undriven*
+deterministic runs — both sorted nothing, so it asserted `(0,0) == (0,0)`. It
+now drives both runs and requires the result to be non-zero as well as equal.
+
+**A physics check that tested the wrong thing.** It drove the rigid-body scene
+with `--driver mock` and expected cartons to sort. The mock driver is a
+passthrough with no control logic of its own; the logic lives in the script that
+uses it. An engine "driven by mock" alone correctly does nothing.
+
+## A result worth recording
+
+Once F5 drove the rigid-body scene with real control logic, it sorted **5 tall /
+5 short** — matching the deterministic contract exactly. That is not asserted
+and never will be, since Jolt promises no reproducibility (which is why
+`--deterministic` exists). But it means the emitter, sensors, pusher, chute and
+removers agree with the scripted model on this layout, which is the strongest
+evidence so far that the physics scene is not merely plausible-looking.
+
+## New self-test
+
+`--self-test=scene` saves and reloads a hand-written scene containing **one of
+every part type** with deliberately non-default settings, then re-saves and
+compares. Verified by reintroducing both historical save/load bugs — a sensor
+losing `visual_only`, a remover losing the tag it counts into — and confirming
+it names each one.
