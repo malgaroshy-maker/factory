@@ -22,8 +22,28 @@ public sealed class SortingScene
     public const double BoxLength = 0.2;
     public const double SensorWindow = BoxLength;
     public const double BeltSpeed = 0.5;
+
+    /// <summary>Half the width of the pusher's face plate along the belt. While
+    /// the plate is across the lane it is an obstruction of this size.</summary>
+    public const double PlateHalfWidth = 0.17;
+
+    /// <summary>
+    /// Belt transport speed, in m/s. Separate from the <see cref="BeltSpeed"/>
+    /// default so the conveyor part's speed property actually drives the
+    /// simulation — otherwise changing it in the inspector only altered how fast
+    /// the tread texture scrolled.
+    /// </summary>
+    public double TransportSpeed { get; set; } = BeltSpeed;
     public const double PusherTravelTime = 0.3;
     public const double PusherCatch = 0.15;
+
+    /// <summary>Grid lane the diverter and chute sit on, one cell either side of
+    /// the belt centre line. The pusher is at -ChuteLane, the chute at +ChuteLane.</summary>
+    public const double ChuteLane = 0.5;
+
+    /// <summary>How far a diverted box travels down the chute before it is
+    /// counted and removed.</summary>
+    public const double ChuteTravel = 0.55;
 
     public const double ShortHeight = 0.1;
     public const double TallHeight = 0.3;
@@ -94,12 +114,42 @@ public sealed class SortingScene
     {
         if (!(bool)Tags.Visible("conveyor.rotate")) return;
 
+        // A held-out pusher is a wall across the lane, not a magic diverter:
+        // boxes that were not swept by the stroke pile up behind its face plate.
+        double plateFace = PusherPos - PlateHalfWidth - BoxLength / 2;
+        bool plateAcross = _pusherExtension >= 0.5;
+
+        // Front box first, so each one can be stopped by whatever is ahead of it.
+        // Boxes are appended as they are emitted, so index 0 is furthest along.
+        double queueTail = double.PositiveInfinity;
+
+        for (int i = 0; i < Boxes.Count; i++)
+        {
+            var box = Boxes[i];
+            if (box.IsDiverted) continue;
+
+            double advanced = box.Position + TransportSpeed * dt;
+
+            // Cartons on a belt do not interpenetrate; they accumulate. Boxes
+            // are in emission order, so this one is always behind the last.
+            advanced = System.Math.Min(advanced, queueTail);
+
+            // The test is against the plate's *centre*, not its face: a box held
+            // at the face is still upstream and must stay held. Comparing with
+            // the face let every blocked box slip through on the next tick, once
+            // its position was exactly equal to it.
+            if (plateAcross && box.Position < PusherPos)
+                advanced = System.Math.Min(advanced, plateFace);
+
+            box.Position = advanced;
+            queueTail = box.Position - BoxLength;
+        }
+
         for (int i = Boxes.Count - 1; i >= 0; i--)
         {
             var box = Boxes[i];
             if (!box.IsDiverted)
             {
-                box.Position += BeltSpeed * dt;
                 if (box.Position >= RemoverPos)
                 {
                     SortedShort.Add(box);
@@ -108,8 +158,8 @@ public sealed class SortingScene
             }
             else
             {
-                box.ChutePosition += BeltSpeed * 0.8 * dt;
-                if (box.ChutePosition >= 0.55)
+                box.ChutePosition += TransportSpeed * 0.8 * dt;
+                if (box.ChutePosition >= ChuteTravel)
                 {
                     SortedTall.Add(box);
                     Boxes.RemoveAt(i);
@@ -120,6 +170,7 @@ public sealed class SortingScene
 
     private void StepPusher(double dt)
     {
+        double previous = _pusherExtension;
         double target = (bool)Tags.Visible("pusher.extend") ? 1.0 : 0.0;
         double step = dt / PusherTravelTime;
         if (_pusherExtension < target) _pusherExtension = System.Math.Min(target, _pusherExtension + step);
@@ -128,7 +179,13 @@ public sealed class SortingScene
         Tags.Set("pusher.extended", _pusherExtension >= 1.0);
         Tags.Set("pusher.retracted", _pusherExtension <= 0.0);
 
-        if (_pusherExtension < 0.5) return;
+        // Only the *stroke* diverts. A plate that is already across the lane
+        // cannot shove anything sideways — it just stands in the way, which is
+        // what StepBelt treats it as. Holding the pusher out therefore jams the
+        // line instead of teleporting every arriving box onto the chute.
+        bool stroking = _pusherExtension > previous;
+        if (!stroking) return;
+
         for (int i = 0; i < Boxes.Count; i++)
         {
             var box = Boxes[i];

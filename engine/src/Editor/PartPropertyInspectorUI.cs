@@ -64,18 +64,41 @@ public partial class PartPropertyInspectorUI : Control
         header.AddThemeFontSizeOverride("font_size", 13);
         _contentContainer.AddChild(header);
 
-        if (node is ConveyorBelt belt)
+        // Every property here must actually reach the simulation. Anything whose
+        // value is only read when the part is built needs a Rebuild() alongside
+        // it, or the slider moves and nothing happens.
+        if (node is WeighingConveyor weighBelt)
         {
-            AddSliderProperty("Conveyor Speed (m/s)", belt.Speed, 0.1f, 2.0f, 0.1f, (val) => belt.Speed = val);
+            AddSliderProperty("Belt Speed (m/s)", weighBelt.Speed, 0.05f, 2.0f, 0.05f,
+                              val => weighBelt.Speed = val);
+        }
+        else if (node is ConveyorBelt belt)
+        {
+            AddSliderProperty("Belt Speed (m/s)", belt.Speed, 0.05f, 2.0f, 0.05f,
+                              val => belt.Speed = val);
+            AddSliderProperty("Surface Friction", belt.SurfaceFriction, 0.05f, 1.5f, 0.05f,
+                              val => belt.SurfaceFriction = val);
         }
         else if (node is PhotoelectricSensor sensor)
         {
-            AddSliderProperty("Sensor Range (m)", sensor.Range, 0.1f, 2.0f, 0.05f, (val) => sensor.Range = val);
+            AddSliderProperty("Beam Range (m)", sensor.Range, 0.1f, 2.0f, 0.05f,
+                              val => { sensor.Range = val; sensor.Rebuild(); });
+            AddSliderProperty("Beam Height (m)", sensor.HeightAboveBelt, 0.01f, 0.6f, 0.01f,
+                              val => { sensor.HeightAboveBelt = val; sensor.Rebuild(); });
         }
         else if (node is PusherMechanism pusher)
         {
-            AddSliderProperty("Stroke Speed", pusher.ExtendSpeed, 0.5f, 5.0f, 0.2f, (val) => pusher.ExtendSpeed = val);
-            AddSliderProperty("Stroke Length (m)", pusher.StrokeLength, 0.1f, 1.0f, 0.05f, (val) => pusher.StrokeLength = val);
+            AddSliderProperty("Stroke Speed (m/s)", pusher.ExtendSpeed, 0.2f, 5.0f, 0.1f,
+                              val => pusher.ExtendSpeed = val);
+            AddSliderProperty("Stroke Length (m)", pusher.StrokeLength, 0.1f, 1.0f, 0.05f,
+                              val => pusher.StrokeLength = val);
+        }
+        else if (node is Chute chute)
+        {
+            AddSliderProperty("Incline (deg)", chute.InclineAngleDegrees, 5.0f, 55.0f, 1.0f,
+                              val => { chute.InclineAngleDegrees = val; chute.Rebuild(); });
+            AddSliderProperty("Surface Friction", chute.SurfaceFriction, 0.02f, 1.0f, 0.02f,
+                              val => { chute.SurfaceFriction = val; chute.Rebuild(); });
         }
     }
 

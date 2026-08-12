@@ -11,6 +11,9 @@ public partial class Remover : Area3D
 
     private CollisionShape3D _collisionShape = null!;
 
+    /// <summary>Boxes despawned since the scene started.</summary>
+    public int RemovedCount { get; private set; }
+
     public override void _Ready()
     {
         _collisionShape = new CollisionShape3D
@@ -26,6 +29,7 @@ public partial class Remover : Area3D
     {
         if (body is BoxPhysics box)
         {
+            RemovedCount++;
             box.QueueFree();
         }
     }

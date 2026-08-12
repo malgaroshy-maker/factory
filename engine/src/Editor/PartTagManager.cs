@@ -16,15 +16,71 @@ public static class PartTagManager
         TypeCounters.Clear();
     }
 
-    public static string RegisterPartTags(Node3D partNode, string partType, TagTable tags)
+    /// <summary>Does the table already hold tags for this instance?</summary>
+    public static bool HasTagsFor(string instanceId, TagTable tags)
+    {
+        string prefix = instanceId + ".";
+        foreach (var tag in tags)
+        {
+            if (tag.Id.StartsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Remove every tag this manager registered for an instance. Ids are always
+    /// "&lt;instanceId&gt;.&lt;suffix&gt;", so the prefix identifies them without
+    /// needing to know which suffixes the part type used.
+    /// </summary>
+    public static void UnregisterPartTags(string instanceId, TagTable tags)
+    {
+        string prefix = instanceId + ".";
+        var doomed = new List<string>();
+        foreach (var tag in tags)
+        {
+            if (tag.Id.StartsWith(prefix)) doomed.Add(tag.Id);
+        }
+        foreach (var id in doomed) tags.Remove(id);
+    }
+
+    /// <summary>
+    /// Register the tags a part type exposes.
+    /// </summary>
+    /// <param name="preferredId">Id to reuse instead of minting a fresh one —
+    /// how a loaded scene keeps the wiring it was saved with. Without it, every
+    /// load renamed the parts and left the reloaded scene driven by nothing.</param>
+    /// <returns>The instance id, and whether this call actually created the tags.
+    /// It did not when they already existed, which means the part is a view of
+    /// tags something else owns (the default scene's belt and sensors), and the
+    /// caller must not delete them with the part.</returns>
+    public static (string Id, bool Owns) RegisterPartTags(Node3D partNode, string partType,
+                                                          TagTable tags, string? preferredId = null)
     {
         if (!TypeCounters.ContainsKey(partType))
             TypeCounters[partType] = 0;
 
-        TypeCounters[partType]++;
-        int index = TypeCounters[partType];
-        string instanceId = $"{partType.ToLower()}_{index}";
+        string instanceId;
+        if (preferredId is { Length: > 0 })
+        {
+            instanceId = preferredId;
+            // Keep auto-numbering ahead of ids that arrived from a file, so a
+            // part placed after a load cannot collide with one from it.
+            int underscore = preferredId.LastIndexOf('_');
+            if (underscore >= 0 && int.TryParse(preferredId[(underscore + 1)..], out int loaded))
+                TypeCounters[partType] = System.Math.Max(TypeCounters[partType], loaded);
+        }
+        else
+        {
+            TypeCounters[partType]++;
+            instanceId = $"{partType.ToLower()}_{TypeCounters[partType]}";
+        }
 
+        // Tags already under this prefix belong to whoever created them first —
+        // the simulation, for the default scene's belt and sensors. Adopt them
+        // rather than re-adding (TagTable.Add throws on a duplicate id).
+        if (HasTagsFor(instanceId, tags)) return (instanceId, false);
+
+        int index = TypeCounters[partType];
         switch (partType)
         {
             case "ConveyorBelt":
@@ -71,6 +127,6 @@ public static class PartTagManager
                 break;
         }
 
-        return instanceId;
+        return (instanceId, true);
     }
 }

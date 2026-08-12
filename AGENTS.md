@@ -89,6 +89,9 @@ cd engine && dotnet build
 "<GODOT>" --path engine/ --resolution 1600x900 -- \
     --duration=26 --screenshot=C:/tmp/shot.png --screenshot-at=18
 
+# Rigid-body scene (Jolt solving real contacts) instead of the fixed-timestep one
+"<GODOT>" --path engine/ -- --physics --duration=40
+
 # Parity check: unchanged Python sidecar drives the C# engine
 # (start the engine first, then:)
 python tools/drive_engine.py
@@ -106,6 +109,23 @@ cd sidecar && python -m factoryforge_sidecar browse opc.tcp://192.168.1.20:4840
 ```
 
 ---
+
+## Two conventions the parts depend on
+
+**Every part's origin sits on the work plane** (`PartLayout.WorkPlaneY`, y = 0.5),
+and each part offsets its own geometry from there — sensor posts and the pusher
+pedestal reach down to the floor, the chute's deck hangs below and forward of its
+anchor. That is why the scene editor can snap X/Z to the 0.5 m grid, pin Y, and
+have any part land correctly. Never bake a mounting height into a scene position.
+
+**A part's instance id is a tag *prefix*, never a whole tag name.** The dispatch
+in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
+`"conveyor.rotate"` looks up `conveyor.rotate.rotate` and silently disables it.
+
+**`--physics` is not reproducible, by design.** The default scene advances by a
+fixed timestep and is the regression contract (`tools/drive_engine.py` →
+`tall=5 short=5`); `--physics` is Jolt solving contacts. Use it to judge how
+parts behave, never to assert counts.
 
 ## Hard-won gotchas — these cost hours, do not rediscover them
 

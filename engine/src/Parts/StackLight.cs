@@ -17,6 +17,11 @@ public partial class StackLight : Node3D
 
     public override void _Ready()
     {
+        // Geometry is authored from the floor up; the part origin is on the work
+        // plane like every other part, so the whole tower drops to stand on it.
+        var column = new Node3D { Name = "Tower", Position = new Vector3(0, -PartLayout.FloorDrop, 0) };
+        AddChild(column);
+
         var postMat = new StandardMaterial3D
         {
             AlbedoColor = new Color(0.25f, 0.25f, 0.28f),
@@ -31,17 +36,18 @@ public partial class StackLight : Node3D
             Position = new Vector3(0, 0.35f, 0),
             MaterialOverride = postMat,
         };
-        AddChild(post);
+        column.AddChild(post);
 
-        // Green lamp dome (top)
+        // Lamps stack red-amber-green from the top, the industrial convention.
+        // Green lamp dome (bottom)
         _greenMat = CreateLampMaterial(new Color(0.1f, 0.4f, 0.1f));
         _greenLampMesh = new MeshInstance3D
         {
             Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.08f },
-            Position = new Vector3(0, 0.65f, 0),
+            Position = new Vector3(0, 0.45f, 0),
             MaterialOverride = _greenMat,
         };
-        AddChild(_greenLampMesh);
+        column.AddChild(_greenLampMesh);
 
         // Yellow lamp dome (middle)
         _yellowMat = CreateLampMaterial(new Color(0.4f, 0.35f, 0.1f));
@@ -51,17 +57,17 @@ public partial class StackLight : Node3D
             Position = new Vector3(0, 0.55f, 0),
             MaterialOverride = _yellowMat,
         };
-        AddChild(_yellowLampMesh);
+        column.AddChild(_yellowLampMesh);
 
-        // Red lamp dome (bottom)
+        // Red lamp dome (top)
         _redMat = CreateLampMaterial(new Color(0.4f, 0.1f, 0.1f));
         _redLampMesh = new MeshInstance3D
         {
             Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.08f },
-            Position = new Vector3(0, 0.45f, 0),
+            Position = new Vector3(0, 0.65f, 0),
             MaterialOverride = _redMat,
         };
-        AddChild(_redLampMesh);
+        column.AddChild(_redLampMesh);
     }
 
     private static StandardMaterial3D CreateLampMaterial(Color baseColor)

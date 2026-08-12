@@ -52,12 +52,20 @@ public partial class PhysicsScene : Node3D
 
     private void BuildPhysicsScene()
     {
+        // Same staging and the same grid convention as the deterministic scene:
+        // every part on a grid point at PartLayout.WorkPlaneY.
+        View.StudioEnvironment.AddEnvironment(this);
+        View.StudioEnvironment.AddFloor(this);
+
+        const float y = PartLayout.WorkPlaneY;
+        const float lane = 0.5f;
+
         // 1. Conveyor Belt (Surface velocity constraint)
         _belt = new ConveyorBelt
         {
             Name = "Belt",
-            Position = new Vector3(1.5f, 0.5f, 0),
-            Size = new Vector3(3.0f, 0.12f, 0.5f),
+            Position = new Vector3(1.5f, y, 0),
+            Size = new Vector3(3.0f, PartLayout.BeltThickness, 0.5f),
             Speed = 0.5f,
         };
         AddChild(_belt);
@@ -66,9 +74,10 @@ public partial class PhysicsScene : Node3D
         _pusher = new PusherMechanism
         {
             Name = "Pusher",
-            Position = new Vector3(2.5f, 0.65f, 0),
-            StrokeLength = 0.35f,
-            ExtendSpeed = 2.0f,
+            Position = new Vector3(2.5f, y, -lane),
+            StrokeLength = 0.55f,
+            // ~0.45 s for the full stroke, the pace of a real pneumatic diverter.
+            ExtendSpeed = 1.2f,
         };
         AddChild(_pusher);
 
@@ -76,16 +85,18 @@ public partial class PhysicsScene : Node3D
         _sensorLow = new PhotoelectricSensor
         {
             Name = "SensorLow",
-            Position = new Vector3(1.5f, 0.60f, 0.37f),
-            Range = 0.60f,
+            Position = new Vector3(1.5f, y, lane),
+            Range = 0.75f,
+            HeightAboveBelt = 0.04f,
         };
         AddChild(_sensorLow);
 
         _sensorHigh = new PhotoelectricSensor
         {
             Name = "SensorHigh",
-            Position = new Vector3(2.0f, 0.80f, 0.37f),
-            Range = 0.60f,
+            Position = new Vector3(2.0f, y, lane),
+            Range = 0.75f,
+            HeightAboveBelt = 0.20f,
         };
         AddChild(_sensorHigh);
 
@@ -93,26 +104,22 @@ public partial class PhysicsScene : Node3D
         _emitter = new Emitter
         {
             Name = "Emitter",
-            Position = new Vector3(0.0f, 0.5f, 0),
+            Position = new Vector3(0.0f, y, 0),
         };
         AddChild(_emitter);
 
-        // 5. Chute (12-degree inclined physics ramp)
-        var chuteSize = new Vector3(0.5f, 0.04f, 0.6f);
-        var chuteBody = new StaticBody3D
+        // 5. Chute — the real part, so its incline and friction stay in one place
+        AddChild(new Chute
         {
             Name = "Chute",
-            Position = new Vector3(2.5f, 0.45f, 0.60f),
-        };
-        chuteBody.RotateX(Mathf.DegToRad(12));
-        chuteBody.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = chuteSize } });
-        AddChild(chuteBody);
+            Position = new Vector3(2.5f, y, lane),
+        });
 
         // 6. Area3D Removers (Catch zones)
         _removerShort = new Remover
         {
             Name = "RemoverShort",
-            Position = new Vector3(3.2f, 0.30f, 0),
+            Position = new Vector3(3.0f, 0.30f, 0),
             ZoneSize = new Vector3(0.5f, 0.5f, 0.6f),
         };
         _removerShort.BodyEntered += (body) =>
@@ -128,7 +135,7 @@ public partial class PhysicsScene : Node3D
         _removerTall = new Remover
         {
             Name = "RemoverTall",
-            Position = new Vector3(2.5f, 0.10f, 0.95f),
+            Position = new Vector3(2.5f, 0.10f, 1.0f),
             ZoneSize = new Vector3(0.6f, 0.4f, 0.6f),
         };
         _removerTall.BodyEntered += (body) =>

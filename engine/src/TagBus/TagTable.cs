@@ -25,6 +25,17 @@ public sealed class TagTable : IEnumerable<Tag>
 
     public bool Contains(string id) => _tags.ContainsKey(id);
 
+    /// <summary>
+    /// Drop a tag and any force pinned on it. Used when a part is deleted: its
+    /// tags have to go with it, or re-placing a part of the same type collides
+    /// with the ids the old one left behind and <see cref="Add"/> throws.
+    /// </summary>
+    public bool Remove(string id)
+    {
+        _forced.Remove(id);
+        return _tags.Remove(id);
+    }
+
     public Tag? Get(string id) => _tags.TryGetValue(id, out var t) ? t : null;
 
     public Tag this[string id] => _tags[id];

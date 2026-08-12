@@ -40,57 +40,45 @@ public partial class SelectionGizmo : Node3D
 
         GlobalPosition = targetNode.GlobalPosition;
         GlobalRotation = targetNode.GlobalRotation;
-        RebuildOutline();
+        RebuildOutline(PartBounds.Measure(targetNode));
         _outlineMesh.Visible = true;
     }
 
-    private void RebuildOutline()
+    private void RebuildOutline(Aabb bounds)
     {
         if (_outlineMesh.Mesh is not ImmediateMesh mesh) return;
+
+        // A little breathing room, so the outline reads as a selection rather
+        // than as z-fighting against the part's own faces.
+        bounds = bounds.Grow(0.02f);
+
+        Vector3 lo = bounds.Position;
+        Vector3 hi = bounds.End;
 
         mesh.ClearSurfaces();
         mesh.SurfaceBegin(Mesh.PrimitiveType.Lines);
 
-        Vector3 ext = new Vector3(0.8f, 0.4f, 0.4f);
+        // Four verticals plus the top and bottom rings.
+        var corners = new[]
+        {
+            new Vector2(lo.X, lo.Z), new Vector2(hi.X, lo.Z),
+            new Vector2(hi.X, hi.Z), new Vector2(lo.X, hi.Z),
+        };
 
-        // Top rectangle
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, -ext.Z));
+        for (int i = 0; i < 4; i++)
+        {
+            var a = corners[i];
+            var b = corners[(i + 1) % 4];
 
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, ext.Z));
+            mesh.SurfaceAddVertex(new Vector3(a.X, hi.Y, a.Y));
+            mesh.SurfaceAddVertex(new Vector3(b.X, hi.Y, b.Y));
 
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, ext.Z));
+            mesh.SurfaceAddVertex(new Vector3(a.X, lo.Y, a.Y));
+            mesh.SurfaceAddVertex(new Vector3(b.X, lo.Y, b.Y));
 
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, -ext.Z));
-
-        // Bottom rectangle
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, -ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, -ext.Z));
-
-        // Pillars
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, -ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, -ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, -ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(ext.X, -ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(ext.X, ext.Y, ext.Z));
-
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, -ext.Y, ext.Z));
-        mesh.SurfaceAddVertex(new Vector3(-ext.X, ext.Y, ext.Z));
+            mesh.SurfaceAddVertex(new Vector3(a.X, lo.Y, a.Y));
+            mesh.SurfaceAddVertex(new Vector3(a.X, hi.Y, a.Y));
+        }
 
         mesh.SurfaceEnd();
     }

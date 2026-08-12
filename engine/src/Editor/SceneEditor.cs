@@ -15,13 +15,31 @@ public partial class SceneEditor : Node3D
     [Export] public VoxelGrid Grid { get; set; } = null!;
     public TagTable Tags { get; set; } = null!;
     public TagInspectorUI TagInspector { get; set; } = null!;
+
+    /// <summary>The deterministic scene, when one is running. A conveyor part
+    /// that is a view of it drives its transport speed, so changing the belt's
+    /// speed in the inspector actually moves the boxes rather than only
+    /// scrolling the tread texture faster.</summary>
+    public SortingScene? Scene { get; set; }
     public PartPropertyInspectorUI PropertyInspector { get; set; } = null!;
 
     private string? _activePartType;
     private Node3D? _previewNode;
     private float _previewRotationY;
-    private (Node3D node, string instanceId, string partType)? _selectedPart;
-    private readonly List<(Node3D node, string instanceId, string partType)> _placedParts = new();
+    /// <summary>
+    /// A part in the scene. <paramref name="OwnsTags"/> distinguishes a part the
+    /// editor registered tags for from one that is only a *view* of tags the
+    /// simulation owns: deleting the default belt must not delete
+    /// conveyor.rotate, which SortingScene writes on every tick.
+    /// </summary>
+    private sealed record PlacedPart(Node3D Node, string InstanceId, string PartType, bool OwnsTags);
+
+    private PlacedPart? _selectedPart;
+    private readonly List<PlacedPart> _placedParts = new();
+
+    /// <summary>Emitters whose emit tag is currently high, for edge detection.</summary>
+    private readonly HashSet<string> _emitEdges = new();
+    private bool _emitAlternate;
 
     public void SetPlacementPart(string partType)
     {
@@ -68,7 +86,7 @@ public partial class SceneEditor : Node3D
             {
                 Redo();
             }
-            else if (keyEvent.Keycode == Key.M && _selectedPart.HasValue)
+            else if (keyEvent.Keycode == Key.M && _selectedPart is not null)
             {
                 StartMoveSelectedPart();
             }
@@ -93,30 +111,124 @@ public partial class SceneEditor : Node3D
 
     public void Undo()
     {
-        if (_history.Undo())
-        {
-            GD.Print("Undid last editor action");
-        }
+        GD.Print(_history.Undo() ? "Undid last editor action" : "Nothing to undo");
     }
 
     public void Redo()
     {
-        if (_history.Redo())
+        GD.Print(_history.Redo() ? "Redid last editor action" : "Nothing to redo");
+    }
+
+    /// <summary>
+    /// Place and delete as undoable steps. A freed node cannot be revived, so a
+    /// command stores what the part *was* — type and transform — and rebuilds it
+    /// on demand. That makes place and delete exact inverses of each other.
+    /// </summary>
+    private sealed class PartCommand : IEditorCommand
+    {
+        private readonly SceneEditor _editor;
+        private readonly string _partType;
+        private readonly Vector3 _position;
+        private readonly Vector3 _rotation;
+        private readonly bool _isPlacement;
+
+        /// <summary>The id the part was given, remembered so undo/redo restores
+        /// the same identity. Without it a redo minted a fresh id and silently
+        /// broke any driver wiring pointing at the old one.</summary>
+        private string? _instanceId;
+
+        public PartCommand(SceneEditor editor, string partType, Vector3 position,
+                           Vector3 rotation, bool isPlacement, string? instanceId = null)
         {
-            GD.Print("Redid last editor action");
+            _editor = editor;
+            _partType = partType;
+            _position = position;
+            _rotation = rotation;
+            _isPlacement = isPlacement;
+            _instanceId = instanceId;
         }
+
+        public void Execute()
+        {
+            if (_isPlacement) Respawn();
+            else _editor.RemovePartAt(_partType, _position);
+        }
+
+        public void Undo()
+        {
+            if (_isPlacement) _editor.RemovePartAt(_partType, _position);
+            else Respawn();
+        }
+
+        private void Respawn()
+        {
+            var placed = _editor.SpawnPart(_partType, _position, _rotation, _instanceId);
+            _instanceId ??= placed?.InstanceId;
+        }
+    }
+
+    /// <summary>Build, parent and register a part. Returns null if the type is
+    /// unknown.</summary>
+    private PlacedPart? SpawnPart(string partType, Vector3 position, Vector3 rotation,
+                                  string? preferredId = null)
+    {
+        var node = CreatePartNode(partType);
+        if (node is null) return null;
+
+        node.Position = position;
+        node.Rotation = rotation;
+        GetParent()?.AddChild(node);
+
+        string instanceId = "part";
+        bool owns = false;
+        if (Tags is not null)
+        {
+            (instanceId, owns) = PartTagManager.RegisterPartTags(node, partType, Tags, preferredId);
+            TagInspector?.RebuildTagList();
+        }
+
+        var placed = new PlacedPart(node, instanceId, partType, owns);
+        _placedParts.Add(placed);
+        return placed;
+    }
+
+    /// <summary>Undo counterpart to <see cref="SpawnPart"/>: drops the most
+    /// recently added part of this type sitting at this position.</summary>
+    private void RemovePartAt(string partType, Vector3 position)
+    {
+        for (int i = _placedParts.Count - 1; i >= 0; i--)
+        {
+            var part = _placedParts[i];
+            if (part.PartType != partType) continue;
+            if (!part.Node.Position.IsEqualApprox(position)) continue;
+
+            if (_selectedPart == part) DeselectPart();
+            ForgetPart(part);
+            TagInspector?.RebuildTagList();
+            return;
+        }
+    }
+
+    /// <summary>Detach a part from the scene, taking its tags with it if it owns
+    /// them. A view of simulation-owned tags leaves them alone.</summary>
+    private void ForgetPart(PlacedPart part)
+    {
+        if (part.OwnsTags && Tags is not null)
+            PartTagManager.UnregisterPartTags(part.InstanceId, Tags);
+
+        part.Node.QueueFree();
+        _placedParts.Remove(part);
     }
 
     private void StartMoveSelectedPart()
     {
-        if (!_selectedPart.HasValue) return;
+        if (_selectedPart is not { } entry) return;
 
-        var entry = _selectedPart.Value;
-        SetPlacementPart(entry.partType);
+        SetPlacementPart(entry.PartType);
         if (_previewNode is not null)
         {
-            _previewNode.Position = entry.node.Position;
-            _previewNode.Rotation = entry.node.Rotation;
+            _previewNode.Position = entry.Node.Position;
+            _previewNode.Rotation = entry.Node.Rotation;
         }
 
         DeleteSelectedPart();
@@ -139,30 +251,27 @@ public partial class SceneEditor : Node3D
         var from = camera.ProjectRayOrigin(mousePos);
         var dir = camera.ProjectRayNormal(mousePos);
 
-        // Find nearest placed part hit by ray
-        float minDist = float.MaxValue;
-        (Node3D node, string instanceId, string partType)? hitPart = null;
+        // Pick the part the ray actually enters first. The previous test ranked
+        // by camera distance to a part's *origin* and accepted anything within a
+        // metre of it, which cannot separate parts that sit a cell apart on the
+        // same work plane — and made a 3 m belt clickable only near its middle.
+        float nearest = float.MaxValue;
+        PlacedPart? hitPart = null;
 
         foreach (var entry in _placedParts)
         {
-            float dist = entry.node.GlobalPosition.DistanceTo(from);
-            if (dist < minDist && dist < 15.0f)
-            {
-                var localPos = entry.node.GlobalPosition;
-                var proj = from + dir * ((localPos.Y - from.Y) / (dir.Y == 0 ? 0.001f : dir.Y));
-                if (proj.DistanceTo(localPos) < 1.0f)
-                {
-                    minDist = dist;
-                    hitPart = entry;
-                }
-            }
+            if (PartBounds.RayDistance(entry.Node, from, dir) is not { } distance) continue;
+            if (distance >= nearest) continue;
+
+            nearest = distance;
+            hitPart = entry;
         }
 
-        if (hitPart.HasValue)
+        if (hitPart is not null)
         {
             _selectedPart = hitPart;
-            _gizmo.AttachToNode(hitPart.Value.node);
-            PropertyInspector?.InspectNode(hitPart.Value.node, hitPart.Value.instanceId, hitPart.Value.partType);
+            _gizmo.AttachToNode(hitPart.Node);
+            PropertyInspector?.InspectNode(hitPart.Node, hitPart.InstanceId, hitPart.PartType);
         }
         else
         {
@@ -179,14 +288,16 @@ public partial class SceneEditor : Node3D
 
     private void DeleteSelectedPart()
     {
-        if (!_selectedPart.HasValue) return;
+        if (_selectedPart is not { } entry) return;
 
-        var entry = _selectedPart.Value;
-        entry.node.QueueFree();
-        _placedParts.Remove(entry);
-        GD.Print($"Deleted part '{entry.instanceId}'");
+        var position = entry.Node.Position;
+        var rotation = entry.Node.Rotation;
+        string partType = entry.PartType;
+        GD.Print($"Deleted part '{entry.InstanceId}'");
 
         DeselectPart();
+        _history.ExecuteCommand(new PartCommand(this, partType, position, rotation,
+                                                isPlacement: false, instanceId: entry.InstanceId));
         TagInspector?.RebuildTagList();
     }
 
@@ -194,53 +305,78 @@ public partial class SceneEditor : Node3D
     {
         ClearAllPlacedParts();
 
+        // The instance id is the tag *prefix*, never a whole tag name: the part
+        // dispatch in _Process appends the suffix ("conveyor" -> conveyor.rotate).
+        // Registering "conveyor.rotate" here silently disables the part, because
+        // "conveyor.rotate.rotate" matches nothing.
+        // Every part sits on a grid point at the work plane (see PartLayout):
+        // X and Z are multiples of the 0.5 m cell, Y is always WorkPlaneY. The
+        // scene constants are already on the grid, so the layout falls out of
+        // them — no hand-tuned offsets, and "Save Scene" round-trips cleanly.
+        const float y = PartLayout.WorkPlaneY;
+        const float lane = (float)SortingScene.ChuteLane;
+
         double length = SortingScene.RemoverPos - SortingScene.EmitterPos;
         var beltNode = new ConveyorBelt
         {
-            Position = new Vector3((float)(length / 2), 0.5f, 0),
-            Size = new Vector3((float)length, 0.12f, 0.5f),
-            Speed = 0.5f,
+            Position = new Vector3((float)(length / 2), y, 0),
+            Size = new Vector3((float)length, PartLayout.BeltThickness, 0.5f),
+            Speed = (float)SortingScene.BeltSpeed,
         };
         GetParent()?.AddChild(beltNode);
-        _placedParts.Add((beltNode, "conveyor.rotate", "ConveyorBelt"));
+        _placedParts.Add(new PlacedPart(beltNode, "conveyor", "ConveyorBelt", OwnsTags: false));
 
+        // Mounting heights are what makes the scene sort: the low beam sees every
+        // box, the high beam only clears the tall ones. Range reaches from the
+        // post across to the far belt edge.
         var sensorLowNode = new PhotoelectricSensor
         {
-            Position = new Vector3((float)SortingScene.SensorLowPos, 0.5f, 0.37f),
-            Range = 0.6f,
+            Position = new Vector3((float)SortingScene.SensorLowPos, y, lane),
+            Range = 0.75f,
+            HeightAboveBelt = 0.04f,
+            VisualOnly = true,
         };
         GetParent()?.AddChild(sensorLowNode);
-        _placedParts.Add((sensorLowNode, "sensor_low.detect", "PhotoelectricSensor"));
+        _placedParts.Add(new PlacedPart(sensorLowNode, "sensor_low", "PhotoelectricSensor", OwnsTags: false));
 
         var sensorHighNode = new PhotoelectricSensor
         {
-            Position = new Vector3((float)SortingScene.SensorHighPos, 0.5f, 0.37f),
-            Range = 0.6f,
+            Position = new Vector3((float)SortingScene.SensorHighPos, y, lane),
+            Range = 0.75f,
+            HeightAboveBelt = 0.20f,
+            VisualOnly = true,
         };
         GetParent()?.AddChild(sensorHighNode);
-        _placedParts.Add((sensorHighNode, "sensor_high.detect", "PhotoelectricSensor"));
+        _placedParts.Add(new PlacedPart(sensorHighNode, "sensor_high", "PhotoelectricSensor", OwnsTags: false));
 
+        // Beside the belt, not on it: the pusher's origin is its mounting point
+        // and it strokes towards +Z, across the lane and onto the chute.
+        const float pusherStroke = 0.55f;
         var pusherNode = new PusherMechanism
         {
-            Position = new Vector3((float)SortingScene.PusherPos, 0.65f, 0),
-            StrokeLength = 0.35f,
+            Position = new Vector3((float)SortingScene.PusherPos, y, -lane),
+            StrokeLength = pusherStroke,
+            // Match the simulated stroke, so the plate hits its limit exactly
+            // when the scene reports pusher.extended.
+            ExtendSpeed = pusherStroke / (float)SortingScene.PusherTravelTime,
+            VisualOnly = true,
         };
         GetParent()?.AddChild(pusherNode);
-        _placedParts.Add((pusherNode, "pusher.extend", "PusherMechanism"));
+        _placedParts.Add(new PlacedPart(pusherNode, "pusher", "PusherMechanism", OwnsTags: false));
 
         var chuteNode = new Chute
         {
-            Position = new Vector3((float)SortingScene.PusherPos, 0.45f, 0.60f),
+            Position = new Vector3((float)SortingScene.PusherPos, y, lane),
         };
         GetParent()?.AddChild(chuteNode);
-        _placedParts.Add((chuteNode, "chute_1", "Chute"));
+        _placedParts.Add(new PlacedPart(chuteNode, "chute_1", "Chute", OwnsTags: false));
 
         var lightNode = new StackLight
         {
-            Position = new Vector3(-0.18f, 0.0f, 0.36f),
+            Position = new Vector3(-lane, y, lane),
         };
         GetParent()?.AddChild(lightNode);
-        _placedParts.Add((lightNode, "stack_light.green", "StackLight"));
+        _placedParts.Add(new PlacedPart(lightNode, "stack_light", "StackLight", OwnsTags: false));
 
         TagInspector?.RebuildTagList();
     }
@@ -248,14 +384,14 @@ public partial class SceneEditor : Node3D
     public void SaveSceneToFile(string path = "user://custom_scene.json")
     {
         var data = new SceneData { Name = "custom-factory-scene" };
-        foreach (var (node, instanceId, partType) in _placedParts)
+        foreach (var part in _placedParts)
         {
             data.Parts.Add(new PartInstanceData
             {
-                Id = instanceId,
-                Type = partType,
-                Position = new float[] { node.Position.X, node.Position.Y, node.Position.Z },
-                Rotation = new float[] { node.Rotation.X, node.Rotation.Y, node.Rotation.Z }
+                Id = part.InstanceId,
+                Type = part.PartType,
+                Position = new float[] { part.Node.Position.X, part.Node.Position.Y, part.Node.Position.Z },
+                Rotation = new float[] { part.Node.Rotation.X, part.Node.Rotation.Y, part.Node.Rotation.Z }
             });
         }
 
@@ -289,8 +425,9 @@ public partial class SceneEditor : Node3D
                 node.Rotation = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
                 GetParent()?.AddChild(node);
 
-                string instanceId = PartTagManager.RegisterPartTags(node, p.Type, Tags);
-                _placedParts.Add((node, instanceId, p.Type));
+                // Reuse the saved id so the reloaded scene keeps its wiring.
+                var (instanceId, owns) = PartTagManager.RegisterPartTags(node, p.Type, Tags, p.Id);
+                _placedParts.Add(new PlacedPart(node, instanceId, p.Type, owns));
             }
         }
 
@@ -300,9 +437,11 @@ public partial class SceneEditor : Node3D
 
     public void ClearAllPlacedParts()
     {
-        foreach (var (node, _, _) in _placedParts)
+        foreach (var part in _placedParts)
         {
-            node.QueueFree();
+            if (part.OwnsTags && Tags is not null)
+                PartTagManager.UnregisterPartTags(part.InstanceId, Tags);
+            part.Node.QueueFree();
         }
         _placedParts.Clear();
         PartTagManager.ResetCounters();
@@ -339,33 +478,22 @@ public partial class SceneEditor : Node3D
     {
         if (_previewNode is null || _activePartType is null) return;
 
-        var placedNode = CreatePartNode(_activePartType);
-        if (placedNode is not null)
-        {
-            placedNode.Position = _previewNode.Position;
-            placedNode.Rotation = _previewNode.Rotation;
-            GetParent()?.AddChild(placedNode);
-
-            string instanceId = "part";
-            if (Tags is not null)
-            {
-                instanceId = PartTagManager.RegisterPartTags(placedNode, _activePartType, Tags);
-                TagInspector?.RebuildTagList();
-            }
-
-            _placedParts.Add((placedNode, instanceId, _activePartType));
-            GD.Print($"Placed component '{_activePartType}' (id: {instanceId}) at {placedNode.Position}");
-        }
-
+        // Through the history, so Ctrl+Z can take it back. Nothing used to be
+        // recorded at all, which left undo/redo as buttons that did nothing.
+        _history.ExecuteCommand(new PartCommand(this, _activePartType,
+                                                _previewNode.Position,
+                                                _previewNode.Rotation,
+                                                isPlacement: true));
+        GD.Print($"Placed component '{_activePartType}' at {_previewNode.Position}");
         ClearPreview();
     }
 
-    public override void _Process(double delta)
+    public override void _PhysicsProcess(double delta)
     {
         if (Tags is null) return;
         float dt = (float)delta;
 
-        foreach (var (node, instanceId, partType) in _placedParts)
+        foreach (var (node, instanceId, partType, _) in _placedParts)
         {
             switch (partType)
             {
@@ -373,6 +501,8 @@ public partial class SceneEditor : Node3D
                     if (node is ConveyorBelt belt && Tags.Contains($"{instanceId}.rotate"))
                     {
                         belt.SetRunning((bool)Tags.Visible($"{instanceId}.rotate"));
+                        if (Scene is not null && instanceId == "conveyor")
+                            Scene.TransportSpeed = belt.Speed;
                     }
                     break;
 
@@ -381,15 +511,49 @@ public partial class SceneEditor : Node3D
                     {
                         bool extend = (bool)Tags.Visible($"{instanceId}.extend");
                         pusher.UpdateExtension(extend, dt);
-                        Tags.Set($"{instanceId}.extended", pusher.IsExtended);
-                        Tags.Set($"{instanceId}.retracted", pusher.IsRetracted);
+                        // A VisualOnly pusher mirrors a pusher the scene already
+                        // simulates, so the scene keeps the limit switches.
+                        if (!pusher.VisualOnly)
+                        {
+                            Tags.Set($"{instanceId}.extended", pusher.IsExtended);
+                            Tags.Set($"{instanceId}.retracted", pusher.IsRetracted);
+                        }
                     }
                     break;
 
                 case "PhotoelectricSensor":
                     if (node is PhotoelectricSensor sensor && Tags.Contains($"{instanceId}.detect"))
                     {
-                        Tags.Set($"{instanceId}.detect", sensor.IsDetected);
+                        if (sensor.VisualOnly)
+                            sensor.SetBeamActive((bool)Tags.Visible($"{instanceId}.detect"));
+                        else
+                            Tags.Set($"{instanceId}.detect", sensor.IsDetected);
+                    }
+                    break;
+
+                case "Emitter":
+                    // Rising edge only: holding the tag high must not fire a box
+                    // every frame, which is how a real emitter input behaves.
+                    if (node is Emitter emitter && Tags.Contains($"{instanceId}.emit"))
+                    {
+                        bool emit = (bool)Tags.Visible($"{instanceId}.emit");
+                        if (emit && !_emitEdges.Contains(instanceId))
+                        {
+                            _emitEdges.Add(instanceId);
+                            emitter.SpawnBox(_emitAlternate);
+                            _emitAlternate = !_emitAlternate;
+                        }
+                        else if (!emit)
+                        {
+                            _emitEdges.Remove(instanceId);
+                        }
+                    }
+                    break;
+
+                case "Remover":
+                    if (node is Remover remover && Tags.Contains($"{instanceId}.count"))
+                    {
+                        Tags.Set($"{instanceId}.count", remover.RemovedCount);
                     }
                     break;
 
@@ -408,8 +572,6 @@ public partial class SceneEditor : Node3D
                     {
                         if (Tags.Contains($"{instanceId}.green"))
                             light.SetGreenLamp((bool)Tags.Visible($"{instanceId}.green"));
-                        else if (Tags.Contains("stack_light.green"))
-                            light.SetGreenLamp((bool)Tags.Visible("stack_light.green"));
 
                         if (Tags.Contains($"{instanceId}.yellow"))
                             light.SetYellowLamp((bool)Tags.Visible($"{instanceId}.yellow"));
@@ -455,7 +617,7 @@ public partial class SceneEditor : Node3D
         {
             "ConveyorBelt" => new ConveyorBelt { Size = new Vector3(1.5f, 0.12f, 0.5f) },
             "PhotoelectricSensor" => new PhotoelectricSensor { Range = 0.6f },
-            "PusherMechanism" => new PusherMechanism { StrokeLength = 0.35f },
+            "PusherMechanism" => new PusherMechanism { StrokeLength = 0.45f },
             "Emitter" => new Emitter(),
             "Remover" => new Remover(),
             "ButtonPanel" => new ButtonPanel(),

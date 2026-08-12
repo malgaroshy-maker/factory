@@ -24,12 +24,11 @@ public partial class Main : Node
     private double _elapsed;
     private string? _screenshotPath;
     private double _screenshotAt = -1;
+    private bool _physicsMode;
+    private PhysicsScene? _physicsScene;
 
     public override void _Ready()
     {
-        _bus = new TagBusServer { Name = "TagBus", Tags = _scene.Tags, SceneName = _scene.Name };
-        AddChild(_bus);
-
         foreach (var arg in OS.GetCmdlineUserArgs())
         {
             if (arg.StartsWith("--duration="))
@@ -38,7 +37,33 @@ public partial class Main : Node
                 _screenshotPath = arg.Substring("--screenshot=".Length);
             else if (arg.StartsWith("--screenshot-at="))
                 _screenshotAt = arg.Substring("--screenshot-at=".Length).ToFloat();
+            else if (arg == "--physics")
+                _physicsMode = true;
         }
+
+        // --physics swaps the deterministic scene for the rigid-body one. It is
+        // opt-in precisely because it is *not* reproducible: the default scene
+        // advances by a fixed timestep and is the regression contract, whereas
+        // this one is Jolt solving real contacts. Use it to judge how the parts
+        // behave, not to assert counts.
+        if (_physicsMode)
+        {
+            _physicsScene = new PhysicsScene { Name = "PhysicsScene" };
+            AddChild(_physicsScene);
+            _bus = new TagBusServer
+            {
+                Name = "TagBus",
+                Tags = _physicsScene.Tags,
+                SceneName = _physicsScene.SceneName,
+            };
+            AddChild(_bus);
+            AddPhysicsModeView();
+            GD.Print("FactoryForge engine ready — PHYSICS mode (Jolt rigid bodies)");
+            return;
+        }
+
+        _bus = new TagBusServer { Name = "TagBus", Tags = _scene.Tags, SceneName = _scene.Name };
+        AddChild(_bus);
 
         // The renderer is optional: headless CI runs the same scene with no view
         // at all, which is why SceneView only ever reads simulation state.
@@ -66,6 +91,7 @@ public partial class Main : Node
                 Name = "SceneEditor",
                 Grid = voxelGrid,
                 Tags = _scene.Tags,
+                Scene = _scene,
                 TagInspector = inspectorUI,
                 PropertyInspector = propertyInspector
             };
@@ -93,6 +119,20 @@ public partial class Main : Node
         }
 
         GD.Print($"FactoryForge engine ready — scene '{_scene.Name}', {_scene.Tags.Count} tags");
+    }
+
+    /// <summary>Cameras and the tag inspector for physics mode; the scene builds
+    /// its own geometry, so there is no SceneView to drive.</summary>
+    private void AddPhysicsModeView()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+
+        AddChild(new OrbitCamera { Name = "OrbitCamera", Current = true });
+        AddChild(new FreeLookCamera { Name = "FreeLookCamera", Current = false });
+
+        var inspectorUI = new TagInspectorUI { Name = "TagInspectorUI" };
+        AddChild(inspectorUI);
+        inspectorUI.Setup(_physicsScene!.Tags);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -146,7 +186,9 @@ public partial class Main : Node
         int steps = 0;
         while (_accumulator >= interval && steps < MaxCatchUpSteps)
         {
-            _scene.Tick(interval);
+            // In physics mode the scene advances itself in _PhysicsProcess, on
+            // Jolt's clock; this loop only paces the bus.
+            if (!_physicsMode) _scene.Tick(interval);
             _bus.CountTick();
             _accumulator -= interval;
             steps++;
@@ -162,8 +204,12 @@ public partial class Main : Node
 
         if (_runFor > 0 && _elapsed >= _runFor)
         {
-            GD.Print($"done: tick={_bus.TickCount} tall={_scene.SortedTall.Count} " +
-                     $"short={_scene.SortedShort.Count} belt={_scene.Boxes.Count}");
+            if (_physicsMode)
+                GD.Print($"done: tick={_bus.TickCount} tall={_physicsScene!.TallCount} " +
+                         $"short={_physicsScene.ShortCount}");
+            else
+                GD.Print($"done: tick={_bus.TickCount} tall={_scene.SortedTall.Count} " +
+                         $"short={_scene.SortedShort.Count} belt={_scene.Boxes.Count}");
             GetTree().Quit();
         }
     }
