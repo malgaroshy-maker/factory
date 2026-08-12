@@ -22,7 +22,48 @@ public partial class Remover : Area3D
         };
         AddChild(_collisionShape);
 
+        BuildMarker();
         BodyEntered += OnBodyEntered;
+    }
+
+    /// <summary>
+    /// An outfeed gate marking the catch zone. The remover was a bare Area3D
+    /// with a collision shape and nothing to look at, so placing it from the
+    /// palette appeared to do nothing at all.
+    /// </summary>
+    private void BuildMarker()
+    {
+        var frameMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.55f, 0.57f, 0.60f),
+            Metallic = 0.35f,
+            Roughness = 0.50f,
+        };
+        var stripeMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.90f, 0.35f, 0.10f),
+            Roughness = 0.45f,
+        };
+
+        float halfZ = ZoneSize.Z / 2;
+        float top = ZoneSize.Y / 2;
+
+        foreach (int side in new[] { -1, 1 })
+        {
+            AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh { Size = new Vector3(0.05f, ZoneSize.Y, 0.05f) },
+                MaterialOverride = frameMat,
+                Position = new Vector3(0, 0, side * halfZ),
+            });
+        }
+
+        AddChild(new MeshInstance3D
+        {
+            Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.06f, ZoneSize.Z) },
+            MaterialOverride = stripeMat,
+            Position = new Vector3(0, top, 0),
+        });
     }
 
     private void OnBodyEntered(Node3D body)

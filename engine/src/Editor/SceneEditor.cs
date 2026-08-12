@@ -220,6 +220,11 @@ public partial class SceneEditor : Node3D
         _placedParts.Remove(part);
     }
 
+    /// <summary>
+    /// Pick a part up. The original is only removed once the move is committed:
+    /// deleting it up front meant cancelling with Escape destroyed the part
+    /// outright, with the preview thrown away and nothing left to put back.
+    /// </summary>
     private void StartMoveSelectedPart()
     {
         if (_selectedPart is not { } entry) return;
@@ -231,8 +236,12 @@ public partial class SceneEditor : Node3D
             _previewNode.Rotation = entry.Node.Rotation;
         }
 
-        DeleteSelectedPart();
+        _movingPart = entry;
+        DeselectPart();
     }
+
+    /// <summary>The part being relocated, still in the scene until the move lands.</summary>
+    private PlacedPart? _movingPart;
 
     private SelectionGizmo _gizmo = null!;
 
@@ -445,6 +454,8 @@ public partial class SceneEditor : Node3D
         }
         _placedParts.Clear();
         PartTagManager.ResetCounters();
+        _history.Clear();   // its commands refer to parts that are now gone
+        _movingPart = null;
         DeselectPart();
         TagInspector?.RebuildTagList();
         GD.Print("Cleared all editor placed parts");
@@ -478,12 +489,23 @@ public partial class SceneEditor : Node3D
     {
         if (_previewNode is null || _activePartType is null) return;
 
+        // Committing a move: drop the original now that the new spot is chosen,
+        // and carry its id across so the wiring survives the relocation.
+        string? movedId = null;
+        if (_movingPart is { } moving)
+        {
+            movedId = moving.InstanceId;
+            ForgetPart(moving);
+            _movingPart = null;
+        }
+
         // Through the history, so Ctrl+Z can take it back. Nothing used to be
         // recorded at all, which left undo/redo as buttons that did nothing.
         _history.ExecuteCommand(new PartCommand(this, _activePartType,
                                                 _previewNode.Position,
                                                 _previewNode.Rotation,
-                                                isPlacement: true));
+                                                isPlacement: true,
+                                                instanceId: movedId));
         GD.Print($"Placed component '{_activePartType}' at {_previewNode.Position}");
         ClearPreview();
     }
@@ -609,6 +631,7 @@ public partial class SceneEditor : Node3D
             _previewNode = null;
         }
         _activePartType = null;
+        _movingPart = null;   // a cancelled move leaves the original untouched
     }
 
     private static Node3D? CreatePartNode(string partType)
