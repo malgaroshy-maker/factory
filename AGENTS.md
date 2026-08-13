@@ -104,6 +104,11 @@ cd sidecar && python -m factoryforge_sidecar connect --driver opcua-client \
 "<GODOT>" --headless --path engine/ -- --self-test=io --duration=25
 # Headless: scene save/load round-trip across every part type in the palette.
 "<GODOT>" --headless --path engine/ -- --self-test=scene --duration=25
+# Headless: every start-screen template loads and registers its I/O.
+"<GODOT>" --headless --path engine/ -- --self-test=templates --duration=30
+
+# Open a specific scene instead of the start screen (scripting, screenshots)
+"<GODOT>" --path engine/ -- --scene=res://templates/tank_level_control.json
 
 # Engine headless, deterministic — the CI / regression path (no GPU needed)
 "<GODOT>" --headless --path engine/ -- --deterministic --duration=20
@@ -334,7 +339,20 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     by bare name fails on a normal install; load it by path from
     `C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\<ver>\`.
 
-21. **A test that cannot see the failure mode is not coverage.** The panel had a
+21. **An exception before `GetTree().Quit()` makes the quit unreachable, and the
+    condition stays true.** `Main._Process` read the sorting demo's counters
+    unconditionally at the end of a `--duration` run; a scene without them threw
+    there, so the run never ended and the same stack trace was logged every
+    frame. An idle tank template produced a **23 MB** log and looked exactly
+    like a hang — CPU busy, window responding, no output. Do the side effect
+    that ends the loop *first*.
+
+22. **Not every scene has the sorting demo's tags.** They are declared by the
+    engine at startup, not owned by any part, so switching scenes calls
+    `SortingTags.Undeclare`. Anything reading `conveyor.rotate` or
+    `counter.tall` must check `Contains` first.
+
+23. **A test that cannot see the failure mode is not coverage.** The panel had a
     correct hit test and a correct pulse dispatch and was still completely dead
     from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
     headless for the logic, `--self-test=click` with a display for the input

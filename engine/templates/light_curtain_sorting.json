@@ -1,0 +1,62 @@
+{
+  "name": "light-curtain-sorting",
+  "version": "1.0",
+  "parts": [
+    {
+      "id": "belt",
+      "type": "ConveyorBelt",
+      "position": [1.5, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "speed": "0.5", "friction": "0.8", "size_x": "3", "size_y": "0.12", "size_z": "0.5" }
+    },
+    {
+      "id": "emitter",
+      "type": "Emitter",
+      "position": [0.0, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "metal_every": "0" }
+    },
+    {
+      "id": "height_gauge",
+      "type": "LightArray",
+      "position": [1.5, 0.5, 0.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "beams": "12", "curtain_height": "0.48", "range": "1.0" }
+    },
+    {
+      "id": "diverter",
+      "type": "PusherMechanism",
+      "position": [2.5, 0.5, -0.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "stroke": "0.55", "speed": "1.83", "max_carton": "0.3", "visual_only": "false" }
+    },
+    {
+      "id": "chute",
+      "type": "Chute",
+      "position": [2.5, 0.5, 0.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "incline": "30", "friction": "0.15" }
+    },
+    {
+      "id": "tall_count",
+      "type": "Remover",
+      "position": [2.5, 0.15, 1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "zone_x": "0.6", "zone_y": "0.4", "zone_z": "0.6" }
+    },
+    {
+      "id": "short_count",
+      "type": "Remover",
+      "position": [3.25, 0.3, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "zone_x": "0.5", "zone_y": "0.6", "zone_z": "0.6" }
+    },
+    {
+      "id": "panel",
+      "type": "ButtonPanel",
+      "position": [0.5, 0.5, 1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": {}
+    }
+  ]
+}

@@ -54,6 +54,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C1 | Panel buttons: one-scan pulse, maintained E-stop, cap picking incl. rotated | `--self-test=buttons` |
 | C2 | Rename and I/O export | `--self-test=io` |
 | C3 | Scene save/load round-trip, every part type, undo/redo | `--self-test=scene` |
+| C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
 
 ### D. Engine self-tests (need a display)
 

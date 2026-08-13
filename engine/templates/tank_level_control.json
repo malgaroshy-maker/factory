@@ -1,0 +1,34 @@
+{
+  "name": "tank-level-control",
+  "version": "1.0",
+  "parts": [
+    {
+      "id": "tank",
+      "type": "LevelTank",
+      "position": [1.5, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "fill_rate": "18", "drain_rate": "22", "capacity": "1000" }
+    },
+    {
+      "id": "level_readout",
+      "type": "DigitalDisplay",
+      "position": [3.0, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "unit": "%" }
+    },
+    {
+      "id": "panel",
+      "type": "ButtonPanel",
+      "position": [0.5, 0.5, 1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": {}
+    },
+    {
+      "id": "tower",
+      "type": "StackLight",
+      "position": [3.0, 0.5, 1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": {}
+    }
+  ]
+}

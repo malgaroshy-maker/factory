@@ -40,8 +40,28 @@ dotnet build
 "<GODOT_CONSOLE_EXE>" --path .
 ```
 
-You get the **physics scene**: rigid-body cartons on a real conveyor. Useful
-keys straight away:
+FactoryForge opens on a **start screen**: pick a template, open a scene you
+saved, or start empty. The key list is on that screen too, and the 🏠 button in
+the toolbar brings it back.
+
+The templates each teach one thing:
+
+| Template | What it is for |
+|---|---|
+| **Sorting by height** | The reference line — sensors, a diverter, two counters |
+| **Start / stop station** | Momentary buttons, a latching E-stop, a lamp that must track real state |
+| **Tank level control** | Analog end to end; outflow varies with level, so a PID tuned full overshoots empty |
+| **Light curtain sorting** | Sorting on a measurement rather than two bits |
+| **Roller line with weighing** | A checkweigher and an inductive sensor that sees metal only |
+
+To skip the start screen — scripting a run, or grabbing a screenshot:
+
+```bash
+godot --path engine/ -- --scene=res://templates/tank_level_control.json
+```
+
+The default scene is the **physics** one: rigid-body cartons on a real conveyor.
+Useful keys straight away:
 
 | Key | Action |
 |---|---|

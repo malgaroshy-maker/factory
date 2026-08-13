@@ -37,6 +37,30 @@ public static class SortingTags
     public const string SensorLowId = "sensor_low";
     public const string SensorHighId = "sensor_high";
 
+    /// <summary>Every tag id <see cref="Declare"/> adds.</summary>
+    public static readonly string[] All =
+    {
+        ConveyorRotate, EmitterEmit, PusherExtend, StackLightGreen,
+        SensorLowDetect, SensorHighDetect, PusherExtended, PusherRetracted,
+        CounterTall, CounterShort,
+    };
+
+    /// <summary>
+    /// Take the sorting line's tags back out of the table.
+    ///
+    /// Needed when the user switches to a different scene: these ten are
+    /// declared by the engine at startup rather than owned by any part, so
+    /// clearing the parts leaves them behind, and a tank scene would list a
+    /// conveyor and two box counters that do not exist.
+    ///
+    /// Only safe when no <see cref="SortingScene"/> is running — that one writes
+    /// these by name on every tick.
+    /// </summary>
+    public static void Undeclare(TagTable tags)
+    {
+        foreach (string id in All) tags.Remove(id);
+    }
+
     public static void Declare(TagTable tags)
     {
         // PLC outputs — the program writes these.

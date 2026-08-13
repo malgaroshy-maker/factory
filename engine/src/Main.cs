@@ -36,6 +36,11 @@ public partial class Main : Node
     private double _screenshotAt = -1;
     private string? _selfTest;
 
+    /// <summary>Scene to open instead of the sorting demo. Skips the start
+    /// screen, which is what you want when scripting a run or screenshotting a
+    /// particular line.</summary>
+    private string? _scenePath;
+
     public override void _Ready()
     {
         foreach (var arg in OS.GetCmdlineUserArgs())
@@ -54,6 +59,8 @@ public partial class Main : Node
                 _timeScale = arg.Substring("--time-scale=".Length).ToFloat();
             else if (arg.StartsWith("--self-test="))
                 _selfTest = arg.Substring("--self-test=".Length);
+            else if (arg.StartsWith("--scene="))
+                _scenePath = arg.Substring("--scene=".Length);
         }
 
         // Rigid bodies by default — the parts are real colliders, so properties,
@@ -103,6 +110,10 @@ public partial class Main : Node
         if (_selfTest == "buttons")
         {
             AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
+        }
+        if (_selfTest == "templates")
+        {
+            AddChild(new TemplateSelfTest { Name = "TemplateSelfTest", Tags = tags, Editor = _editor });
         }
         if (_selfTest == "scene")
         {
@@ -168,14 +179,16 @@ public partial class Main : Node
         AddChild(driverConnectionUI);
 
         var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
-        toolbarUI.SaveRequested += (path) => editor.SaveSceneToFile(path);
+        toolbarUI.SaveRequested += (path) =>
+        {
+            editor.SaveSceneToFile(path);
+            StartScreenUI.Remember(path);
+        };
         toolbarUI.LoadRequested += (path) =>
         {
             editor.LoadSceneFromFile(path);
-            // A loaded scene is a different scene: republish under its own name
-            // so a connected driver is not still told this is the sorting demo.
-            _bus.SceneName = editor.SceneName;
-            _bus.SendDescribe();
+            StartScreenUI.Remember(path);
+            AdoptSceneName(editor);
         };
         toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
         toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
@@ -185,6 +198,34 @@ public partial class Main : Node
         toolbarUI.RateSelected += (rate) => _sim.SetRate(rate);
         toolbarUI.ModeToggled += () => editor.ToggleMode();
         AddChild(toolbarUI);
+
+        // The start screen goes on last so it draws over everything, and it is
+        // only ever a GUI thing — headless runs and the self-tests never see it.
+        var startScreen = new StartScreenUI { Name = "StartScreenUI" };
+        AddChild(startScreen);
+        startScreen.DefaultSceneChosen += editor.LoadDefaultSortingScene;
+        startScreen.EmptySceneChosen += editor.NewEmptyScene;
+        startScreen.TemplateChosen += (path) =>
+        {
+            editor.LoadTemplate(path);
+            AdoptSceneName(editor);
+        };
+        startScreen.OpenRequested += (path) =>
+        {
+            editor.LoadTemplate(path);
+            StartScreenUI.Remember(path);
+            AdoptSceneName(editor);
+        };
+        if (_selfTest is not null) startScreen.Visible = false;
+        toolbarUI.StartScreenRequested += startScreen.Reopen;
+
+        // An explicitly requested scene means the choice has already been made.
+        if (_scenePath is { Length: > 0 })
+        {
+            startScreen.Visible = false;
+            editor.LoadTemplate(_scenePath);
+            AdoptSceneName(editor);
+        }
 
         // Mode lives on the editor; the toolbar and palette only reflect it, so
         // the F1 key and the button can never disagree about which mode we are in.
@@ -209,6 +250,17 @@ public partial class Main : Node
         // shortcuts and the buttons can never disagree.
         _sim.StateChanged += (paused, rate) => toolbarUI.ShowState(paused, rate);
         toolbarUI.ShowState(_sim.Paused, _sim.Rate);
+    }
+
+    /// <summary>
+    /// Report the loaded scene under its own name. A driver holds the tag list
+    /// and scene name it was given at connect time, so switching scenes without
+    /// this leaves it convinced it is still talking to the sorting demo.
+    /// </summary>
+    private void AdoptSceneName(SceneEditor editor)
+    {
+        _bus.SceneName = editor.SceneName;
+        _bus.SendDescribe();
     }
 
     /// <summary>Physics mode without a renderer: no UI, but the parts still have
@@ -313,15 +365,29 @@ public partial class Main : Node
 
         if (_runFor > 0 && _elapsed >= _runFor)
         {
-            if (_scene is { } scene)
-                GD.Print($"done: tick={_bus.TickCount} tall={scene.SortedTall.Count} " +
-                         $"short={scene.SortedShort.Count} belt={scene.Boxes.Count}");
-            else
-                GD.Print($"done: tick={_bus.TickCount} " +
-                         $"tall={_bus.Tags.Visible(SortingTags.CounterTall)} " +
-                         $"short={_bus.Tags.Visible(SortingTags.CounterShort)}");
+            // Quit first. This block used to read the sorting demo's counters
+            // unconditionally, and a scene that does not have them threw here —
+            // *before* Quit, so the run never ended and the same exception was
+            // raised every frame forever. An idle tank template produced a 23 MB
+            // log of identical stack traces and looked like a hang.
+            string counts = _scene is { } scene
+                ? $"tall={scene.SortedTall.Count} short={scene.SortedShort.Count} belt={scene.Boxes.Count}"
+                : Counters();
+            GD.Print($"done: tick={_bus.TickCount} {counts}");
             GetTree().Quit();
         }
+    }
+
+    /// <summary>
+    /// The sorting demo's counters, when this scene has them. A loaded scene may
+    /// not — the tags are declared for the built-in line and dropped when you
+    /// switch away from it, so this has to ask rather than assume.
+    /// </summary>
+    private string Counters()
+    {
+        if (!_bus.Tags.Contains(SortingTags.CounterTall)) return "no counters in this scene";
+        return $"tall={_bus.Tags.Visible(SortingTags.CounterTall)} " +
+               $"short={_bus.Tags.Visible(SortingTags.CounterShort)}";
     }
 
     private void SaveScreenshot()

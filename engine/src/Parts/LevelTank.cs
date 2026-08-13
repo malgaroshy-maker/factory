@@ -186,8 +186,20 @@ public partial class LevelTank : Node3D
         ApplyLevel();
     }
 
+    /// <summary>Level the geometry was last built for, so an unchanged tank
+    /// costs nothing.</summary>
+    private float _drawnLevel = float.NaN;
+
     private void ApplyLevel()
     {
+        // Assigning CylinderMesh.Height regenerates the mesh and re-uploads it,
+        // and setting Label3D.Text rebuilds its glyph mesh. Doing both every
+        // physics tick for a value that has not moved is pure waste — and with
+        // a renderer attached it was enough to stall the frame loop outright:
+        // an idle tank scene ran headless and hung in the GUI.
+        if (Mathf.IsEqualApprox(Level, _drawnLevel)) return;
+        _drawnLevel = Level;
+
         float usable = TankHeight - 2 * WallInset;
         float height = Mathf.Max(usable * (Level / 100.0f), 0.001f);
 

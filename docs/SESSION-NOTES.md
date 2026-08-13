@@ -526,3 +526,68 @@ whether or not writes reached the CPU. Reading `FF_IO` directly off the PLC
 after a run gave `CounterTall=7 CounterShort=7`, matching the simulation's final
 state exactly. An earlier run was off by one write; that discrepancy disappeared
 once the writes were narrowed.
+
+---
+
+# 2026-08-13 — a start screen, five templates, and a "hang" that was a log
+
+Reordered at the user's suggestion, and they were right: an installer
+distributes whatever it wraps, and what it would have wrapped was an app that
+opens cold into the sorting demo with no menu and its keys documented only in
+markdown. Polish is also cheapest before there is a version to churn.
+
+## What landed
+
+**Start screen.** Templates, recent files, open, empty, quit, and the key list —
+the last of which had never been visible inside the program at all. Built as an
+overlay over the normal startup rather than restructuring `Main`, so choosing
+"Sorting by height" is just dismissing it and every other choice runs the
+clear/load paths the self-tests already cover. The 🏠 toolbar button reopens it.
+
+**Five templates**, each teaching one thing rather than being a bigger factory.
+Also `--scene=<path>`, which skips the start screen — useful for scripting and
+for screenshotting a particular line, and it is how each template was checked.
+
+**`SortingTags.Undeclare`.** The demo's ten tags are declared by the engine at
+startup, not owned by any part, so clearing the parts left them behind and a
+tank scene listed a conveyor and two box counters it did not have.
+
+## The bug that ate the afternoon
+
+The tank template ran fine headless and hung the GUI. It was not a hang: the
+process was responsive and burning CPU the whole time.
+
+`Main._Process` ended a `--duration` run by printing the sorting demo's
+counters — unconditionally. With those tags now undeclared, `TagTable.Visible`
+threw *before* `GetTree().Quit()`, so the quit was never reached, the condition
+stayed true, and the same exception was logged every single frame. The log file
+was **23 MB**.
+
+Two lessons, both now in AGENTS.md: do the side effect that ends the loop first,
+and nothing may assume the demo's tags exist.
+
+Three things made it take far longer than it should have:
+
+1. **I diagnosed by hypothesis instead of by evidence.** I guessed the tank's
+   per-frame mesh rebuild, "wrote" a fix, and re-tested — which found nothing
+   because that was not the cause. (The guard is a genuine optimisation and I
+   kept it: an unchanged tank was regenerating its cylinder mesh and its Label3D
+   text sixty times a second.)
+2. **I re-tripped a trap I had documented four hours earlier.** Piping Godot's
+   stdout without draining it hangs the process before it prints anything, so
+   every diagnostic run came back with an empty log and told me nothing. The
+   answer appeared the moment I redirected to a file — the pattern already
+   written into `tools/test_plan.py` and gotcha #15.
+3. **Zombie processes from earlier failed runs held port 7411**, which produced
+   a second, unrelated failure mode on top of the first and muddied every
+   result until I started killing them between runs.
+
+## Also
+
+`--self-test=templates` loads every shipped template and asserts the parts and
+their I/O, because a broken template is the worst thing to ship: not a crash, a
+factory that quietly has no conveyor in it. The plan is now 21 checks.
+
+A PowerShell `Get-Content | Set-Content -Encoding utf8` round-trip mangled every
+emoji in `SceneToolbarUI.cs` — PS 5.1 reads a BOM-less UTF-8 file as ANSI. Use
+`sed`, or the Edit tool, for anything with non-ASCII in it.

@@ -215,6 +215,7 @@ def section_c() -> None:
     _self_test("C1", "panel buttons: one-scan pulse, latched E-stop, cap picking", "buttons")
     _self_test("C2", "rename and I/O export", "io")
     _self_test("C3", "scene save/load round-trip, every part type", "scene")
+    _self_test("C4", "every shipped start-screen template loads and registers I/O", "templates")
 
 
 def section_d(enabled: bool) -> None:

@@ -725,6 +725,52 @@ public partial class SceneEditor : Node3D
             _placedParts.Add(new PlacedPart(node, instanceId, partType, OwnsTags: false));
     }
 
+    /// <summary>
+    /// Empty the world: every part gone, and the sorting line's engine-declared
+    /// tags with them.
+    ///
+    /// <see cref="ClearAllPlacedParts"/> alone cannot do this. Those ten tags
+    /// are declared at startup rather than owned by a part, so clearing the
+    /// parts leaves them in the table and the next scene inherits a conveyor and
+    /// two box counters it does not have. Left alone when a
+    /// <see cref="SortingScene"/> is running, because that owns them.
+    /// </summary>
+    public void NewEmptyScene()
+    {
+        ClearAllPlacedParts();
+        if (Scene is null && Tags is not null) SortingTags.Undeclare(Tags);
+
+        SceneName = "untitled";
+        NotifyTagsChanged();
+        GD.Print("New empty scene");
+    }
+
+    /// <summary>Rebuild the sorting line the engine ships with.</summary>
+    public void LoadDefaultSortingScene()
+    {
+        ClearAllPlacedParts();
+        if (Scene is null && Tags is not null)
+        {
+            SortingTags.Undeclare(Tags);
+            SortingTags.Declare(Tags);
+        }
+
+        SceneName = "sorting-by-height";
+        RegisterDefaultSceneParts(physical: Scene is null);
+        NotifyTagsChanged();
+    }
+
+    /// <summary>
+    /// Start from a shipped template. Same as loading any scene file, except the
+    /// sorting line's tags are dropped first so a template starts from a clean
+    /// I/O list rather than inheriting the demo's.
+    /// </summary>
+    public void LoadTemplate(string path)
+    {
+        if (Scene is null && Tags is not null) SortingTags.Undeclare(Tags);
+        LoadSceneFromFile(path);
+    }
+
     public void SaveSceneToFile(string path = "user://custom_scene.json")
     {
         // Name the scene after the file it lives in, so saving as "palletiser"

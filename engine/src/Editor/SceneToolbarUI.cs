@@ -17,6 +17,7 @@ public partial class SceneToolbarUI : Control
     [Signal] public delegate void ResetRequestedEventHandler();
     [Signal] public delegate void RateSelectedEventHandler(float rate);
     [Signal] public delegate void ModeToggledEventHandler();
+    [Signal] public delegate void StartScreenRequestedEventHandler();
 
     private Button _pauseBtn = null!;
     private OptionButton _rateBox = null!;
@@ -93,12 +94,12 @@ public partial class SceneToolbarUI : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(740, 44);
+        CustomMinimumSize = new Vector2(790, 44);
         SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.KeepSize, 10);
 
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(740, 44),
+            CustomMinimumSize = new Vector2(790, 44),
         };
         AddChild(panel);
 
@@ -201,5 +202,14 @@ public partial class SceneToolbarUI : Control
         };
         clearBtn.Pressed += () => EmitSignal(SignalName.ClearRequested);
         hbox.AddChild(clearBtn);
+
+        var homeBtn = new Button
+        {
+            Text = "⌂",   // house
+            TooltipText = "Back to the start screen — templates, recent scenes and the key list",
+            CustomMinimumSize = new Vector2(40, 32),
+        };
+        homeBtn.Pressed += () => EmitSignal(SignalName.StartScreenRequested);
+        hbox.AddChild(homeBtn);
     }
 }
