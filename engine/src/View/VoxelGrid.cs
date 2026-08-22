@@ -45,7 +45,33 @@ public partial class VoxelGrid : Node3D
         if (ShowGridLines)
         {
             BuildGridMesh();
+            BuildReferenceCube();
         }
+    }
+
+    /// <summary>
+    /// A 1m cube sitting in the back corner of the build volume, purely for
+    /// scale calibration while authoring a part — the numbers in
+    /// <see cref="Parts.PartLayout"/> are sourced from real equipment, but a
+    /// mesh built to the wrong scale still just looks like a mesh until it is
+    /// standing next to something of known size. See FF-25.
+    /// </summary>
+    private void BuildReferenceCube()
+    {
+        float x = GridExtentX * CellSize - 0.5f;
+        float z = GridExtentZ * CellSize - 0.5f;
+        AddChild(new MeshInstance3D
+        {
+            Name = "ReferenceCube",
+            Mesh = new BoxMesh { Size = Vector3.One },
+            Position = new Vector3(-x, 0.5f, -z),
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.6f, 0.75f, 1.0f, 0.25f),
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            },
+        });
     }
 
     public VoxelCoord WorldToVoxel(Vector3 worldPos)

@@ -25,4 +25,22 @@ public static class PartLayout
 
     /// <summary>Distance from the work plane down to the floor, for support legs.</summary>
     public const float FloorDrop = WorkPlaneY;
+
+    // --- Reference dimensions, sourced from real equipment, so new parts get
+    // built to the same scale system instead of each guessing independently.
+    // See FF-25 -- a control panel modelled to no shared reference read as
+    // roughly as tall as the transport line it stood next to.
+
+    /// <summary>Conveyor carrying-surface width. <see cref="Parts.ConveyorBelt"/>'s
+    /// default <c>Size</c> already matches this; new transport parts should too.</summary>
+    public const float StandardBeltWidth = 0.5f;
+
+    /// <summary>A waist-height pushbutton station's housing footprint --
+    /// enough for a row of 22 mm caps, no wider.</summary>
+    public const float PanelWidth = 0.40f;
+    public const float PanelHeight = 0.60f;
+
+    /// <summary>Stack light lamp dome diameter, matching a standard 70 mm
+    /// beacon once its curvature reads in the render.</summary>
+    public const float StackLightDiameter = 0.08f;
 }

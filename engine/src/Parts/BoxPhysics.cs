@@ -69,6 +69,29 @@ public partial class BoxPhysics : RigidBody3D
             Roughness = IsMetal ? 0.30f : 0.55f,
             Metallic = IsMetal ? 0.75f : 0.0f,
         };
+        // A cardboard carton is the one object the eye follows across the
+        // whole line, and a flat AlbedoColor reads as painted plastic. A
+        // subtle multiplicative speckle (never darker than ~78% or brighter
+        // than 100% of the base colour) breaks that up without touching
+        // Metallic/Roughness — the steel items already had their own
+        // reflectivity tuned carefully once (see IndustrialMeshBuilder) and
+        // this deliberately leaves them alone. See FF-26.
+        if (!IsMetal)
+        {
+            _material.AlbedoTexture = new NoiseTexture2D
+            {
+                Width = 64,
+                Height = 64,
+                Seamless = true,
+                ColorRamp = new Gradient
+                {
+                    Offsets = new[] { 0.0f, 1.0f },
+                    Colors = new[] { new Color(0.78f, 0.78f, 0.78f), new Color(1.0f, 1.0f, 1.0f) },
+                },
+                Noise = new FastNoiseLite { NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex, Frequency = 0.35f },
+            };
+            _material.Uv1Scale = new Vector3(6.0f, 6.0f, 1.0f);
+        }
 
         _meshInstance = new MeshInstance3D
         {

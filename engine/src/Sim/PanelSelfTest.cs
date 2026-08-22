@@ -201,15 +201,19 @@ public partial class PanelSelfTest : Node
             return _panel.HitTest(target + outward * 1.5f, -outward);
         }
 
-        Expect(Aim(new Vector3(-0.105f, 0.235f, 0.06f)) == PanelButton.Start, $"ray at the start cap hits Start ({when})");
-        Expect(Aim(new Vector3(0.0f, 0.235f, 0.06f)) == PanelButton.Stop, $"ray at the stop cap hits Stop ({when})");
-        Expect(Aim(new Vector3(0.105f, 0.235f, 0.06f)) == PanelButton.Reset, $"ray at the reset cap hits Reset ({when})");
-        Expect(Aim(new Vector3(0.0f, 0.105f, 0.06f)) == PanelButton.EmergencyStop, $"ray at the mushroom hits E-Stop ({when})");
+        // Mirrors the layout ButtonPanel derives from PartLayout.PanelWidth/
+        // PanelHeight (see FF-25) -- a future resize of that reference needs
+        // the same numbers updated here, same as any other black-box "does a
+        // ray at this literal point hit this button" check.
+        Expect(Aim(new Vector3(-0.12f, 0.3132f, 0.06f)) == PanelButton.Start, $"ray at the start cap hits Start ({when})");
+        Expect(Aim(new Vector3(0.0f, 0.3132f, 0.06f)) == PanelButton.Stop, $"ray at the stop cap hits Stop ({when})");
+        Expect(Aim(new Vector3(0.12f, 0.3132f, 0.06f)) == PanelButton.Reset, $"ray at the reset cap hits Reset ({when})");
+        Expect(Aim(new Vector3(0.0f, 0.1398f, 0.06f)) == PanelButton.EmergencyStop, $"ray at the mushroom hits E-Stop ({when})");
 
         // The parts of the station that are not buttons must stay dead, or the
         // panel becomes one big Start button.
-        Expect(Aim(new Vector3(-0.0525f, 0.235f, 0.06f)) is null, $"the gap between two caps presses nothing ({when})");
-        Expect(Aim(new Vector3(0.0f, 0.400f, 0.06f)) is null, $"the housing above the caps presses nothing ({when})");
+        Expect(Aim(new Vector3(-0.06f, 0.3132f, 0.06f)) is null, $"the gap between two caps presses nothing ({when})");
+        Expect(Aim(new Vector3(0.0f, 0.50f, 0.06f)) is null, $"the housing above the caps presses nothing ({when})");
         Expect(Aim(new Vector3(0.0f, -0.250f, 0.00f)) is null, $"the pedestal presses nothing ({when})");
     }
 }

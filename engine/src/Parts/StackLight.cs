@@ -43,7 +43,12 @@ public partial class StackLight : Node3D
         _greenMat = CreateLampMaterial(new Color(0.1f, 0.4f, 0.1f));
         _greenLampMesh = new MeshInstance3D
         {
-            Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.08f },
+            Mesh = new CylinderMesh
+            {
+                TopRadius = PartLayout.StackLightDiameter / 2,
+                BottomRadius = PartLayout.StackLightDiameter / 2,
+                Height = 0.08f,
+            },
             Position = new Vector3(0, 0.45f, 0),
             MaterialOverride = _greenMat,
         };
@@ -53,7 +58,12 @@ public partial class StackLight : Node3D
         _yellowMat = CreateLampMaterial(new Color(0.4f, 0.35f, 0.1f));
         _yellowLampMesh = new MeshInstance3D
         {
-            Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.08f },
+            Mesh = new CylinderMesh
+            {
+                TopRadius = PartLayout.StackLightDiameter / 2,
+                BottomRadius = PartLayout.StackLightDiameter / 2,
+                Height = 0.08f,
+            },
             Position = new Vector3(0, 0.55f, 0),
             MaterialOverride = _yellowMat,
         };
@@ -63,7 +73,12 @@ public partial class StackLight : Node3D
         _redMat = CreateLampMaterial(new Color(0.4f, 0.1f, 0.1f));
         _redLampMesh = new MeshInstance3D
         {
-            Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.08f },
+            Mesh = new CylinderMesh
+            {
+                TopRadius = PartLayout.StackLightDiameter / 2,
+                BottomRadius = PartLayout.StackLightDiameter / 2,
+                Height = 0.08f,
+            },
             Position = new Vector3(0, 0.65f, 0),
             MaterialOverride = _redMat,
         };

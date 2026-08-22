@@ -59,16 +59,31 @@ public partial class ClickPathSelfTest : Node
 
     /// <summary>Click where a point on the panel appears on screen, the way a
     /// user would: an event carrying a screen position, pushed through the same
-    /// input queue the window feeds.</summary>
+    /// input queue the window feeds.
+    ///
+    /// <see cref="Camera3D.UnprojectPosition"/> answers in the viewport's own
+    /// coordinate space (project.godot's viewport_width/height). A real OS
+    /// click arrives in window pixels and Godot's <c>canvas_items</c> stretch
+    /// mode (see FF-32) rescales it to viewport space before any script ever
+    /// sees it — so an event built directly from UnprojectPosition and handed
+    /// to <see cref="Input.ParseInputEvent"/> gets that same rescale applied a
+    /// second time, landing off by the window/viewport ratio. Small enough
+    /// that it stayed inside a cap's hit margin by luck until FF-25 changed
+    /// the panel's proportions and pushed it out. Converting back to window
+    /// space here is what a real OS event would already be in.</summary>
     private void ClickAt(Vector3 localPoint)
     {
-        Vector2 screen = _camera.UnprojectPosition(_panel.GlobalTransform * localPoint);
+        Vector2 viewportPos = _camera.UnprojectPosition(_panel.GlobalTransform * localPoint);
+        Vector2 windowSize = DisplayServer.WindowGetSize();
+        Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
+        Vector2 windowPos = viewportPos * (windowSize / viewportSize);
+
         Input.ParseInputEvent(new InputEventMouseButton
         {
             ButtonIndex = MouseButton.Left,
             Pressed = true,
-            Position = screen,
-            GlobalPosition = screen,
+            Position = windowPos,
+            GlobalPosition = windowPos,
         });
     }
 
@@ -90,8 +105,11 @@ public partial class ClickPathSelfTest : Node
         {
             case 20:
                 // A click in Edit mode selects and must not press anything.
+                // These local-space offsets mirror ButtonPanel's own layout
+                // (see PartLayout.PanelWidth/PanelHeight, FF-25) — the same
+                // literals PanelSelfTest's headless HitTest check uses.
                 Editor!.SetMode(EditorMode.Edit);
-                ClickAt(new Vector3(-0.105f, 0.235f, 0.06f));
+                ClickAt(new Vector3(-0.12f, 0.3132f, 0.06f));
                 break;
 
             case 24:
@@ -100,7 +118,7 @@ public partial class ClickPathSelfTest : Node
                 break;
 
             case 30:
-                ClickAt(new Vector3(-0.105f, 0.235f, 0.06f));
+                ClickAt(new Vector3(-0.12f, 0.3132f, 0.06f));
                 _highTicks = 0;
                 break;
 
@@ -114,7 +132,7 @@ public partial class ClickPathSelfTest : Node
                 Expect(!Tag("stop") && !Tag("reset"), "clicking Start presses nothing else");
 
                 // Bare housing, well away from any cap.
-                ClickAt(new Vector3(0.0f, 0.400f, 0.06f));
+                ClickAt(new Vector3(0.0f, 0.50f, 0.06f));
                 _highTicks = 0;
                 break;
 
@@ -125,12 +143,12 @@ public partial class ClickPathSelfTest : Node
             case 46:
                 Expect(_highTicks == 0, "clicking the housing presses no button at all");
                 Expect(Tag("estop"), "estop still healthy before the mushroom is struck");
-                ClickAt(new Vector3(0.0f, 0.105f, 0.06f));
+                ClickAt(new Vector3(0.0f, 0.1398f, 0.06f));
                 break;
 
             case 50:
                 Expect(!Tag("estop"), "clicking the mushroom breaks the estop circuit");
-                ClickAt(new Vector3(0.0f, 0.105f, 0.06f));
+                ClickAt(new Vector3(0.0f, 0.1398f, 0.06f));
                 break;
 
             case 54:

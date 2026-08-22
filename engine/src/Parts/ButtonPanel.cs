@@ -93,10 +93,14 @@ public partial class ButtonPanel : Node3D
             MaterialOverride = panelMat,
             Position = new Vector3(0, -PartLayout.FloorDrop / 2, 0),
         });
+        // Base foot and housing scale together off PartLayout's panel
+        // reference (see FF-25) rather than their own one-off numbers, so the
+        // station stops reading as its own scale system next to the belt.
+        float baseSide = PartLayout.PanelWidth * 0.75f;
         AddChild(new MeshInstance3D
         {
             Name = "BaseFoot",
-            Mesh = new BoxMesh { Size = new Vector3(0.26f, 0.03f, 0.26f) },
+            Mesh = new BoxMesh { Size = new Vector3(baseSide, 0.03f, baseSide) },
             MaterialOverride = panelMat,
             Position = new Vector3(0, -PartLayout.FloorDrop, 0),
         });
@@ -104,17 +108,27 @@ public partial class ButtonPanel : Node3D
         // Main housing box, sitting on top of the pedestal
         AddChild(new MeshInstance3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.35f, 0.45f, 0.12f) },
+            Mesh = new BoxMesh { Size = new Vector3(PartLayout.PanelWidth, PartLayout.PanelHeight, 0.12f) },
             MaterialOverride = panelMat,
-            Position = new Vector3(0, 0.225f, 0),
+            Position = new Vector3(0, PartLayout.PanelHeight / 2, 0),
         });
+
+        // Button and lamp centres are fractions of the housing footprint
+        // rather than absolute metres, so resizing the reference in
+        // PartLayout moves the whole layout together instead of leaving caps
+        // stranded off the edge of a resized housing.
+        float lampY = PartLayout.PanelHeight * 0.767f;
+        float rowY = PartLayout.PanelHeight * 0.522f;
+        float estopY = PartLayout.PanelHeight * 0.233f;
+        float lampX = PartLayout.PanelWidth * 0.20f;
+        float capX = PartLayout.PanelWidth * 0.30f;
 
         // Green indicator lamp
         _greenMat = new StandardMaterial3D { AlbedoColor = new Color(0.1f, 0.4f, 0.15f) };
         _greenLamp = new MeshInstance3D
         {
             Mesh = new SphereMesh { Radius = 0.04f, Height = 0.08f },
-            Position = new Vector3(-0.08f, 0.345f, 0.07f),
+            Position = new Vector3(-lampX, lampY, 0.07f),
             MaterialOverride = _greenMat,
         };
         AddChild(_greenLamp);
@@ -124,19 +138,22 @@ public partial class ButtonPanel : Node3D
         _redLamp = new MeshInstance3D
         {
             Mesh = new SphereMesh { Radius = 0.04f, Height = 0.08f },
-            Position = new Vector3(0.08f, 0.345f, 0.07f),
+            Position = new Vector3(lampX, lampY, 0.07f),
             MaterialOverride = _redMat,
         };
         AddChild(_redLamp);
 
         // Momentary row, then the mushroom below it where a palm can find it.
-        AddCap(PanelButton.Start, new Vector3(-0.105f, 0.235f, FaceZ), 0.030f,
+        // Cap and mushroom radii stay absolute: a real 22mm pushbutton is the
+        // same size on any panel, a fixed human-hand-scale actuator rather
+        // than something that should grow with the housing around it.
+        AddCap(PanelButton.Start, new Vector3(-capX, rowY, FaceZ), 0.030f,
                new Color(0.15f, 0.70f, 0.25f), maintained: false, "Start");
-        AddCap(PanelButton.Stop, new Vector3(0.0f, 0.235f, FaceZ), 0.030f,
+        AddCap(PanelButton.Stop, new Vector3(0.0f, rowY, FaceZ), 0.030f,
                new Color(0.12f, 0.12f, 0.14f), maintained: false, "Stop");
-        AddCap(PanelButton.Reset, new Vector3(0.105f, 0.235f, FaceZ), 0.030f,
+        AddCap(PanelButton.Reset, new Vector3(capX, rowY, FaceZ), 0.030f,
                new Color(0.20f, 0.35f, 0.72f), maintained: false, "Reset");
-        AddCap(PanelButton.EmergencyStop, new Vector3(0.0f, 0.105f, FaceZ), 0.050f,
+        AddCap(PanelButton.EmergencyStop, new Vector3(0.0f, estopY, FaceZ), 0.050f,
                new Color(0.85f, 0.10f, 0.10f), maintained: true, "E-Stop");
     }
 
