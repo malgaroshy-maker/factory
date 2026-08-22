@@ -2,7 +2,7 @@
 import asyncio, json, logging, sys, time
 from pathlib import Path
 
-ROOT = Path(r"C:\Users\masal\source\factoryforge")
+ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "sidecar"), str(ROOT / "harness")]
 logging.disable(logging.WARNING)
 

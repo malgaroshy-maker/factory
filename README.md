@@ -3,7 +3,7 @@
 [![Godot 4.7](https://img.shields.io/badge/Godot-v4.7.1--mono-blue?logo=godotengine)](https://godotengine.org/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12+-green?logo=python)](https://www.python.org/)
 ![.NET 8.0](https://img.shields.io/badge/.NET-8.0-purple?logo=dotnet)
-[![Tests](https://img.shields.io/badge/Tests-41%20Passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-71%20Passed-brightgreen)](tests/)
 [![Siemens S7-1500](https://img.shields.io/badge/Siemens-S7--1500%20Verified-009999?logo=siemens)](examples/tia/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -84,7 +84,7 @@ cd factory
 pip install -e "sidecar[dev,opcua]"
 ```
 
-### 2. Run Test Suite (41 Tests)
+### 2. Run Test Suite (71 Tests)
 
 ```bash
 python -m pytest -q
@@ -100,10 +100,13 @@ python tools/test_plan.py          # --gui adds the display-dependent check
 ### 3. Launch 3D Simulation Engine
 
 ```bash
-cd engine
-dotnet build
-"<GODOT_CONSOLE_EXE>" --path .
+python run.py
 ```
+
+`run.py` finds Godot (or tells you exactly what to install and where), builds
+the C# engine, and launches it — no separate `dotnet build` step, and it works
+the same on Windows and Linux. (Windows users can also double-click
+`run_factoryforge.bat`, which just calls `run.py`.)
 
 This runs the **physics scene**: Jolt rigid-body cartons, real collisions, and
 components whose properties genuinely change how the line behaves — speed up the
@@ -112,10 +115,10 @@ behind it.
 
 ```bash
 # Fixed-timestep scene instead: reproducible, and the regression contract.
-"<GODOT_CONSOLE_EXE>" --path . -- --deterministic
+python run.py -- --deterministic
 ```
 
-Both scenes expose the **same ten tags** and report the same scene name, so a PLC
+Both scenes expose the **same 16 tags** and report the same scene name, so a PLC
 program, Node-RED flow or SCADA client drives either one unchanged. Use
 `--deterministic` whenever you need repeatable counts — CI and
 `tools/drive_engine.py` rely on it.

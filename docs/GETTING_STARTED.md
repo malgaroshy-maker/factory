@@ -7,7 +7,7 @@ Welcome to **FactoryForge**, a free, open 3D factory simulator for learning PLC 
 ## 📋 System Requirements
 
 * **Operating System:** Windows 10/11 or Linux (x86_64)
-* **Python:** Python 3.10+ (Python 3.12 recommended)
+* **Python:** Python 3.11+ (Python 3.12 recommended)
 * **Godot:** Godot 4.7.1 Mono / C#
 * **PLC Target (Optional):** Siemens S7-PLCSIM Advanced v3.0+, TIA Portal V14-V19, or Node-RED
 
@@ -18,13 +18,14 @@ Welcome to **FactoryForge**, a free, open 3D factory simulator for learning PLC 
 ### 1. Clone & Install Sidecar
 
 ```bash
-cd C:/Users/masal/source/factoryforge
+git clone https://github.com/malgaroshy-maker/factory.git factoryforge
+cd factoryforge
 pip install -e "sidecar[dev,opcua]"
 ```
 
 ### 2. Run the Test Suite
 
-Verify that all 41 unit & protocol drivers tests pass:
+Verify that all 71 unit & protocol driver tests pass:
 
 ```bash
 python -m pytest -q
@@ -32,13 +33,14 @@ python -m pytest -q
 
 ### 3. Launch the 3D Engine
 
-Launch the Godot 4.7 C# factory simulation engine:
-
 ```bash
-cd engine
-dotnet build
-"<GODOT_CONSOLE_EXE>" --path .
+python run.py
 ```
+
+`run.py` locates a Godot 4.7.1 .NET build (checking the `GODOT` environment
+variable, then `PATH`; if neither has it, it prints exactly what to download and
+where to put it), builds the C# engine, and launches it. Works the same on
+Windows and Linux; Windows users can also double-click `run_factoryforge.bat`.
 
 FactoryForge opens on a **start screen**: pick a template, open a scene you
 saved, or start empty. The key list is on that screen too, and the 🏠 button in

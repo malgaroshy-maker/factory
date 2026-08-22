@@ -35,15 +35,13 @@ USER_DIR = Path(os.environ.get("APPDATA", Path.home())) / "Godot" / "app_userdat
 
 
 def find_godot() -> str | None:
-    """Locate a Godot .NET binary: $GODOT, then PATH, then the known install."""
+    """Locate a Godot .NET binary: $GODOT, then PATH."""
     if (env := os.environ.get("GODOT")) and Path(env).exists():
         return env
     for name in ("godot", "godot-mono", "Godot_v4.7.1-stable_mono_win64_console"):
         if found := shutil.which(name):
             return found
-    guess = Path(r"D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64"
-                 r"\Godot_v4.7.1-stable_mono_win64_console.exe")
-    return str(guess) if guess.exists() else None
+    return None
 
 
 GODOT = find_godot()

@@ -5,9 +5,15 @@ Python port of `tia/Sorting.scl`. Use it to prove the driver, the mapping file,
 and the control timings all work before spending time in TIA Portal -- and as a
 way for contributors with no Siemens licence to work on the OPC UA driver.
 
-    Terminal 1:  python examples/fake_plc.py
-    Terminal 2:  python -m factoryforge_sidecar demo \
+    Terminal 1:  python run.py            (or godot --path engine/)
+    Terminal 2:  python examples/fake_plc.py
+    Terminal 3:  python -m factoryforge_sidecar connect \
                      --driver opcua-client --mapping examples/opcua_mapping.json
+
+`connect` attaches the sidecar to the engine from Terminal 1, so the sorting
+line actually moves on screen. `demo` would instead drive the sidecar's own
+invisible headless scene -- useful for a driver-only check, useless for
+watching this fake PLC's logic run.
 
 If you change the timings here, change `Sorting.scl` to match. The SCL file is
 the source of truth; this is the mirror.
