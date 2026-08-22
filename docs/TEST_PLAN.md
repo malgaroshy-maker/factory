@@ -59,6 +59,11 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value | `--self-test=force` |
 | C7 | `--scene=` loads a template headless (not just windowed) and `--print-tags` dumps its real I/O | `--scene=... --print-tags` |
 | C8 | `--deterministic --scene=` is rejected outright, not silently hybridized | `--deterministic --scene=...` |
+| C9 | `DemoDriver` picks the right profile for each of the five manifest scene ids, and refuses honestly for an unknown one | `--self-test=demo` |
+| C10 | `start-stop-station` profile: Start runs the belt, Stop and E-stop cut it, Start while tripped is refused, Reset clears the fault | `--self-test=startstop` |
+| C11 | `tank-level-control` profile: the controller settles within ±5% of setpoint | `--self-test=tank` |
+| C12 | `light-curtain-sorting` profile: both tall and short cartons are routed correctly, nothing lost | `--self-test=lightcurtain` |
+| C13 | `roller-line-weighing` profile: outfeed counts, and the inductive sensor actually fires for a metal carton | `--self-test=roller` |
 
 ### D. Engine self-tests (need a display)
 

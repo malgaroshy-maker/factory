@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using Godot;
+using FactoryForge.Sim.DemoProfiles;
 using FactoryForge.TagBus;
 
 namespace FactoryForge.Sim;
@@ -10,11 +13,10 @@ namespace FactoryForge.Sim;
 /// running, and the app shipped no way to see it move without one — which
 /// reads as "this is broken" in the first thirty seconds. See FF-23.
 ///
-/// Mirrors <c>tools/live_driver.py</c>'s logic exactly, but needs no Python:
-/// runs the belt, pulses the emitter, and fires the pusher when the high
-/// sensor sees a tall carton. Every write is conditional on the tag existing,
-/// so this degrades to a no-op rather than an error on a scene that does not
-/// define the reference sorting line's tags.
+/// Looks up a small <see cref="IDemoProfile"/> by the loaded scene's name and
+/// runs it, rather than hardcoding one scene's logic here directly (UX-16) —
+/// every shipped scene gets its own honest exercise (docs/UX_PLAN.md §4)
+/// instead of the sorting line's logic silently no-op'ing on everything else.
 ///
 /// Stands down the instant a real driver connects — it must never fight a
 /// PLC for the same tags, so <see cref="Bus"/> is checked every frame rather
@@ -33,29 +35,42 @@ public partial class DemoDriver : Node
 
     public bool Active { get; private set; }
 
-    private const double EmitHalfPeriod = 1.5;
-    private const double PushDelay = 0.9;
-    private const double PushHold = 0.5;
+    /// <summary>Set when <see cref="Start"/> refuses because the loaded scene
+    /// has no profile. Full UI treatment is UX-30; this exists so refusing is
+    /// at least honest rather than silently leaving Active false with no
+    /// explanation anywhere.</summary>
+    public string? RefusalReason { get; private set; }
 
-    private double _elapsed;
-    private bool _emitFlag;
-    private double _nextToggle;
-    private bool _highSeen;
-    private double? _extendAt;
-    private double? _retractAt;
+    private static readonly Dictionary<string, Func<IDemoProfile>> Profiles = new()
+    {
+        ["sorting-by-height"] = () => new SortingByHeightProfile(),
+        ["start-stop-station"] = () => new StartStopStationProfile(),
+        ["tank-level-control"] = () => new TankLevelControlProfile(),
+        ["light-curtain-sorting"] = () => new LightCurtainSortingProfile(),
+        ["roller-line-weighing"] = () => new RollerLineWeighingProfile(),
+    };
+
+    private IDemoProfile? _profile;
 
     public void Start()
     {
         if (Active) return;
+
+        string scene = Bus.SceneName;
+        if (!Profiles.TryGetValue(scene, out var makeProfile))
+        {
+            RefusalReason = $"no demo profile for scene '{scene}'";
+            GD.Print($"Demo: {RefusalReason}");
+            return;
+        }
+
+        RefusalReason = null;
+        // A fresh instance every start, not a reused one: a profile's edge
+        // detectors and timers are only valid from the moment it saw the
+        // scene's initial state, and Stop() deliberately does not rewind them.
+        _profile = makeProfile();
         Active = true;
-        _elapsed = 0;
-        _nextToggle = EmitHalfPeriod;
-        _emitFlag = false;
-        _highSeen = false;
-        _extendAt = null;
-        _retractAt = null;
-        SetIfPresent("conveyor.rotate", true);
-        SetIfPresent("stack_light.green", true);
+        _profile.Start(Tags);
         EmitSignal(SignalName.ActiveChanged, true);
     }
 
@@ -63,6 +78,7 @@ public partial class DemoDriver : Node
     {
         if (!Active) return;
         Active = false;
+        _profile = null;
         // Leave outputs where they are. A real driver about to take over
         // writes them itself; snapping a running belt to "off" the instant a
         // PLC connects would look like a fault at the exact moment the
@@ -70,9 +86,22 @@ public partial class DemoDriver : Node
         EmitSignal(SignalName.ActiveChanged, false);
     }
 
-    public override void _Process(double delta)
+    // Physics clock, not the frame clock: a panel button's rising edge is
+    // exactly one _PhysicsProcess tick wide (SceneEditor.StepPanelButtons sets
+    // it, then clears it at the top of the next physics tick), and headless
+    // has no vsync holding _Process and _PhysicsProcess at the same cadence --
+    // uncapped, the engine can run several physics ticks per frame to catch
+    // up. A frame-clock reader can watch a pulse turn on and off again between
+    // two of its own calls and never see it high at all. Found this the hard
+    // way writing UX-17's self-test: pressing Start could be silently
+    // swallowed, reproducibly, right after a template load's own allocation
+    // hitch gave the catch-up loop something to catch up on. SceneEditor is
+    // added to the tree before DemoDriver, so this still reads each tick's
+    // writes in the same order _Process did, just on the clock that cannot
+    // skip past them.
+    public override void _PhysicsProcess(double delta)
     {
-        if (!Active) return;
+        if (!Active || _profile is null) return;
 
         if (Bus.HasClient)
         {
@@ -80,36 +109,6 @@ public partial class DemoDriver : Node
             return;
         }
 
-        _elapsed += delta;
-        if (_elapsed >= _nextToggle)
-        {
-            _emitFlag = !_emitFlag;
-            _nextToggle = _elapsed + EmitHalfPeriod;
-            SetIfPresent("emitter.emit", _emitFlag);
-        }
-
-        bool high = GetBitIfPresent("sensor_high.detect");
-        if (high && !_highSeen) _extendAt = _elapsed + PushDelay;
-        _highSeen = high;
-
-        if (_extendAt is { } extendAt && _elapsed >= extendAt)
-        {
-            SetIfPresent("pusher.extend", true);
-            _retractAt = extendAt + PushHold;
-            _extendAt = null;
-        }
-        if (_retractAt is { } retractAt && _elapsed >= retractAt)
-        {
-            SetIfPresent("pusher.extend", false);
-            _retractAt = null;
-        }
+        _profile.Tick(delta, Tags);
     }
-
-    private void SetIfPresent(string tagId, object value)
-    {
-        if (Tags.Contains(tagId)) Tags.Set(tagId, value);
-    }
-
-    private bool GetBitIfPresent(string tagId) =>
-        Tags.Contains(tagId) && Tags.Visible(tagId) is true;
 }

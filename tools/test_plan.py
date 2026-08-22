@@ -254,6 +254,13 @@ def section_c() -> None:
     record("C8", "--deterministic --scene= is rejected, not silently hybridized",
            code != 0 and "cannot combine" in out, f"exit={code}")
 
+    _self_test("C9", "DemoDriver picks the right profile per scene, refuses honestly otherwise", "demo")
+
+    _self_test("C10", "start-stop-station profile: momentary buttons, E-stop latch, reset", "startstop")
+    _self_test("C11", "tank-level-control profile: controller settles within ±5% of setpoint", "tank")
+    _self_test("C12", "light-curtain-sorting profile: both tall and short cartons routed correctly", "lightcurtain")
+    _self_test("C13", "roller-line-weighing profile: outfeed counts, metal detected", "roller")
+
 
 def section_d(enabled: bool) -> None:
     print("\nD. Engine self-tests (need a display)")

@@ -1,7 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Phase 3 (UX-23…UX-29), Phase 5's UX-35/UX-36, and
-Phase 1 (UX-10…UX-15) are done. Everything else is still proposal.
+**Status:** in progress. Phase 3 (UX-23…UX-29), Phase 5's UX-35/UX-36,
+Phase 1 (UX-10…UX-15), and Phase 2's UX-16…UX-20 (the C# side; UX-21/22,
+`tools/try_scene.py`, are not started) are done. Everything else is still
+proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -546,7 +548,7 @@ line and the `--print-tags` `"scene"` field agree in every case.
 
 ---
 
-### Phase 2 — One runnable exercise per scene
+### Phase 2 — One runnable exercise per scene — UX-16…UX-20 done, UX-21/22 not started
 
 The behaviour spec for all five is §4. **Both homes, C# first** — decided:
 
@@ -562,7 +564,7 @@ physics scene (§2.3), so no template can promise exact counts the way
 `drive_engine.py` does. Assert "at least N counted", "level held within ±5% for
 10s", "tall+short equals emitted" — never "tall == 5".
 
-**UX-16 — A per-scene profile mechanism in `DemoDriver`**
+**UX-16 — A per-scene profile mechanism in `DemoDriver` — done**
 *Files:* `engine/src/Sim/DemoDriver.cs`.
 *Done when:* `DemoDriver` looks up a profile by the loaded scene name and runs
 it, and reports honestly when there is none (see UX-30).
@@ -570,17 +572,74 @@ it, and reports honestly when there is none (see UX-30).
 profile.
 *Size:* M. *Depends on:* UX-13.
 
-**UX-17 — `start-stop-station` profile** — §4.2. *Size:* S. *Depends on:* UX-16.
-**UX-18 — `tank-level-control` profile** — §4.3; needs a small controller, not
+Implemented as `IDemoProfile` (`Start`/`Tick`) plus one class per scene under
+`engine/src/Sim/DemoProfiles/`, looked up from a `scene id → factory`
+dictionary keyed to the manifest's ids. `RefusalReason` is set instead of
+silently leaving `Active` false, so a custom scene with no profile refuses
+audibly rather than turning "Demo" green over nothing — the same dishonesty
+class as FF-06/FF-23, closed before it could happen here too. The original
+sorting logic moved into `SortingByHeightProfile` unchanged (same constants,
+same code); `--demo --duration=25` on the default scene still gives
+`tall=3 short=3` after the refactor, matching pre-refactor behaviour.
+
+**A second, unrelated bug found while verifying this and fixed alongside it:**
+`DemoDriver` read tags from `_Process` (the frame clock). A panel button's
+press is exactly one `_PhysicsProcess` tick wide (`SceneEditor.StepPanelButtons`
+sets it, then clears it at the top of the very next physics tick), and headless
+has no vsync holding `_Process` and `_PhysicsProcess` at the same cadence —
+uncapped, the engine can run several physics ticks per frame to catch up. A
+frame-clock reader can watch a one-tick pulse turn on and off again between two
+of its own calls and never see it high at all. This reproduced deterministically
+(3/3 runs) right after a template load's own allocation hitch gave the catch-up
+loop something to catch up on — exactly the moment a real user clicks Start
+after a template just finished loading. Moved `DemoDriver` to `_PhysicsProcess`
+(it is already added to the tree after `SceneEditor`, so ordering within a tick
+is unchanged); UX-17's self-test went from reproducibly failing to reproducibly
+passing (3/3) with no other change. This was not introduced by this session's
+refactor — the original `DemoDriver` had the same `_Process` read against the
+same kind of physics-tick-driven tag (`sensor_high.detect`) and would have had
+the same exposure, just with lower odds of noticing since the sorting profile
+has no latched state to make a missed edge visible.
+
+**UX-17 — `start-stop-station` profile — done** — §4.2. *Size:* S. *Depends on:* UX-16.
+**UX-18 — `tank-level-control` profile — done** — §4.3; needs a small controller, not
 just a timer. *Size:* M. *Depends on:* UX-16, UX-35.
-**UX-19 — `light-curtain-sorting` profile** — §4.4; handshakes on
+**UX-19 — `light-curtain-sorting` profile — done** — §4.4; handshakes on
 `diverter.extended`/`.retracted` rather than a timer. *Size:* M. *Depends on:* UX-16.
-**UX-20 — `roller-line-weighing` profile** — §4.5. *Size:* S. *Depends on:* UX-16.
+**UX-20 — `roller-line-weighing` profile — done** — §4.5. *Size:* S. *Depends on:* UX-16.
 
 *Verify (UX-17 … UX-20):* load each template, press 🎬 Demo, watch the line run
 for 30 s with no PLC and no Python.
 
-**UX-21 — `tools/try_scene.py`**
+Verified with four new physics-timed self-tests
+(`--self-test=startstop|tank|lightcurtain|roller`, `tools/test_plan.py`
+C10–C13) rather than only by eye, since "watch it run" is hard to re-check on
+every future change:
+
+* **start-stop-station** — drives the real `ButtonPanel.Press()` API (not a
+  direct tag write) through Start → E-stop → Start-while-tripped (refused) →
+  release → Reset → Start again, asserting the lamp and belt never disagree.
+  Deliberately broke the Start-edge branch and watched it fail (4 failures),
+  then restored it.
+* **tank-level-control** — runs the controller for ~13 simulated seconds and
+  checks `tank.level` settled within ±5% of the 55% setpoint, and
+  `level_readout.value` tracks it. Real Torricelli physics, no shortcuts.
+* **light-curtain-sorting** — runs ~20 simulated seconds and checks both
+  `tall_count.count` and `short_count.count` advanced (got `tall=2 short=3`),
+  proving the diverter both fires for tall cartons and stays retracted for
+  short ones. Deliberately broke `TallThreshold` (set to an unreachable 5.0m)
+  and watched `tall_count.count` stay at 0 while `short_count.count` kept
+  climbing — the exact failure mode a wrong threshold produces — then restored it.
+* **roller-line-weighing** — runs ~20 simulated seconds and checks
+  `outfeed.count` advances and `metal_check.detect` fired at least once
+  (`outfeed=4 sawMetal=True`) — the material-aware sensing claim, checked
+  rather than only asserted in a README.
+
+All four passed on the first real run once the `_PhysicsProcess` fix landed.
+`python -m pytest -q` unaffected (71 passed); full `test_plan.py --only A,C,E`
+21 passed in 165s.
+
+**UX-21 — `tools/try_scene.py` — not started**
 *Files:* new `tools/try_scene.py`; fold `tools/drive_engine.py` in behind it.
 *Done when:* `--scene <id>`, `--duration`, `--verbose`, `--list`; one
 `RESULT ...` line; exit 0/1 — the convention `check_protocol.py` and

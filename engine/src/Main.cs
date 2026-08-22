@@ -195,6 +195,26 @@ public partial class Main : Node
         {
             AddChild(new TagForceSelfTest { Name = "TagForceSelfTest" });
         }
+        if (_selfTest == "demo")
+        {
+            AddChild(new DemoDriverSelfTest { Name = "DemoDriverSelfTest", Tags = tags });
+        }
+        if (_selfTest == "startstop")
+        {
+            AddChild(new StartStopProfileSelfTest { Name = "StartStopProfileSelfTest", Tags = tags, Editor = _editor! });
+        }
+        if (_selfTest == "tank")
+        {
+            AddChild(new TankProfileSelfTest { Name = "TankProfileSelfTest", Tags = tags, Editor = _editor! });
+        }
+        if (_selfTest == "lightcurtain")
+        {
+            AddChild(new LightCurtainProfileSelfTest { Name = "LightCurtainProfileSelfTest", Tags = tags, Editor = _editor! });
+        }
+        if (_selfTest == "roller")
+        {
+            AddChild(new RollerProfileSelfTest { Name = "RollerProfileSelfTest", Tags = tags, Editor = _editor! });
+        }
     }
 
     private void BuildView(TagTable tags)
