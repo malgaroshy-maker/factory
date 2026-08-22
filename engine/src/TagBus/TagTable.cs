@@ -73,6 +73,34 @@ public sealed class TagTable : IEnumerable<Tag>
 
     public bool IsForced(string id) => _forced.ContainsKey(id);
 
+    /// <summary>Whether anything is currently forced — the idle hint (FF-23)
+    /// uses this to tell "nobody has touched this scene yet" apart from
+    /// "somebody is driving it by hand from the inspector".</summary>
+    public bool AnyForced => _forced.Count > 0;
+
+    /// <summary>
+    /// <see cref="Contains"/> then <see cref="Visible"/> collapsed into one
+    /// dictionary probe instead of two — the editor's physics dispatch calls
+    /// this pattern several times per part, every tick. See FF-15.
+    /// </summary>
+    public bool TryGetVisible(string id, out object value)
+    {
+        if (!_tags.TryGetValue(id, out var tag)) { value = null!; return false; }
+        value = _forced.TryGetValue(id, out var forced) ? forced : tag.Value;
+        return true;
+    }
+
+    /// <summary><see cref="Contains"/> then <see cref="Set"/> collapsed into
+    /// one dictionary probe. Returns false, without writing, if the tag does
+    /// not exist. See FF-15.</summary>
+    public bool TrySet(string id, object value)
+    {
+        if (!_tags.TryGetValue(id, out var tag)) return false;
+        bool changed = tag.Differs(value);
+        tag.Set(value);
+        return !_forced.ContainsKey(id) && changed;
+    }
+
     /// <summary>The value the outside world sees, honouring any force.</summary>
     public object Visible(string id) =>
         _forced.TryGetValue(id, out var v) ? v : _tags[id].Value;

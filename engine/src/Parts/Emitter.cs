@@ -67,6 +67,11 @@ public partial class Emitter : Node3D
 
     private int _emitted;
 
+    /// <summary>Zero the metal cadence counter. Called on scene reset so the
+    /// metal phase does not drift from wherever the previous run left it —
+    /// the regression contract requires a reset to fully reset.</summary>
+    public void ResetCount() => _emitted = 0;
+
     public BoxPhysics SpawnBox(bool isTall)
     {
         _emitted++;

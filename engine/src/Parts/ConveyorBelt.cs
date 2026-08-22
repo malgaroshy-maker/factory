@@ -36,6 +36,11 @@ public partial class ConveyorBelt : StaticBody3D
 
     public bool IsRunning { get; private set; }
 
+    private bool _hasAppliedVelocity;
+    private bool _lastRunning;
+    private Basis _lastBasis;
+    private float _lastSpeed;
+
     public override void _Ready()
     {
         var visual = IndustrialMeshBuilder.BuildDetailedConveyor(Size, out _beltMaterial);
@@ -66,13 +71,36 @@ public partial class ConveyorBelt : StaticBody3D
         }
     }
 
+    /// <summary>
+    /// Called every physics tick regardless of whether anything changed, so
+    /// this used to redo a matrix multiply and a square root on every belt on
+    /// every tick even when the belt was sitting there doing nothing (FF-16).
+    /// Skipping when (running, orientation, speed) all match the last applied
+    /// values makes the steady-state case free while still catching the case
+    /// that made this call unconditional in the first place: rotating a
+    /// running belt has to rotate its transport direction with it, and a live
+    /// speed-slider edit has to take effect without a rotate to trigger it.
+    /// </summary>
     public void SetRunning(bool running)
     {
         IsRunning = running;
+        Basis basis = GlobalBasis;
+
+        if (_hasAppliedVelocity && running == _lastRunning && basis == _lastBasis
+            && Mathf.IsEqualApprox(Speed, _lastSpeed))
+        {
+            return;
+        }
+
         // ConstantLinearVelocity is a world-space vector, but Direction describes
         // the belt's own travel. Rotating a belt in the editor (R) has to rotate
         // the transport with it, or a turned belt still drives boxes down +X.
-        Vector3 worldDir = (GlobalBasis * Direction).Normalized();
+        Vector3 worldDir = (basis * Direction).Normalized();
         ConstantLinearVelocity = running ? worldDir * Speed : Vector3.Zero;
+
+        _lastRunning = running;
+        _lastBasis = basis;
+        _lastSpeed = Speed;
+        _hasAppliedVelocity = true;
     }
 }

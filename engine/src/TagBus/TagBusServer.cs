@@ -141,11 +141,12 @@ public partial class TagBusServer : Node
 
     // --- outgoing ---
 
-    private static JsonObject Hello() => new()
+    private JsonObject Hello() => new()
     {
         ["t"] = "hello",
         ["protocol"] = ProtocolVersion,
         ["engine"] = EngineId,
+        ["tick_ms"] = TickMs,
     };
 
     /// <summary>Publish the current tag set and bump the epoch.</summary>
@@ -238,6 +239,7 @@ public partial class TagBusServer : Node
     {
         if (values is null) return;
         List<string>? unknown = null;
+        List<string>? rejected = null;
         foreach (var (id, node) in values)
         {
             var tag = Tags.Get(id);
@@ -248,10 +250,24 @@ public partial class TagBusServer : Node
                     $"{id} is a simulator-owned input; use force to override it");
                 continue;
             }
-            if (node is not null) Tags.Set(id, ToClr(node));
+            if (node is null) continue;
+
+            // Per value, not per message: one bad value used to abort every
+            // other value in the same batch, silently and without naming the
+            // offender. See FF-11.
+            try
+            {
+                Tags.Set(id, ToClr(node));
+            }
+            catch (ArgumentException e)
+            {
+                (rejected ??= new()).Add($"{id} ({e.Message})");
+            }
         }
         if (unknown is not null)
             Status("warn", "unknown_tags", $"ignored unknown tags: {string.Join(", ", unknown)}");
+        if (rejected is not null)
+            Status("warn", "bad_value", $"rejected bad values: {string.Join("; ", rejected)}");
     }
 
     private static object ToClr(JsonNode node)
