@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FactoryForge.Editor;
@@ -22,19 +23,22 @@ public partial class TemplateSelfTest : Node
     public TagTable Tags { get; set; } = null!;
     public SceneEditor? Editor { get; set; }
 
-    /// <summary>Every template the start screen offers, and the parts each one
-    /// exists to demonstrate. Add a template, add it here.</summary>
-    private static readonly (string Path, string[] MustContain)[] Expected =
+    /// <summary>The parts each template exists to demonstrate. Keyed by manifest
+    /// id rather than duplicated here as a path list (UX-13) -- add a template to
+    /// <c>engine/templates/manifest.json</c> and it is picked up below; this map
+    /// only needs a new entry if it is worth asserting specific parts survived.</summary>
+    private static readonly Dictionary<string, string[]> MustContain = new()
     {
-        ("res://templates/start_stop_station.json",
-            new[] { "belt", "panel", "tower", "emitter", "counter" }),
-        ("res://templates/tank_level_control.json",
-            new[] { "tank", "level_readout", "panel" }),
-        ("res://templates/light_curtain_sorting.json",
-            new[] { "belt", "height_gauge", "diverter", "chute", "tall_count" }),
-        ("res://templates/roller_line_weighing.json",
-            new[] { "infeed", "scale", "metal_check", "weight_readout" }),
+        ["start-stop-station"] = new[] { "belt", "panel", "tower", "emitter", "counter" },
+        ["tank-level-control"] = new[] { "tank", "level_readout", "panel" },
+        ["light-curtain-sorting"] = new[] { "belt", "height_gauge", "diverter", "chute", "tall_count" },
+        ["roller-line-weighing"] = new[] { "infeed", "scale", "metal_check", "weight_readout" },
     };
+
+    /// <summary>Every template with a real file -- the built-in scene (empty
+    /// path) is covered by the default scene, not this test.</summary>
+    private static readonly TemplateEntry[] Expected =
+        TemplateManifest.Load().Where(t => t.Path.Length > 0).ToArray();
 
     private readonly List<string> _failures = new();
     private int _step;
@@ -81,7 +85,8 @@ public partial class TemplateSelfTest : Node
             return;
         }
 
-        CheckLoaded(Expected[_index].Path, Expected[_index].MustContain);
+        var entry = Expected[_index];
+        CheckLoaded(entry.Path, MustContain.TryGetValue(entry.Id, out var m) ? m : Array.Empty<string>());
     }
 
     private void CheckLoaded(string path, string[] mustContain)

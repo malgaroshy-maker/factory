@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Godot;
 using FactoryForge.Editor;
 using FactoryForge.Scenes;
@@ -51,6 +52,10 @@ public partial class Main : Node
     /// and that needs an engine that is paused before anything can connect.</summary>
     private bool _startPaused;
 
+    /// <summary>Dump the `describe` table to stdout and exit, so a script can
+    /// ask what a scene exposes without opening a WebSocket. See UX-14.</summary>
+    private bool _printTags;
+
     public override void _Ready()
     {
         foreach (var arg in OS.GetCmdlineUserArgs())
@@ -75,6 +80,22 @@ public partial class Main : Node
                 _autoDemo = true;
             else if (arg == "--paused")
                 _startPaused = true;
+            else if (arg == "--print-tags")
+                _printTags = true;
+        }
+
+        // A fixed 10-tag hybrid of two scenes, not a template — the deterministic
+        // scene is the regression contract's own fixed tag set, and --scene=
+        // asks to load a template's tags into it instead. Reject the combination
+        // rather than silently publishing whichever tags happened to end up in
+        // the table.
+        if (_deterministic && _scenePath is { Length: > 0 })
+        {
+            GD.PrintErr("--deterministic and --scene= cannot combine: " +
+                        "--deterministic is the fixed regression scene, not a template. " +
+                        "Drop one of the two flags.");
+            GetTree().Quit(1);
+            return;
         }
 
         // Rigid bodies by default — the parts are real colliders, so properties,
@@ -116,9 +137,29 @@ public partial class Main : Node
         // Report the bus state rather than announcing "ready" regardless: an
         // instance that could not bind the port simulates perfectly and is
         // unreachable, and saying "ready" sends people to debug their PLC.
+        //
+        // _bus.SceneName, not the SceneName const: a loaded template already
+        // adopted its own name onto the bus by this point (BuildView and
+        // BuildHeadlessPhysicsParts both call AdoptSceneName before returning),
+        // so printing the const here reported "sorting-by-height" for every
+        // template while the bus itself correctly told drivers otherwise (§2.10).
         GD.Print($"FactoryForge engine ready — {(_deterministic ? "DETERMINISTIC" : "PHYSICS")} " +
-                 $"scene '{SceneName}', {tags.Count} tags" +
+                 $"scene '{_bus.SceneName}', {tags.Count} tags" +
                  (_bus.IsListening ? "" : "  [NO TAG BUS — port in use, drivers cannot connect]"));
+
+        if (_printTags)
+        {
+            var msg = new JsonObject
+            {
+                ["t"] = "describe",
+                ["scene"] = _bus.SceneName,
+                ["epoch"] = _bus.Epoch,
+                ["tags"] = tags.ToJson(),
+            };
+            GD.Print(msg.ToJsonString());
+            GetTree().Quit(0);
+            return;
+        }
 
         // Added last so it runs after the editor each tick, and therefore reads
         // the tags as the part dispatch left them rather than a tick behind.
@@ -310,11 +351,15 @@ public partial class Main : Node
         };
 
         // An explicitly requested scene means the choice has already been made.
+        // --demo composes with it (UX-11): load X, then start the demo against
+        // whatever X turned out to be, rather than --demo only ever meaning "load
+        // the default sorting scene".
         if (_scenePath is { Length: > 0 })
         {
             startScreen.Visible = false;
             editor.LoadTemplate(_scenePath);
             AdoptSceneName(editor);
+            if (_autoDemo) demo.Start();
         }
         else if (_autoDemo)
         {
@@ -382,12 +427,22 @@ public partial class Main : Node
     }
 
     /// <summary>Physics mode without a renderer: no UI, but the parts still have
-    /// to exist or nothing moves.</summary>
+    /// to exist or nothing moves. A requested template loads the same way the
+    /// windowed path does (UX-10) -- SceneEditor builds parts from JSON with no
+    /// renderer, camera or grid involved, so nothing here is display-dependent.</summary>
     private void BuildHeadlessPhysicsParts(TagTable tags)
     {
         var editor = new SceneEditor { Name = "SceneEditor", Tags = tags };
         AddChild(editor);
-        editor.RegisterDefaultSceneParts(physical: true);
+        if (_scenePath is { Length: > 0 })
+        {
+            editor.LoadTemplate(_scenePath);
+            AdoptSceneName(editor);
+        }
+        else
+        {
+            editor.RegisterDefaultSceneParts(physical: true);
+        }
         _editor = editor;
     }
 
@@ -450,6 +505,13 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
+        // GetTree().Quit() schedules the exit for end of frame rather than
+        // stopping it immediately -- an invalid-argument rejection in _Ready
+        // (UX-12) returns before _bus exists, and without this guard the tree
+        // still ran one more _Process and crashed on a null reference instead
+        // of exiting cleanly on the message already printed.
+        if (_bus is null) return;
+
         // Fixed timestep with a wall-clock accumulator. The scene always
         // advances by exactly TickMs, never by measured elapsed time: a
         // variable dt would make runs non-reproducible and defeat the

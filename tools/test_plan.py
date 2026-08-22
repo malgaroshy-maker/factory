@@ -240,6 +240,20 @@ def section_c() -> None:
     # float I/O) could not be operated by hand at all.
     _self_test("C6", "Tag Inspector forces int and float tags, not just bits", "force")
 
+    # --scene= used to only work windowed; BuildHeadlessPhysicsParts always
+    # called RegisterDefaultSceneParts regardless of what was asked for.
+    code, out = engine(["--scene=res://templates/tank_level_control.json", "--print-tags"], timeout=30)
+    match = re.search(r'\{"t":"describe".*\}', out)
+    payload = json.loads(match.group(0)) if match else {}
+    record("C7", "--scene= loads a template headless and --print-tags dumps its I/O",
+           code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 13,
+           f"scene={payload.get('scene')!r} tags={len(payload.get('tags', []))}" if payload else "no describe line")
+
+    # A fixed 10-tag hybrid of two scenes is worse than refusing outright.
+    code, out = engine(["--deterministic", "--scene=res://templates/tank_level_control.json"], timeout=20)
+    record("C8", "--deterministic --scene= is rejected, not silently hybridized",
+           code != 0 and "cannot combine" in out, f"exit={code}")
+
 
 def section_d(enabled: bool) -> None:
     print("\nD. Engine self-tests (need a display)")

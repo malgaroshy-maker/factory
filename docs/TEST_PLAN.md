@@ -57,6 +57,8 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
 | C5 | F5 driver modal's minimum size still fits the screen once auto-detect writes a long status message | `--self-test=layout` |
 | C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value | `--self-test=force` |
+| C7 | `--scene=` loads a template headless (not just windowed) and `--print-tags` dumps its real I/O | `--scene=... --print-tags` |
+| C8 | `--deterministic --scene=` is rejected outright, not silently hybridized | `--deterministic --scene=...` |
 
 ### D. Engine self-tests (need a display)
 

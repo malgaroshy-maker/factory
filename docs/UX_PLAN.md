@@ -1,7 +1,7 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Phase 3 (UX-23…UX-29) and Phase 5's UX-35/UX-36 are
-done. Everything else is still proposal.
+**Status:** in progress. Phase 3 (UX-23…UX-29), Phase 5's UX-35/UX-36, and
+Phase 1 (UX-10…UX-15) are done. Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -443,12 +443,25 @@ through the warning.
 
 ---
 
-### Phase 1 — Make scenes scriptable
+### Phase 1 — Make scenes scriptable — done
 
 The prerequisite for Phase 2. **De-risked by the spike in §0** — this is now
 small, mechanical work.
 
-**UX-10 — Load `--scene=` headless**
+All five items landed together (`engine/src/Main.cs`, new
+`engine/templates/manifest.json`, new `engine/src/Editor/TemplateManifest.cs`).
+Verified beyond the self-tests below: forced `tank.fill` to 0.5 over a live
+tag-bus connection to the template loaded via `--scene=` headless and watched
+`tank.level` climb from 0.0 to 1.08 over 10.5s (real Torricelli physics, no
+renderer) — the exact scenario UX-35's verify step names. Also confirmed the
+manifest-driven start screen renders identically to the old hardcoded one by
+screenshot, and that the widened Tag Inspector shows a real editable value
+field next to `counter.tall`/`counter.short` in a live window, not just headless.
+New regression coverage: `tools/test_plan.py` C7 (`--scene=` + `--print-tags`
+headless, asserts scene name and tag count) and C8 (`--deterministic
+--scene=` rejected, non-zero exit). `python -m pytest -q` still 71 passed.
+
+**UX-10 — Load `--scene=` headless — done**
 *Files:* `engine/src/Main.cs`.
 *Done when:* `godot --headless --path engine -- --scene=res://templates/X.json`
 publishes X's scene name and X's tags. Proven by the spike: call
@@ -458,20 +471,33 @@ publishes X's scene name and X's tags. Proven by the spike: call
 matching the windowed run.
 *Size:* S.
 
-**UX-11 — Make `--scene` and `--demo` compose**
+**UX-11 — Make `--scene` and `--demo` compose — done**
 *Files:* `engine/src/Main.cs` (the `else if` at `:315`).
 *Done when:* `--scene=X --demo` loads X *and* starts the demo.
 *Verify:* run it; the template loads and moves.
 *Size:* S.
 
-**UX-12 — Reject `--deterministic --scene=`**
+Verified windowed (this is a `BuildView`-only flag today, matching the plan's
+file scope): `tank_level_control.json` loads and reports its own name with
+`--demo` set, no crash. `DemoDriver` itself still only has a sorting-line
+profile (§2.1) — it composes correctly but has nothing scene-appropriate to do
+yet on a template, which is exactly the gap Phase 2 (UX-16…UX-20) closes.
+
+**UX-12 — Reject `--deterministic --scene=` — done**
 *Files:* `engine/src/Main.cs`.
 *Done when:* the combination exits with a message naming why, instead of
 publishing a 24-tag hybrid of two scenes.
 *Verify:* run the combination; a clear error, non-zero exit.
 *Size:* S.
 
-**UX-13 — A scenes manifest**
+Found and fixed a second bug while verifying this one: `GetTree().Quit(1)`
+schedules the exit for end-of-frame rather than stopping immediately, so
+`_Process` still ran once more with `_bus` never constructed and crashed on a
+`NullReferenceException` instead of exiting cleanly on the message already
+printed. Guarded `_Process` with an early return while `_bus` is null.
+Covered by `tools/test_plan.py` C8.
+
+**UX-13 — A scenes manifest — done**
 *Files:* new `engine/templates/manifest.json`;
 `engine/src/Editor/StartScreenUI.cs` (replacing the hardcoded `Templates` array
 at `:38`); `tools/` consumers.
@@ -482,19 +508,41 @@ everywhere at once.
 `try_scene.py --list` with no C# change.
 *Size:* M.
 
-**UX-14 — `--print-tags`**
+Implemented as `engine/templates/manifest.json` (five entries: id, title,
+blurb, path, scene) read by a new shared `TemplateManifest.Load()`. Two
+consumers switched over: `StartScreenUI`'s hardcoded array, and
+`TemplateSelfTest`'s separate hardcoded path list — the exact duplication this
+item exists to remove. `TemplateSelfTest` keeps a small `MustContain` map
+keyed by manifest id (which parts each template must contain), since that is
+test fixture data, not something the start screen or Python tooling needs.
+Verified by screenshot: the start screen renders identically to the old
+hardcoded version. The `try_scene.py --list` half of Verify is not yet
+checkable — `try_scene.py` is UX-21, not built yet — but the manifest itself
+is plain JSON any Python tool can read with no C# change, which is the part
+of "done when" this phase owns.
+
+**UX-14 — `--print-tags` — done**
 *Files:* `engine/src/Main.cs`.
 *Done when:* the flag dumps the `describe` table to stdout and exits, so no
 script needs a WebSocket client just to ask what a scene exposes.
 *Verify:* output matches what a bus client sees for the same scene.
 *Size:* S.
 
-**UX-15 — Report the loaded scene's real name at startup**
+Prints the exact same `{"t":"describe","scene":...,"epoch":...,"tags":[...]}`
+shape `TagBusServer.SendDescribe` sends, built from the same `Tag.ToJson` — not
+a hand-rolled copy that could drift from the real wire format. Covered by
+`tools/test_plan.py` C7.
+
+**UX-15 — Report the loaded scene's real name at startup — done**
 *Files:* `engine/src/Main.cs:120`.
 *Done when:* the ready line prints the scene actually loaded, not the
 `SceneName` const (§2.10).
 *Verify:* load a template; the log and the bus agree.
 *Size:* S.
+
+One-line fix: the ready line now interpolates `_bus.SceneName` instead of the
+`SceneName` const. Verified across all four templates headless — the ready
+line and the `--print-tags` `"scene"` field agree in every case.
 
 ---
 

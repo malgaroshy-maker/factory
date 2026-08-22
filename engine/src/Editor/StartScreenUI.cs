@@ -30,35 +30,14 @@ public partial class StartScreenUI : Control
     /// driver — no PLC, no Python, nothing to install. See FF-23.</summary>
     [Signal] public delegate void DemoRequestedEventHandler();
 
-    private sealed record Template(string Title, string Blurb, string Path);
-
     /// <summary>
     /// Each one teaches a different thing, which is the point of having more
     /// than one. The blurb says what you would learn, not what parts are in it.
+    /// Loaded from <c>engine/templates/manifest.json</c> via <see cref="TemplateManifest"/>
+    /// rather than hardcoded here, so this list and the template self-test's
+    /// cannot silently drift apart (UX-13).
     /// </summary>
-    private static readonly Template[] Templates =
-    {
-        new("Sorting by height",
-            "The reference line: sensors, a diverter and two counters. Sorts tall "
-            + "cartons down a chute and lets short ones pass.",
-            ""),          // empty path = the built-in scene
-        new("Start / stop station",
-            "A conveyor and an operator panel. Momentary buttons, a latching "
-            + "E-stop, and a lamp that has to reflect the real state.",
-            "res://templates/start_stop_station.json"),
-        new("Tank level control",
-            "Analog end to end. A modulating valve and a level transmitter, with "
-            + "outflow that varies with level — a PID tuned full will overshoot empty.",
-            "res://templates/tank_level_control.json"),
-        new("Light curtain sorting",
-            "Sorting on a measurement instead of two bits. The curtain reports how "
-            + "tall each carton is, so you choose the threshold in code.",
-            "res://templates/light_curtain_sorting.json"),
-        new("Roller line with weighing",
-            "A roller deck, a checkweigher and an inductive sensor that sees metal "
-            + "only — cardboard passes it as if the lane were empty.",
-            "res://templates/roller_line_weighing.json"),
-    };
+    private static readonly IReadOnlyList<TemplateEntry> Templates = TemplateManifest.Load();
 
     private const string RecentPath = "user://recent_scenes.json";
     private VBoxContainer _recentBox = null!;

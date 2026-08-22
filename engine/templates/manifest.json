@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sorting-by-height",
+    "title": "Sorting by height",
+    "blurb": "The reference line: sensors, a diverter and two counters. Sorts tall cartons down a chute and lets short ones pass.",
+    "path": "",
+    "scene": "sorting-by-height"
+  },
+  {
+    "id": "start-stop-station",
+    "title": "Start / stop station",
+    "blurb": "A conveyor and an operator panel. Momentary buttons, a latching E-stop, and a lamp that has to reflect the real state.",
+    "path": "res://templates/start_stop_station.json",
+    "scene": "start-stop-station"
+  },
+  {
+    "id": "tank-level-control",
+    "title": "Tank level control",
+    "blurb": "Analog end to end. A modulating valve and a level transmitter, with outflow that varies with level — a PID tuned full will overshoot empty.",
+    "path": "res://templates/tank_level_control.json",
+    "scene": "tank-level-control"
+  },
+  {
+    "id": "light-curtain-sorting",
+    "title": "Light curtain sorting",
+    "blurb": "Sorting on a measurement instead of two bits. The curtain reports how tall each carton is, so you choose the threshold in code.",
+    "path": "res://templates/light_curtain_sorting.json",
+    "scene": "light-curtain-sorting"
+  },
+  {
+    "id": "roller-line-weighing",
+    "title": "Roller line with weighing",
+    "blurb": "A roller deck, a checkweigher and an inductive sensor that sees metal only — cardboard passes it as if the lane were empty.",
+    "path": "res://templates/roller_line_weighing.json",
+    "scene": "roller-line-weighing"
+  }
+]
