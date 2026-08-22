@@ -188,6 +188,22 @@ def section_a() -> None:
     record("A3", "no temporary probes or TODO markers left in engine/src",
            not stray, ", ".join(sorted(set(stray))))
 
+    # A4/A5: the C# and Python tag models, and the wire messages between them,
+    # must agree with docs/tag-bus.md and with each other. See FF-29. The
+    # Python side of the parity fixture runs as part of B1 (tests/test_tag_parity.py);
+    # this is the C# side plus the wire-level conformance check.
+    code, out = engine(["--self-test=parity", "--duration=20"], timeout=90)
+    fails = [line.strip() for line in out.splitlines() if "FAIL" in line]
+    passed = code == 0 and "self-test parity: PASS" in out
+    record("A4", "C# tag model matches the shared parity fixture", passed,
+           "; ".join(fails[:3]) if fails else ("no PASS line" if not passed else ""))
+
+    with EngineProcess("--duration=30"):
+        code, out = run([sys.executable, str(ROOT / "tools" / "check_protocol.py")], timeout=30)
+    record("A5", "hello/describe/update carry exactly the fields docs/tag-bus.md names",
+           code == 0 and "RESULT OK" in out,
+           out.strip().splitlines()[-1] if out.strip() else "no output")
+
 
 # --- B. python suite --------------------------------------------------------
 
@@ -334,6 +350,43 @@ def section_g() -> None:
         code, out = engine(["--duration=6"], timeout=90)
     record("G4", "a second engine says its tag bus is dead instead of claiming ready",
            "NO TAG BUS" in out, "still reports a healthy start" if "NO TAG BUS" not in out else "")
+
+    # G5: kill the engine out from under a connected sidecar and confirm it
+    # notices and starts retrying, rather than serving the last-known values
+    # forever as if the line were still running. See FF-03.
+    g5_log = ROOT / ".test_plan_sidecar_g5.log"
+    with EngineProcess("--duration=30") as eng:
+        handle = open(g5_log, "w", encoding="utf-8", errors="replace")
+        sidecar_proc = subprocess.Popen(
+            [sys.executable, "-m", "factoryforge_sidecar", "connect", "--driver", "mock", "--duration", "20"],
+            cwd=SIDECAR, stdout=handle, stderr=subprocess.STDOUT)
+        time.sleep(2.0)   # let it connect and receive the describe
+        eng.proc.terminate()
+        try:
+            eng.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            eng.proc.kill()
+        time.sleep(3.0)   # give the sidecar a moment to notice and log it
+        sidecar_proc.terminate()
+        try:
+            sidecar_proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            sidecar_proc.kill()
+        handle.close()
+    g5_out = g5_log.read_text(encoding="utf-8", errors="replace") if g5_log.exists() else ""
+    record("G5", "the sidecar notices when the engine dies mid-run and retries",
+           "connection lost" in g5_out and "retrying" in g5_out,
+           "" if "connection lost" in g5_out else g5_out.strip()[-160:])
+
+    # G6: forcing an input tag while paused must still reach the bus. Pausing
+    # used to zero the fixed-timestep accumulator that gated SendUpdates(), so
+    # a forced sensor sat in the tag table and never left the engine until you
+    # un-paused it — exactly the workflow pause exists for. See FF-14.
+    with EngineProcess("--duration=30", "--paused"):
+        code, out = run([sys.executable, str(ROOT / "tools" / "check_force_while_paused.py")], timeout=30)
+    record("G6", "forcing a tag while paused still reaches the bus",
+           code == 0 and "RESULT update received" in out,
+           out.strip().splitlines()[-1] if out.strip() else "no output")
 
 
 SECTIONS = {

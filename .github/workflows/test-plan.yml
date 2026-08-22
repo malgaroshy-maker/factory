@@ -1,0 +1,75 @@
+name: test-plan
+
+# Runs the checks tools/test_plan.py already sequences: the C# build, the
+# Python suite, the four headless engine self-tests, and the determinism
+# contract. See docs/FIX_PLAN.md FF-28.
+#
+# Deliberately --only A,B,C,E: those are the checks this workflow was written
+# for. F (the sidecar-seam checks) and G (robustness, including the new
+# engine-kill and pause-force regression tests from Phase 6) exercise process
+# lifecycle and port timing in ways only ever run and tuned on Windows so far
+# -- FF-08 (cross-platform sidecar launch) is still open. Widen this to the
+# full suite once F/G have been run and fixed up on Linux for real, not
+# assumed to work here.
+#
+# NOTE: the Godot download step below has not been exercised on an actual
+# runner yet -- written from the documented release-asset naming convention,
+# not verified against a real GitHub Actions run. Expect to fix the archive
+# layout on the first CI failure, the same way docs/PACKAGING.md flags its own
+# export steps as unverified.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  test-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-mono-linux
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} (.NET / mono)
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          cd ~/godot
+          curl -fsSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_mono_linux_x86_64.zip"
+          unzip -q godot.zip
+          rm godot.zip
+
+      - name: Point $GODOT at the extracted binary
+        run: |
+          GODOT_BIN=$(find ~/godot -maxdepth 2 -type f -name "Godot_v${GODOT_VERSION}-stable_mono_linux.x86_64")
+          if [ -z "$GODOT_BIN" ]; then
+            echo "could not find the Godot binary under ~/godot -- archive layout changed" >&2
+            find ~/godot -maxdepth 3 >&2
+            exit 1
+          fi
+          chmod +x "$GODOT_BIN"
+          echo "GODOT=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Install the sidecar (with test extras)
+        run: pip install -e "sidecar[dev]"
+
+      - name: Run the test plan (A, B, C, E)
+        run: python tools/test_plan.py --only A,B,C,E

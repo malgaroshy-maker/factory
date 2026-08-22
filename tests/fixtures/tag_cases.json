@@ -1,0 +1,39 @@
+{
+  "_comment": "Shared coercion/differs cases for the C# and Python tag models. Read by tests/test_tag_parity.py (Python) and engine --self-test=parity (C#, engine/src/Sim/TagParitySelfTest.cs). Keep both readers in sync with this file's shape rather than duplicating cases by hand -- that duplication is exactly what FF-29 exists to stop. Whole-number floats (1.0, 2.0, ...) are deliberately avoided in 'coerce' cases outside the float type: JSON does not reliably distinguish '1' from '1.0' as int-vs-float across two different number decoders, so an ambiguous case there would test the JSON layer's guesswork rather than the tag model's rules. 'differs' cases are exempt from that concern since their type is always fixed ahead of the comparison.",
+
+  "coerce": [
+    { "type": "bit", "input": true, "expect": true },
+    { "type": "bit", "input": false, "expect": false },
+    { "type": "bit", "input": 0, "expect": false },
+    { "type": "bit", "input": 1, "expect": true },
+    { "type": "bit", "input": 2, "error": true },
+    { "type": "bit", "input": -1, "error": true },
+    { "type": "bit", "input": 1.5, "error": true },
+
+    { "type": "int", "input": 5, "expect": 5 },
+    { "type": "int", "input": -42, "expect": -42 },
+    { "type": "int", "input": 0, "expect": 0 },
+    { "type": "int", "input": true, "error": true },
+    { "type": "int", "input": false, "error": true },
+    { "type": "int", "input": 1.5, "error": true },
+
+    { "type": "float", "input": 1, "expect": 1.0 },
+    { "type": "float", "input": 0, "expect": 0.0 },
+    { "type": "float", "input": -7, "expect": -7.0 },
+    { "type": "float", "input": 1.5, "expect": 1.5 },
+    { "type": "float", "input": -2.5, "expect": -2.5 },
+    { "type": "float", "input": true, "error": true },
+    { "type": "float", "input": false, "error": true }
+  ],
+
+  "differs": [
+    { "type": "bit", "current": false, "candidate": true, "expect": true },
+    { "type": "bit", "current": true, "candidate": true, "expect": false },
+    { "type": "int", "current": 3, "candidate": 4, "expect": true },
+    { "type": "int", "current": 3, "candidate": 3, "expect": false },
+    { "type": "float", "current": 1.0, "candidate": 1.0000005, "expect": false },
+    { "type": "float", "current": 1.0, "candidate": 1.0000011, "expect": true },
+    { "type": "float", "current": 1.0, "candidate": 1.0, "expect": false },
+    { "type": "float", "current": 100.0, "candidate": 100.000002, "expect": true }
+  ]
+}
