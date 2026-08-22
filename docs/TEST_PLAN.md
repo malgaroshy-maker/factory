@@ -65,6 +65,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C12 | `light-curtain-sorting` profile: both tall and short cartons are routed correctly, nothing lost | `--self-test=lightcurtain` |
 | C13 | `roller-line-weighing` profile: outfeed counts, and the inductive sensor actually fires for a metal carton | `--self-test=roller` |
 | C14 | Demo's refusal on a scene with no profile reaches the UI (IdleHintUI), not just the console | `--self-test=refusal` |
+| C15 | The part property panel drives live I/O for every tag-type combination (bit/int/float × output/input) | `--self-test=proppanel` |
 
 ### D. Engine self-tests (need a display)
 

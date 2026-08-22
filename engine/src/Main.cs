@@ -220,6 +220,10 @@ public partial class Main : Node
         {
             AddChild(new DemoRefusalSelfTest { Name = "DemoRefusalSelfTest" });
         }
+        if (_selfTest == "proppanel")
+        {
+            AddChild(new PartPropertyPanelSelfTest { Name = "PartPropertyPanelSelfTest", Tags = tags, Editor = _editor! });
+        }
     }
 
     private void BuildView(TagTable tags)

@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Phase 3 (UX-23…UX-29), Phase 5's UX-35/UX-36,
-Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20 (the C# side; UX-21/22,
-`tools/try_scene.py`, are not started), and Phase 4's UX-30/UX-32 (UX-31/33
-are blocked on UX-21) are done. Everything else is still proposal.
+**Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20
+(the C# side; UX-21/22, `tools/try_scene.py`, not started), Phase 3
+(UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and Phase
+5's UX-34/UX-35/UX-36. Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -817,7 +817,7 @@ the tag prefix, finding that id in a 16-row list on the far side of the screen,
 and pressing Force there — and if the tag is a float, there is no way at all
 (§2.8, §2.9).
 
-**UX-34 — Live I/O in the part property panel**
+**UX-34 — Live I/O in the part property panel — done**
 *Files:* `engine/src/Editor/PartPropertyInspectorUI.cs`, `PartTagManager.cs`.
 *Done when:* selecting a part shows its own tags beneath its settings, each with
 a control: a toggle for `bit` outputs, a value field or slider for `int`/`float`
@@ -827,6 +827,55 @@ thing it switches.
 *Verify:* click a conveyor, flip its toggle, watch the belt start; click a tank,
 drag the fill valve, watch the level rise.
 *Size:* L. *Depends on:* UX-35.
+
+Every own-tag row goes through `TagTable.Force` — the same call the Tag
+Inspector's own button makes, so "forcing is sticky" (§5.2) holds here too: a
+control left touched keeps winning over a driver that connects later, exactly
+like it always has. A `bit` output gets a `CheckButton` (a real toggle switch,
+not a Force/UNFORCE button); `int` a `SpinBox`; `float` an `HSlider` (0–100,
+matching the only float outputs that exist — `tank.fill`/`.drain`) — each
+wired to Force on every value change, immediately, not on a separate "apply"
+click. One named exception: `.emit` (Box Emitter) is a rising edge, not a
+level — `SceneEditor`'s dispatch only spawns a box on the edge, so a plain
+toggle left on would look broken. It gets an "Emit one" button instead: force
+true, then clear the force ~50ms later.
+
+An `int`/`float` input's own value only shows read-only, with a checkbox
+labelled **Override** beside it — checking it forces the tag at its current
+value and reveals the same kind of control an output gets; unchecking clears
+the force and returns to the live readout. Answers "what does my PLC do if
+this sensor is stuck on?" (§5.4) without leaving the panel to ask it.
+
+**Two real bugs found and fixed while building this, both about signals firing
+when they should not, or not being caught when they should have been:**
+
+* Godot's `Range` controls (`SpinBox`, `HSlider`) have no `SetValueNoSignal`
+  the way `BaseButton` has `SetPressedNoSignal` — setting `.Value` to the tag's
+  *own current* value to initialise a fresh control's position fires
+  `ValueChanged` anyway, which would have force-pinned every int/float output
+  the instant a part was merely selected, before anyone touched anything.
+  Guarded with an `_initializing` flag checked inside every `ValueChanged`
+  handler.
+* The empty state's content used to sit directly in a fixed-height
+  `PanelContainer` with nothing scrollable — the same class of bug as the F5
+  dialog fix earlier in this plan. Wrapped in a bounded `ScrollContainer`
+  (`TagInspectorUI`'s own pattern) before adding any I/O rows, not after
+  finding it overflow by eye.
+
+Verified two ways. A new self-test (`--self-test=proppanel`,
+`tools/test_plan.py` C15) drives the real controls -- found by the same
+tooltip-based row search as the earlier self-tests, not a test-only accessor
+-- for one of each combination on the tank scene (`tank.fill` float output,
+`level_readout.value` int output, `panel.green` bit output,
+`panel.estop` bit-input override) and checks `TagTable` actually changed.
+Deliberately disabled the float slider's `ValueChanged` wiring and watched it
+fail, then restored it. Also verified by screenshot, reusing the real
+on-screen panel (`Editor.PropertyInspector`) rather than a second invisible
+one: selecting the tank showed **`FillRate: 18`, `DrainRate: 22`** (its
+existing settings) followed by an **I/O** section, and forcing `tank.fill` to
+42 through the panel's own slider made `tank.level` climb on screen exactly
+the way forcing it from the Tag Inspector did in UX-35 — same mechanism, now
+one click away instead of three.
 
 **UX-35 — Force any tag type, not just bits — done**
 *Files:* `engine/src/Editor/TagInspectorUI.cs`.
@@ -1212,6 +1261,8 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
   compatible.** Making templates deterministic too would be a large piece of
   work buying exact-count assertions §4's band-based ones don't need.
   Revisit only if the band-based assertions prove flaky in practice.
+* **UX-34 vs UX-37 — the panel leads.** UX-34 landed; UX-37 (click the part
+  itself) is still open and remains complementary, not superseded.
 
 ### Still open
 
@@ -1221,10 +1272,6 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 2. **UX-09 — code signing.** Costs a certificate and a process; not signing
    costs every first-time user a SmartScreen warning. Needs deciding before the
    first public release, not before the first build.
-3. **UX-34 vs UX-37 — which surface leads?** A control on the property panel and
-   a click on the part itself are complementary, but if only one lands first it
-   should probably be the panel: it works for every tag type including the
-   floats, and it does not need a hit-test per part class.
 
 ---
 
@@ -1283,7 +1330,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-31 | A "Try this scene" affordance | 4 | M | UX-21 |  |
 | UX-32 | Keep "what this scene teaches" reachable | 4 | M | UX-13 | done |
 | UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 |  |
-| UX-34 | Live I/O in the part property panel | 5 | L | UX-35 |  |
+| UX-34 | Live I/O in the part property panel | 5 | L | UX-35 | done |
 | UX-35 | Force any tag type, not just bits | 5 | M | — | done |
 | UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |
 | UX-37 | Click a component in Run mode to operate it | 5 | L | — |  |
