@@ -146,6 +146,10 @@ public partial class Main : Node
         {
             AddChild(new TagParitySelfTest { Name = "TagParitySelfTest" });
         }
+        if (_selfTest == "layout")
+        {
+            AddChild(new LayoutSelfTest { Name = "LayoutSelfTest" });
+        }
     }
 
     private void BuildView(TagTable tags)

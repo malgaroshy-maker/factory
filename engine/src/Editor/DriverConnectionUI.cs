@@ -162,19 +162,31 @@ public partial class DriverConnectionUI : Control
 
         mainBox.AddChild(new HSeparator());
 
-        // Footer buttons & status
-        var footer = new HBoxContainer();
-        mainBox.AddChild(footer);
-
+        // Status gets its own full-width row, and it wraps.
+        //
+        // It used to sit inside the footer HBox with no AutowrapMode. A Label
+        // without autowrap reports its whole single-line text as its minimum
+        // width, and that minimum propagates up through the footer to the
+        // PanelContainer. So the moment the status said anything long -- the
+        // multi-sentence "no controller answered, PLCSIM cannot be probed"
+        // explanation from FF-06 is ~200 characters -- the modal's minimum
+        // width exceeded the viewport, CenterContainer had no slack left to
+        // centre with, and Apply & Connect was pushed off the right edge of
+        // the screen. The dialog broke precisely when it had something to say.
         _statusLabel = new Label
         {
             // Not "Ready": nothing is connected until the sidecar is started,
             // and saying otherwise is how this dialog used to mislead people.
             Text = "No driver running. Apply & Connect starts the Python sidecar.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(0, 44),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         _statusLabel.AddThemeColorOverride("font_color", new Color(0.80f, 0.80f, 0.85f));
-        footer.AddChild(_statusLabel);
+        mainBox.AddChild(_statusLabel);
+
+        var footer = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        mainBox.AddChild(footer);
 
         var autoBtn = new Button { Text = " 🔍 Auto-Detect Now " };
         autoBtn.Pressed += () => _ = RunAutoDetectAsync();
@@ -241,7 +253,10 @@ public partial class DriverConnectionUI : Control
     /// it as "decide, then apply once via CallDeferred" fixes that and
     /// happens to make the honest-fallback fix (FF-06) a single place too.
     /// </summary>
-    private async Task RunAutoDetectAsync()
+    /// <remarks>Public so <c>--self-test=layout</c> can drive the real probe
+    /// rather than a copy of its messages: the longest text this dialog can
+    /// display is produced here, and that length is what broke the layout.</remarks>
+    public async Task RunAutoDetectAsync()
     {
         _statusLabel.Text = "🔍 Probing network & virtual adapters for active PLC drivers...";
         _statusLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.9f, 0.3f));

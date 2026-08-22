@@ -232,6 +232,11 @@ def section_c() -> None:
     _self_test("C2", "rename and I/O export", "io")
     _self_test("C3", "scene save/load round-trip, every part type", "scene")
     _self_test("C4", "every shipped start-screen template loads and registers I/O", "templates")
+    # The F5 dialog's status label had no autowrap, so a long auto-detect
+    # message stretched the modal to 1594px of a 1600px screen and clipped its
+    # own buttons off the frame. Nothing in A-E could see it: no tag is wrong
+    # when a dialog is unusable.
+    _self_test("C5", "F5 driver modal still fits on screen with a long status message", "layout")
 
 
 def section_d(enabled: bool) -> None:

@@ -45,7 +45,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 
 | # | Check |
 |---|---|
-| B1 | Full pytest suite (41 tests): tag model, bus protocol, Modbus, OPC UA client/server, Siemens, sorting scene |
+| B1 | Full pytest suite (71 tests): tag model, bus protocol, Modbus, OPC UA client/server, Siemens, sorting scene |
 
 ### C. Engine self-tests (headless)
 
@@ -55,6 +55,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C2 | Rename and I/O export | `--self-test=io` |
 | C3 | Scene save/load round-trip, every part type, undo/redo | `--self-test=scene` |
 | C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
+| C5 | F5 driver modal's minimum size still fits the screen once auto-detect writes a long status message | `--self-test=layout` |
 
 ### D. Engine self-tests (need a display)
 
