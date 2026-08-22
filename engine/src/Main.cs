@@ -21,6 +21,7 @@ public partial class Main : Node
 
     private SortingScene? _scene;
     private SceneEditor? _editor;
+    private PartPropertyInspectorUI? _propertyInspector;
     private SimulationControls _sim = null!;
     private bool _deterministic;
     private float _timeScale = 1.0f;
@@ -215,6 +216,10 @@ public partial class Main : Node
         {
             AddChild(new RollerProfileSelfTest { Name = "RollerProfileSelfTest", Tags = tags, Editor = _editor! });
         }
+        if (_selfTest == "refusal")
+        {
+            AddChild(new DemoRefusalSelfTest { Name = "DemoRefusalSelfTest" });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -265,6 +270,7 @@ public partial class Main : Node
         propertyInspector.Editor = editor;
         editor.RegisterDefaultSceneParts(physical: !_deterministic);
         _editor = editor;
+        _propertyInspector = propertyInspector;
 
         var paletteUI = new PartPaletteUI { Name = "PartPaletteUI" };
         paletteUI.PartSelected += (partType) => editor.SetPlacementPart(partType);
@@ -338,8 +344,15 @@ public partial class Main : Node
         // only ever a GUI thing — headless runs and the self-tests never see it.
         var startScreen = new StartScreenUI { Name = "StartScreenUI" };
         AddChild(startScreen);
-        startScreen.DefaultSceneChosen += () => { demo.Stop(); editor.LoadDefaultSortingScene(); };
-        startScreen.EmptySceneChosen += () => { demo.Stop(); editor.NewEmptyScene(); };
+        // Every scene-changing path adopts the name onto the bus (AdoptSceneName)
+        // -- these two used not to, so choosing "Sorting by height" after a
+        // template left the bus reporting the template's name for a scene that
+        // no longer matched it, and an empty scene reported whatever name was
+        // already stale rather than "untitled". A driver -- or DemoDriver's own
+        // profile lookup -- trusts this name; a custom scene must report one
+        // no profile matches, or Demo silently no-ops instead of refusing (UX-30).
+        startScreen.DefaultSceneChosen += () => { demo.Stop(); editor.LoadDefaultSortingScene(); AdoptSceneName(editor); };
+        startScreen.EmptySceneChosen += () => { demo.Stop(); editor.NewEmptyScene(); AdoptSceneName(editor); };
         startScreen.TemplateChosen += (path) =>
         {
             demo.Stop();
@@ -444,6 +457,13 @@ public partial class Main : Node
     {
         _bus.SceneName = editor.SceneName;
         _bus.SendDescribe();
+        // The property panel's empty state already showed itself once, mid-load,
+        // for whatever scene was loaded *before* this one -- ClearAllPlacedParts
+        // deselects (and so redraws the empty state) before SceneName is updated
+        // to the new value. Redrawing again here, after the swap is complete, is
+        // what makes the blurb match what actually loaded (UX-32) rather than a
+        // scene that no longer exists.
+        _propertyInspector?.RefreshIfEmpty();
     }
 
     /// <summary>Physics mode without a renderer: no UI, but the parts still have

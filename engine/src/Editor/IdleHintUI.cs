@@ -22,9 +22,16 @@ public partial class IdleHintUI : Control
     public DemoDriver? Demo { get; set; }
 
     private const double IdleDelaySeconds = 5.0;
+    private const double RefusalDisplaySeconds = 5.0;
+    private const string DefaultText =
+        "No driver connected. Press F5 to connect a PLC, Force a tag in the "
+        + "inspector to drive it by hand, or press 🎬 Demo to watch it run.";
 
     private PanelContainer _panel = null!;
+    private Label _label = null!;
     private double _idleFor;
+    private double _totalElapsed;
+    private double _refusalUntil = -1;
     private bool _dismissed;
 
     public override void _Ready()
@@ -52,15 +59,14 @@ public partial class IdleHintUI : Control
         row.AddThemeConstantOverride("separation", 12);
         margin.AddChild(row);
 
-        var label = new Label
+        _label = new Label
         {
-            Text = "No driver connected. Press F5 to connect a PLC, Force a tag in the "
-                 + "inspector to drive it by hand, or press 🎬 Demo to watch it run.",
+            Text = DefaultText,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(460, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        row.AddChild(label);
+        row.AddChild(_label);
 
         var dismiss = new Button
         {
@@ -70,10 +76,39 @@ public partial class IdleHintUI : Control
         };
         dismiss.Pressed += () => { _dismissed = true; _panel.Visible = false; };
         row.AddChild(dismiss);
+
+        // A distinct signal rather than polling RefusalReason for a change:
+        // pressing Demo twice on the same broken scene has to say so twice,
+        // and a value that only changes when the *reason* changes would stay
+        // silent the second time (UX-30).
+        if (Demo is not null) Demo.Refused += OnDemoRefused;
+    }
+
+    /// <summary>Interrupts the idle timer with the specific reason Demo just
+    /// refused, for a few seconds, even if the idle hint was dismissed — this
+    /// is a direct response to something the user just clicked, not an
+    /// ambient nag they already dismissed.</summary>
+    private void OnDemoRefused(string reason)
+    {
+        _label.Text = $"Demo can't run this scene: {reason}. Pick a template with a "
+                     + "built-in exercise, or connect a real driver instead (F5).";
+        _panel.Visible = true;
+        _refusalUntil = _totalElapsed + RefusalDisplaySeconds;
     }
 
     public override void _Process(double delta)
     {
+        _totalElapsed += delta;
+
+        if (_refusalUntil >= 0)
+        {
+            if (_totalElapsed < _refusalUntil) return;
+            _refusalUntil = -1;
+            _label.Text = DefaultText;
+            _panel.Visible = false;
+            _idleFor = 0;
+        }
+
         if (_dismissed || Bus is null || Tags is null) return;
 
         bool beingDriven = Bus.HasClient || (Demo?.Active ?? false) || Tags.AnyForced;

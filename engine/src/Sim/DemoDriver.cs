@@ -33,12 +33,17 @@ public partial class DemoDriver : Node
     /// told.</summary>
     [Signal] public delegate void ActiveChangedEventHandler(bool active);
 
+    /// <summary>Raised instead of <see cref="ActiveChanged"/> when
+    /// <see cref="Start"/> refuses because the loaded scene has no profile —
+    /// a distinct signal rather than a state a UI has to poll for staleness,
+    /// so pressing Demo twice on the same broken scene tells you twice (UX-30).</summary>
+    [Signal] public delegate void RefusedEventHandler(string reason);
+
     public bool Active { get; private set; }
 
-    /// <summary>Set when <see cref="Start"/> refuses because the loaded scene
-    /// has no profile. Full UI treatment is UX-30; this exists so refusing is
-    /// at least honest rather than silently leaving Active false with no
-    /// explanation anywhere.</summary>
+    /// <summary>The reason the most recent <see cref="Start"/> refused, or
+    /// null if it did not. Kept for anything that wants the current state
+    /// rather than the moment-of-refusal event <see cref="Refused"/> carries.</summary>
     public string? RefusalReason { get; private set; }
 
     private static readonly Dictionary<string, Func<IDemoProfile>> Profiles = new()
@@ -59,8 +64,9 @@ public partial class DemoDriver : Node
         string scene = Bus.SceneName;
         if (!Profiles.TryGetValue(scene, out var makeProfile))
         {
-            RefusalReason = $"no demo profile for scene '{scene}'";
+            RefusalReason = $"no built-in exercise for scene '{scene}'";
             GD.Print($"Demo: {RefusalReason}");
+            EmitSignal(SignalName.Refused, RefusalReason);
             return;
         }
 

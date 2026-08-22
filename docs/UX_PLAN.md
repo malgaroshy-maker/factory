@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
 **Status:** in progress. Phase 3 (UX-23…UX-29), Phase 5's UX-35/UX-36,
-Phase 1 (UX-10…UX-15), and Phase 2's UX-16…UX-20 (the C# side; UX-21/22,
-`tools/try_scene.py`, are not started) are done. Everything else is still
-proposal.
+Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20 (the C# side; UX-21/22,
+`tools/try_scene.py`, are not started), and Phase 4's UX-30/UX-32 (UX-31/33
+are blocked on UX-21) are done. Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -724,23 +724,46 @@ stays opt-in via a flag.
 
 ---
 
-### Phase 4 — Tell the truth in the UI
+### Phase 4 — Tell the truth in the UI — UX-30/32 done, UX-31/33 blocked on UX-21
 
-**UX-30 — The Demo button refuses honestly**
+**UX-30 — The Demo button refuses honestly — done**
 *Files:* `engine/src/Sim/DemoDriver.cs`, `engine/src/Editor/SceneToolbarUI.cs`.
 *Done when:* with no profile for the loaded scene, the button says so and does
 **not** turn green (§2.1). The FF-06 fix applied to the demo path.
 *Verify:* load an empty scene, press Demo, read the refusal.
 *Size:* S. *Depends on:* UX-16.
 
-**UX-31 — A "Try this scene" affordance**
+`Active` staying false was already true from UX-16 (Phase 2) — the actual gap
+was that the refusal reached only the console. Added a `DemoDriver.Refused`
+signal (distinct from `ActiveChanged`, so pressing Demo twice on the same
+broken scene says so twice rather than staying silent after the first
+`RefusalReason` value is "already known") and wired it into `IdleHintUI`,
+which forces itself visible with the specific reason for a few seconds — even
+if the ambient idle nag was already dismissed, since this is a direct
+response to a click, not an ambient one. Covered by a new self-test
+(`--self-test=refusal`, `tools/test_plan.py` C14) that subscribes exactly the
+way the UI does and checks the panel and its label, not just the driver's own
+state. Deliberately commented out the `EmitSignal` call and watched it fail
+(2 failures), then restored it.
+
+**While verifying this, found and fixed a second, older bug it depends on:**
+`StartScreenUI.DefaultSceneChosen` and `.EmptySceneChosen` never called
+`AdoptSceneName`, unlike every other scene-changing path (`TemplateChosen`,
+`OpenRequested`, the toolbar's Load). So the bus kept reporting whatever scene
+name was already stale after "Sorting by height" or "Empty scene" — on Empty
+specifically, this meant `Bus.SceneName` never became `"untitled"`, so Demo
+would try to run `SortingByHeightProfile` against an empty scene instead of
+refusing, reproducing the exact silent-no-op bug UX-30 exists to close. Fixed
+both call sites in `Main.cs`.
+
+**UX-31 — A "Try this scene" affordance — not started, blocked on UX-21**
 *Files:* `engine/src/Editor/SceneToolbarUI.cs`.
 *Done when:* it runs the right exercise for whatever is loaded and copies the
 command — the same shape as F5's *Apply & Connect*.
 *Verify:* press it on each template; the exercise runs.
 *Size:* M. *Depends on:* UX-21.
 
-**UX-32 — Keep "what this scene teaches" reachable**
+**UX-32 — Keep "what this scene teaches" reachable — done**
 *Files:* `engine/src/Editor/StartScreenUI.cs`, a new panel or the property
 panel's empty state.
 *Done when:* each template's blurb (`StartScreenUI.cs:38`) and its tag list stay
@@ -748,7 +771,36 @@ available after the scene loads, instead of vanishing with the start screen.
 *Verify:* load a template; find its description without going Home.
 *Size:* M. *Depends on:* UX-13.
 
-**UX-33 — F5's empty state offers the exercise**
+The tag list half was already true — the Tag Inspector panel (top-right) has
+always shown the loaded scene's live tags regardless of the start screen.
+What vanished was the blurb, so `PartPropertyInspectorUI`'s empty state
+("Click a placed part…") now leads with the loaded template's own title and
+blurb, read from the same `TemplateManifest` the start screen uses, matched
+against `Editor.SceneName`.
+
+Found and fixed a genuine layout risk while wiring this up, the same class of
+bug as the F5 dialog fix earlier in this plan: the empty state's content
+container sat directly in a fixed-height `PanelContainer` with nothing
+scrollable, and the longest blurb (tank's, four wrapped lines) plus the
+standing "click a part" text does not fit the panel's original 220px. Wrapped
+it in a bounded `ScrollContainer` (matching `TagInspectorUI`'s own pattern)
+before shipping the new content, rather than after finding it broken by eye.
+
+Also found and fixed a real timing bug via a `--scene=` screenshot: the empty
+state redraws mid-load, via `SceneEditor.DeselectPart()`'s **direct** call
+into `PropertyInspector.InspectNode(null,…)` when the old scene's parts clear
+— and that happens *before* `SceneName` is updated to the new scene, so the
+panel briefly (and, on the `--scene=` startup path specifically, persistently)
+showed the previous scene's blurb. Refreshing only on `TagsChanged` was not
+enough — during `--scene=` startup that event fires before anything has
+subscribed to it. Fixed by refreshing from `AdoptSceneName` itself (a `Main`
+field, `_propertyInspector`, added for exactly this), which every
+scene-adoption path already calls after the swap is genuinely complete.
+Verified by screenshot: `--scene=tank_level_control.json` now shows "Tank
+level control" and its real blurb, scrolling correctly, not "Sorting by
+height" left over from the scene that was replaced.
+
+**UX-33 — F5's empty state offers the exercise — not started, blocked on UX-31**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
 *Done when:* with no driver connected the dialog reads *"No PLC yet? Run the
 built-in exercise for this scene first."* with a button.
@@ -1156,21 +1208,20 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
   with Phase 0 in parallel throughout.
 * **Headless scene loading is viable** — settled by the spike in §0, not by
   argument. UX-10 is **S**, and Phase 2's exercises can run in Linux CI.
+* **`--deterministic --scene=` — rejected outright (UX-12), not made
+  compatible.** Making templates deterministic too would be a large piece of
+  work buying exact-count assertions §4's band-based ones don't need.
+  Revisit only if the band-based assertions prove flaky in practice.
 
 ### Still open
 
-1. **`--deterministic --scene=` — reject (UX-12), or make templates
-   deterministic too?** Rejecting is a few lines. Making templates deterministic
-   is a large piece of work that would buy exact-count assertions for every
-   scene instead of the band-based ones §4 settles for. Recommend rejecting now,
-   and revisiting only if the band-based assertions prove flaky in practice.
-2. **UX-03 — how Python ships.** `PACKAGING.md` recommends
+1. **UX-03 — how Python ships.** `PACKAGING.md` recommends
    PyInstaller-per-platform, but nothing has been tried. Best decided *after*
    UX-01 proves a binary can be produced at all.
-3. **UX-09 — code signing.** Costs a certificate and a process; not signing
+2. **UX-09 — code signing.** Costs a certificate and a process; not signing
    costs every first-time user a SmartScreen warning. Needs deciding before the
    first public release, not before the first build.
-4. **UX-34 vs UX-37 — which surface leads?** A control on the property panel and
+3. **UX-34 vs UX-37 — which surface leads?** A control on the property panel and
    a click on the part itself are complementary, but if only one lands first it
    should probably be the panel: it works for every tag type including the
    floats, and it does not need a hit-test per part class.
@@ -1197,54 +1248,54 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 
 `S` under half a day · `M` one to two days · `L` three to five days.
 
-| # | Item | Phase | Size | Depends on |
-|---|---|---|---|---|
-| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — |
-| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 |
-| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 |
-| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 |
-| UX-05 | Decide "one file" or "one folder" | 0 | S | — |
-| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 |
-| UX-07 | A release CI job | 0 | L | UX-01 |
-| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 |
-| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — |
-| UX-10 | Load `--scene=` headless | 1 | S | — |
-| UX-11 | Make `--scene` and `--demo` compose | 1 | S | — |
-| UX-12 | Reject `--deterministic --scene=` | 1 | S | — |
-| UX-13 | A scenes manifest | 1 | M | — |
-| UX-14 | `--print-tags` | 1 | S | — |
-| UX-15 | Report the loaded scene's real name at startup | 1 | S | — |
-| UX-16 | A per-scene profile mechanism in `DemoDriver` | 2 | M | UX-13 |
-| UX-17 | `start-stop-station` profile | 2 | S | UX-16 |
-| UX-18 | `tank-level-control` profile | 2 | M | UX-16, UX-35 |
-| UX-19 | `light-curtain-sorting` profile | 2 | M | UX-16 |
-| UX-20 | `roller-line-weighing` profile | 2 | S | UX-16 |
-| UX-21 | `tools/try_scene.py` | 2 | M | UX-10, UX-13 |
-| UX-22 | Assertions for all five scenes | 2 | M | UX-21 |
-| UX-23 | One cross-platform launcher | 3 | M | — |
-| UX-24 | Purge the author's machine from the repo | 3 | S | — |
-| UX-25 | Fix `demo` → `connect` in shipped material | 3 | S | — |
-| UX-26 | Refresh stale facts | 3 | S | — |
-| UX-27 | Launcher must not kill port 7411 silently | 3 | S | — |
-| UX-28 | Launcher must not auto-start a driver | 3 | S | — |
-| UX-29 | A Linux launcher | 3 | S | UX-23 |
-| UX-30 | The Demo button refuses honestly | 4 | S | UX-16 |
-| UX-31 | A "Try this scene" affordance | 4 | M | UX-21 |
-| UX-32 | Keep "what this scene teaches" reachable | 4 | M | UX-13 |
-| UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 |
-| UX-34 | Live I/O in the part property panel | 5 | L | UX-35 |
-| UX-35 | Force any tag type, not just bits | 5 | M | — |
-| UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — |
-| UX-37 | Click a component in Run mode to operate it | 5 | L | — |
-| UX-38 | End the "Run" collision in the toolbar | 5 | S | — |
-| UX-39 | Run mode explains itself | 5 | M | UX-37 |
-| UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — |
-| UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 |
-| UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 |
-| UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 |
-| UX-44 | `--self-test=modes` | 6 | M | UX-37 |
-| UX-45 | Cover non-bit forcing | 6 | S | UX-35 |
-| UX-46 | Document all of it | 6 | S | — |
+| # | Item | Phase | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — |  |
+| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 |  |
+| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 |  |
+| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 |  |
+| UX-05 | Decide "one file" or "one folder" | 0 | S | — |  |
+| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 |  |
+| UX-07 | A release CI job | 0 | L | UX-01 |  |
+| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 |  |
+| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — |  |
+| UX-10 | Load `--scene=` headless | 1 | S | — | done |
+| UX-11 | Make `--scene` and `--demo` compose | 1 | S | — | done |
+| UX-12 | Reject `--deterministic --scene=` | 1 | S | — | done |
+| UX-13 | A scenes manifest | 1 | M | — | done |
+| UX-14 | `--print-tags` | 1 | S | — | done |
+| UX-15 | Report the loaded scene's real name at startup | 1 | S | — | done |
+| UX-16 | A per-scene profile mechanism in `DemoDriver` | 2 | M | UX-13 | done |
+| UX-17 | `start-stop-station` profile | 2 | S | UX-16 | done |
+| UX-18 | `tank-level-control` profile | 2 | M | UX-16, UX-35 | done |
+| UX-19 | `light-curtain-sorting` profile | 2 | M | UX-16 | done |
+| UX-20 | `roller-line-weighing` profile | 2 | S | UX-16 | done |
+| UX-21 | `tools/try_scene.py` | 2 | M | UX-10, UX-13 |  |
+| UX-22 | Assertions for all five scenes | 2 | M | UX-21 |  |
+| UX-23 | One cross-platform launcher | 3 | M | — | done |
+| UX-24 | Purge the author's machine from the repo | 3 | S | — | done |
+| UX-25 | Fix `demo` → `connect` in shipped material | 3 | S | — | done |
+| UX-26 | Refresh stale facts | 3 | S | — | done |
+| UX-27 | Launcher must not kill port 7411 silently | 3 | S | — | done |
+| UX-28 | Launcher must not auto-start a driver | 3 | S | — | done |
+| UX-29 | A Linux launcher | 3 | S | UX-23 | done |
+| UX-30 | The Demo button refuses honestly | 4 | S | UX-16 | done |
+| UX-31 | A "Try this scene" affordance | 4 | M | UX-21 |  |
+| UX-32 | Keep "what this scene teaches" reachable | 4 | M | UX-13 | done |
+| UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 |  |
+| UX-34 | Live I/O in the part property panel | 5 | L | UX-35 |  |
+| UX-35 | Force any tag type, not just bits | 5 | M | — | done |
+| UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |
+| UX-37 | Click a component in Run mode to operate it | 5 | L | — |  |
+| UX-38 | End the "Run" collision in the toolbar | 5 | S | — |  |
+| UX-39 | Run mode explains itself | 5 | M | UX-37 |  |
+| UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — |  |
+| UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 |  |
+| UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 |  |
+| UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 |  |
+| UX-44 | `--self-test=modes` | 6 | M | UX-37 |  |
+| UX-45 | Cover non-bit forcing | 6 | S | UX-35 |  |
+| UX-46 | Document all of it | 6 | S | — |  |
 
 **Totals:** 46 items — 24 S, 17 M, 4 L, 1 S-or-L (UX-09). By phase: 0→9, 1→6, 2→7, 3→7, 4→4, 5→8, 6→5.
 **Critical path to a first release:** UX-24 → UX-26 → UX-35 → UX-34 → UX-13 →

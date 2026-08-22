@@ -18,12 +18,12 @@ public partial class PartPropertyInspectorUI : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(280, 220);
+        CustomMinimumSize = new Vector2(280, 240);
         SetAnchorsAndOffsetsPreset(LayoutPreset.BottomRight, LayoutPresetMode.KeepSize, 20);
 
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(280, 220),
+            CustomMinimumSize = new Vector2(280, 240),
         };
         AddChild(panel);
 
@@ -45,8 +45,23 @@ public partial class PartPropertyInspectorUI : Control
         title.AddThemeFontSizeOverride("font_size", 14);
         mainBox.AddChild(title);
 
+        // Bounded and scrollable, not just a VBoxContainer straight in mainBox:
+        // the empty state now carries a template's title and blurb (UX-32), and
+        // the longest one wraps to more lines than the fixed-height panel has
+        // room for. A plain Control's minimum size does not propagate to its
+        // parent (that is what broke the F5 dialog once already), so without a
+        // hard bound here a long blurb grows the panel past its anchored
+        // position instead of just scrolling.
+        var scroll = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(260, 190),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        mainBox.AddChild(scroll);
+
         _contentContainer = new VBoxContainer();
-        mainBox.AddChild(_contentContainer);
+        scroll.AddChild(_contentContainer);
 
         ShowNoSelection();
     }
@@ -168,12 +183,52 @@ public partial class PartPropertyInspectorUI : Control
         };
     }
 
+    /// <summary>The manifest, loaded once — this panel only ever reads it to
+    /// find the loaded scene's own blurb, never to list templates.</summary>
+    private static readonly System.Collections.Generic.IReadOnlyList<TemplateEntry> Templates =
+        TemplateManifest.Load();
+
+    /// <summary>
+    /// Re-show the empty state, picking up whatever the loaded scene now is.
+    /// Called after a scene finishes loading (UX-32): the template's blurb
+    /// used to live only on the start screen and vanish the moment you picked
+    /// one, so "what does this scene teach" was unanswerable without going
+    /// Home and reading it again. A part still selected is left alone.
+    /// </summary>
+    public void RefreshIfEmpty()
+    {
+        if (_selectedNode is null) ShowNoSelection();
+    }
+
     private void ShowNoSelection()
     {
         foreach (var child in _contentContainer.GetChildren())
         {
             child.QueueFree();
         }
+
+        string? sceneName = Editor?.SceneName;
+        TemplateEntry? current = null;
+        foreach (var t in Templates)
+        {
+            if (t.Scene == sceneName) { current = t; break; }
+        }
+
+        if (current is { } entry)
+        {
+            var heading = new Label { Text = entry.Title };
+            heading.AddThemeFontSizeOverride("font_size", 13);
+            _contentContainer.AddChild(heading);
+
+            _contentContainer.AddChild(new Label
+            {
+                Text = entry.Blurb,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                CustomMinimumSize = new Vector2(260, 0),
+            });
+            _contentContainer.AddChild(new HSeparator());
+        }
+
         // Wrapped, not clipped: the panel is anchored to the bottom-right, so an
         // unwrapped label wider than the panel pushes the whole thing off the
         // edge of the screen and takes its own last words with it.

@@ -64,6 +64,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C11 | `tank-level-control` profile: the controller settles within ±5% of setpoint | `--self-test=tank` |
 | C12 | `light-curtain-sorting` profile: both tall and short cartons are routed correctly, nothing lost | `--self-test=lightcurtain` |
 | C13 | `roller-line-weighing` profile: outfeed counts, and the inductive sensor actually fires for a metal carton | `--self-test=roller` |
+| C14 | Demo's refusal on a scene with no profile reaches the UI (IdleHintUI), not just the console | `--self-test=refusal` |
 
 ### D. Engine self-tests (need a display)
 

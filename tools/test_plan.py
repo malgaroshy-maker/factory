@@ -260,6 +260,7 @@ def section_c() -> None:
     _self_test("C11", "tank-level-control profile: controller settles within ±5% of setpoint", "tank")
     _self_test("C12", "light-curtain-sorting profile: both tall and short cartons routed correctly", "lightcurtain")
     _self_test("C13", "roller-line-weighing profile: outfeed counts, metal detected", "roller")
+    _self_test("C14", "Demo's refusal reaches the UI, not just the console", "refusal")
 
 
 def section_d(enabled: bool) -> None:
