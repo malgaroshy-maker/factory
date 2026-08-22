@@ -54,6 +54,7 @@ class Driver(abc.ABC):
         self.config = config
         bus.on_describe(self._on_describe)
         bus.on_update(self._on_update)
+        bus.on_disconnect(self._on_bus_disconnect)
 
     # --- to implement ---
 
@@ -82,6 +83,17 @@ class Driver(abc.ABC):
         the driver must actively push, as an OPC UA server does for subscriptions.
         """
 
+    async def bus_disconnected(self) -> None:
+        """The tag bus connection to the engine dropped.
+
+        Default is a no-op: most drivers already recompute from the next
+        describe/update once the bus reconnects. Override when the driver
+        exposes points a PLC polls independent of this process's own state — a
+        Modbus or OPC UA *server* driver — so it can mark them bad-quality
+        instead of silently continuing to serve the last value it ever read
+        from a bus that is no longer there. See FF-03.
+        """
+
     # --- internal ---
 
     async def _on_describe(self, scene: str, epoch: int, table: TagTable) -> None:
@@ -95,6 +107,12 @@ class Driver(abc.ABC):
             await self.push(values)
         except Exception:
             log.exception("%s: push failed", self.driver_name)
+
+    async def _on_bus_disconnect(self) -> None:
+        try:
+            await self.bus_disconnected()
+        except Exception:
+            log.exception("%s: bus_disconnected failed", self.driver_name)
 
 
 # Importing the modules is what runs their @register decorators.

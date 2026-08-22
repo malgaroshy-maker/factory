@@ -89,6 +89,35 @@ async def test_updates_are_delta_only(engine, mock):
     assert len(mock.history) == before
 
 
+async def test_bus_notices_when_the_engine_drops(engine, bus):
+    """FF-03: before this, closing the engine left the sidecar's runner task
+    quietly completing with nothing anywhere saying the connection was gone —
+    the worst failure shape for a simulator, indistinguishable from a line
+    that legitimately stopped. Full reconnect-after-restart is a Phase 6
+    end-to-end check (test_plan.py); this is the unit-level half: the drop
+    must be detected and reported, not silently absorbed.
+    """
+    disconnects = 0
+
+    async def on_disconnect():
+        nonlocal disconnects
+        disconnects += 1
+
+    bus.on_disconnect(on_disconnect)
+    assert bus.connected.is_set()
+
+    await engine.stop()
+
+    for _ in range(100):
+        if not bus.connected.is_set():
+            break
+        await asyncio.sleep(0.05)
+    else:
+        pytest.fail("bus never noticed the engine going away")
+
+    assert disconnects == 1
+
+
 async def test_stale_epoch_writes_are_dropped(engine, bus, mock):
     await mock.set("conveyor.rotate", True)
     await asyncio.sleep(0.05)

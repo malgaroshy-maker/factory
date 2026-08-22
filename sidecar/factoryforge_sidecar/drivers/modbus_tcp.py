@@ -117,6 +117,18 @@ class ModbusTcpDriver(Driver):
             if mapping is not None:
                 self._write_store(mapping, value)
 
+    async def bus_disconnected(self) -> None:
+        """Modbus has no wire-level "bad quality" flag the way OPC UA does —
+        a coil or register is just a value — so there is no honest way to mark
+        individual points stale without a custom convention the master would
+        also have to know about. The achievable half: say so loudly here,
+        since nothing on the wire will. See FF-03."""
+        log.warning(
+            "tag bus disconnected — Modbus TCP at %s:%d is now serving values "
+            "from before the drop; the master has no way to tell from the wire",
+            self.server.host, self.port,
+        )
+
     def _write_store(self, mapping: Mapping, value: TagValue) -> None:
         if mapping.type == "bit":
             block = (self.store.coils if mapping.block == "coils"

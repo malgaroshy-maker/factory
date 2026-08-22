@@ -21,6 +21,14 @@ log = logging.getLogger(__name__)
 DescribeHook = Callable[[str, int, TagTable], Awaitable[None]]
 #: Called with the changed input values whenever the engine sends an update.
 UpdateHook = Callable[[dict[str, TagValue]], Awaitable[None]]
+#: Called with no arguments when the bus connection drops.
+DisconnectHook = Callable[[], Awaitable[None]]
+
+#: Reconnect backoff bounds. A drop retries almost immediately — most drops
+#: are the engine restarting, which takes a couple of seconds — and backs off
+#: to a slow poll rather than hammering a socket nobody is listening on.
+_RECONNECT_MIN_DELAY = 0.5
+_RECONNECT_MAX_DELAY = 5.0
 
 
 class TagBusClient:
@@ -37,6 +45,7 @@ class TagBusClient:
         self._tick_ms = proto.DEFAULT_TICK_MS
         self._on_describe: list[DescribeHook] = []
         self._on_update: list[UpdateHook] = []
+        self._on_disconnect: list[DisconnectHook] = []
 
     # --- hooks ---
 
@@ -53,6 +62,9 @@ class TagBusClient:
 
     def on_update(self, hook: UpdateHook) -> None:
         self._on_update.append(hook)
+
+    def on_disconnect(self, hook: DisconnectHook) -> None:
+        self._on_disconnect.append(hook)
 
     # --- driver-facing API ---
 
@@ -95,30 +107,89 @@ class TagBusClient:
     # --- lifecycle ---
 
     async def run(self, stop: asyncio.Event | None = None) -> None:
-        """Connect and pump until *stop* is set or the connection drops."""
-        try:
-            async with websockets.connect(self.url, max_queue=64) as ws:
-                self._ws = ws
-                msg = proto.decode(await ws.recv())
-                if msg.get("t") == "status":
-                    log.warning("status message before hello: %s", msg.get("message"))
+        """Connect and pump until *stop* is set, reconnecting with backoff on
+        every drop in between.
+
+        A sidecar that gives up after the first disconnect is worse than one
+        that never connected at all: it keeps a Modbus or OPC UA *server*
+        driver up, serving whatever it last knew as if the line were still
+        running, with nothing anywhere saying otherwise. See FF-03.
+        """
+        was_connected = False
+        delay = _RECONNECT_MIN_DELAY
+        while stop is None or not stop.is_set():
+            try:
+                async with websockets.connect(self.url, max_queue=64) as ws:
+                    self._ws = ws
                     msg = proto.decode(await ws.recv())
-                hello = proto.check_hello(msg)
-                self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
-                log.info("connected to %s (tick %dms)", hello.get("engine"), self._tick_ms)
-                self.connected.set()
+                    if msg.get("t") == "status":
+                        log.warning("status message before hello: %s", msg.get("message"))
+                        msg = proto.decode(await ws.recv())
+                    hello = proto.check_hello(msg)
+                    self._tick_ms = hello.get("tick_ms", proto.DEFAULT_TICK_MS)
 
-                flusher = asyncio.create_task(self._flush_loop())
-                try:
-                    await self._recv_loop(ws, stop)
-                finally:
-                    flusher.cancel()
-                    self.connected.clear()
-                    self._ws = None
-        except (websockets.exceptions.ConnectionClosed, OSError) as e:
-            log.warning("tag bus connection closed: %s", e)
+                    # A fresh connection — first time or a reconnect — starts
+                    # from a clean table and waits for the real describe. The
+                    # epoch may have changed under us while we were gone.
+                    self.table = TagTable()
+                    self.scene = None
+                    self.epoch = -1
 
-    async def _recv_loop(self, ws, stop: asyncio.Event | None) -> None:
+                    log.info("%s to %s (tick %dms)",
+                             "reconnected" if was_connected else "connected",
+                             hello.get("engine"), self._tick_ms)
+                    self.connected.set()
+                    was_connected = True
+                    delay = _RECONNECT_MIN_DELAY   # a live connection earns a fresh start
+
+                    flusher = asyncio.create_task(self._flush_loop())
+                    try:
+                        stopped_by_caller = await self._recv_loop(ws, stop)
+                    finally:
+                        flusher.cancel()
+                        self.connected.clear()
+                        self._ws = None
+
+                if stopped_by_caller:
+                    return
+                # _recv_loop swallows ConnectionClosed itself (so a clean
+                # engine-side close never looks like an error), which means
+                # this is the common case — closing the engine while `connect`
+                # is running — not the exceptional one below.
+                await self._report_disconnect("engine closed the connection")
+            except (websockets.exceptions.ConnectionClosed, OSError) as e:
+                if was_connected:
+                    await self._report_disconnect(str(e))
+                else:
+                    log.debug("tag bus not reachable yet: %s — retrying", e)
+
+            if stop is not None and stop.is_set():
+                return
+            await self._wait_or_stop(delay, stop)
+            delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+
+    async def _report_disconnect(self, reason: str) -> None:
+        log.warning("tag bus connection lost: %s — retrying", reason)
+        for hook in self._on_disconnect:
+            await hook()
+
+    @staticmethod
+    async def _wait_or_stop(delay: float, stop: asyncio.Event | None) -> None:
+        """Sleep for *delay*, but wake immediately if *stop* is set —
+        otherwise the last backoff of a deliberate shutdown blocks it."""
+        if stop is None:
+            await asyncio.sleep(delay)
+            return
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=delay)
+        except asyncio.TimeoutError:
+            pass
+
+    async def _recv_loop(self, ws, stop: asyncio.Event | None) -> bool:
+        """Pump incoming messages until *stop* is set or the connection
+        closes. Returns True if *stop* caused the return, False if the
+        connection dropped on its own — the caller needs to tell a deliberate
+        shutdown apart from a drop worth retrying."""
         stopper = asyncio.create_task(stop.wait()) if stop else None
         try:
             while True:
@@ -127,12 +198,12 @@ class TagBusClient:
                 done, _ = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
                 if stopper in done:
                     recv.cancel()
-                    return
+                    return True
                 try:
                     raw = recv.result()
                 except websockets.ConnectionClosed:
                     log.info("engine closed the connection")
-                    return
+                    return False
                 await self._handle(proto.decode(raw))
         finally:
             if stopper:

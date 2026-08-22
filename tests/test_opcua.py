@@ -214,3 +214,15 @@ async def test_simulator_owned_inputs_are_read_only(opcua_server, scada):
     with pytest.raises(ua.UaStatusCodeError):
         await node.write_value(
             ua.DataValue(ua.Variant(True, ua.VariantType.Boolean)))
+
+
+async def test_bus_disconnect_marks_nodes_bad_quality(opcua_server, scada):
+    """FF-03: a client that checks quality (as any serious SCADA package
+    does) must see a fault when the sidecar loses the engine, not a
+    plausible-looking frozen reading with a Good status code."""
+    node = scada.get_node(ua.NodeId("sensor_low.detect", opcua_server.idx))
+    assert (await node.read_data_value(raise_on_bad_status=False)).StatusCode.is_good()
+
+    await opcua_server.bus_disconnected()
+
+    assert (await node.read_data_value(raise_on_bad_status=False)).StatusCode.is_bad()

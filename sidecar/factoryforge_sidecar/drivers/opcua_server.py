@@ -168,6 +168,32 @@ class OpcUaServerDriver(Driver):
             finally:
                 self._applying.discard(tag_id)
 
+    async def bus_disconnected(self) -> None:
+        """Mark every published node Bad rather than leave it holding the last
+        value it ever read from a bus that is no longer there. Unlike Modbus,
+        OPC UA has a real quality channel for this — a client that checks the
+        status code (as any serious SCADA package does) sees a fault, not a
+        plausible-looking frozen reading. Values come back Good on their own
+        once the bus reconnects and rebuild() republishes them. See FF-03."""
+        if not self._started or self._table is None:
+            return
+        bad = ua.StatusCode(ua.StatusCodes.BadCommunicationError)
+        for tag in self._table:
+            node = self._nodes.get(tag.id)
+            if node is None:
+                continue
+            # Same guard push() uses: writing a controller-owned node fires
+            # our own subscription, and without this it would be read back
+            # as a client write and queued straight onto the bus.
+            self._applying.add(tag.id)
+            try:
+                await node.write_value(ua.DataValue(
+                    ua.Variant(self._table.visible(tag.id), _VARIANT[tag.type]), bad))
+            except Exception as exc:
+                log.debug("could not mark %s bad quality: %s", tag.id, exc)
+            finally:
+                self._applying.discard(tag.id)
+
     def _queue_write(self, tag_id: str, value) -> None:
         if tag_id in self._applying:
             return          # our own update echoing back
