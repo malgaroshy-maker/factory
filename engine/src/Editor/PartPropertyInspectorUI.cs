@@ -201,7 +201,7 @@ public partial class PartPropertyInspectorUI : Control
             Value = initialValue,
             CustomMinimumSize = new Vector2(90, 0),
         };
-        spin.ValueChanged += (val) => onChanged((float)val);
+        spin.ValueChanged += (val) => { onChanged((float)val); Editor?.MarkDirty(); };
         row.AddChild(spin);
     }
 }

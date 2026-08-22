@@ -26,6 +26,9 @@ public partial class StartScreenUI : Control
     [Signal] public delegate void EmptySceneChosenEventHandler();
     /// <summary>Open a scene the user saved.</summary>
     [Signal] public delegate void OpenRequestedEventHandler(string path);
+    /// <summary>Start the reference line and run it with the built-in demo
+    /// driver — no PLC, no Python, nothing to install. See FF-23.</summary>
+    [Signal] public delegate void DemoRequestedEventHandler();
 
     private sealed record Template(string Title, string Blurb, string Path);
 
@@ -60,6 +63,44 @@ public partial class StartScreenUI : Control
     private const string RecentPath = "user://recent_scenes.json";
     private VBoxContainer _recentBox = null!;
 
+    /// <summary>
+    /// Every clickable row on this screen used to render as flat, unstyled
+    /// text — no border, no background, no hover — on the one screen a new
+    /// user meets before learning any of the keys (FF-22). A panel background
+    /// that brightens on hover and a focus ring make "this is a button" and
+    /// "this is what you are about to activate" both obvious, including from
+    /// the keyboard.
+    /// </summary>
+    private static void StyleClickable(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", CardStyle(new Color(1, 1, 1, 0.04f)));
+        button.AddThemeStyleboxOverride("hover", CardStyle(new Color(1, 1, 1, 0.10f), new Color(0.98f, 0.80f, 0.35f, 0.6f)));
+        button.AddThemeStyleboxOverride("pressed", CardStyle(new Color(1, 1, 1, 0.16f)));
+        button.AddThemeStyleboxOverride("focus", CardStyle(new Color(1, 1, 1, 0.06f), new Color(0.55f, 0.85f, 1.0f, 0.9f)));
+    }
+
+    private static StyleBoxFlat CardStyle(Color background, Color? border = null)
+    {
+        var box = new StyleBoxFlat
+        {
+            BgColor = background,
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomLeft = 6,
+            CornerRadiusBottomRight = 6,
+            ContentMarginLeft = 10,
+            ContentMarginRight = 10,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
+        };
+        if (border is { } b)
+        {
+            box.BorderColor = b;
+            box.BorderWidthLeft = box.BorderWidthRight = box.BorderWidthTop = box.BorderWidthBottom = 1;
+        }
+        return box;
+    }
+
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -68,9 +109,24 @@ public partial class StartScreenUI : Control
         backdrop.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(backdrop);
 
-        var centre = new CenterContainer();
-        centre.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(centre);
+        // A ScrollContainer, not a bare CenterContainer: the 980x640 card
+        // used to be taller than Godot's own default 1152x648 window, with no
+        // way to reach the Quit button or the key list it clipped off the
+        // bottom. project.godot now opens wider (FF-32), but a window
+        // resized smaller still degrades to scrolling instead of clipping.
+        var scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        scroll.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(scroll);
+
+        var centre = new CenterContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        scroll.AddChild(centre);
 
         var card = new PanelContainer { CustomMinimumSize = new Vector2(980, 640) };
         centre.AddChild(card);
@@ -93,6 +149,26 @@ public partial class StartScreenUI : Control
         };
         subtitle.AddThemeColorOverride("font_color", new Color(0.72f, 0.75f, 0.80f));
         page.AddChild(subtitle);
+
+        // The single highest-value button on this screen: launched cold,
+        // nothing moves until a PLC or a sidecar is connected, which reads as
+        // "broken" in the first thirty seconds. This runs the reference line
+        // with an in-engine stand-in driver — nothing to install. See FF-23.
+        var demoBtn = new Button
+        {
+            Text = "  ▶  Watch it run — see the factory move before you touch anything",
+            Alignment = HorizontalAlignment.Left,
+            CustomMinimumSize = new Vector2(0, 46),
+            TooltipText = "Starts the reference sorting line, driven by a built-in demo — "
+                         + "no PLC or Python required. Stands down the moment you connect a real driver.",
+        };
+        demoBtn.AddThemeFontSizeOverride("font_size", 15);
+        demoBtn.AddThemeStyleboxOverride("normal", CardStyle(new Color(0.25f, 0.55f, 0.35f, 0.55f), new Color(0.45f, 0.95f, 0.55f, 0.7f)));
+        demoBtn.AddThemeStyleboxOverride("hover", CardStyle(new Color(0.30f, 0.65f, 0.42f, 0.65f), new Color(0.45f, 0.95f, 0.55f, 0.9f)));
+        demoBtn.AddThemeStyleboxOverride("pressed", CardStyle(new Color(0.22f, 0.48f, 0.30f, 0.7f), new Color(0.45f, 0.95f, 0.55f, 0.9f)));
+        demoBtn.AddThemeStyleboxOverride("focus", CardStyle(new Color(0.25f, 0.55f, 0.35f, 0.55f), new Color(0.55f, 0.85f, 1.0f, 0.9f)));
+        demoBtn.Pressed += () => { EmitSignal(SignalName.DemoRequested); Dismiss(); };
+        page.AddChild(demoBtn);
 
         page.AddChild(new HSeparator());
 
@@ -128,6 +204,7 @@ public partial class StartScreenUI : Control
         };
         left.AddChild(scroll);
         var list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        list.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(list);
 
         foreach (var template in Templates)
@@ -145,6 +222,7 @@ public partial class StartScreenUI : Control
                 TooltipText = template.Blurb,
             };
             button.AddThemeFontSizeOverride("font_size", 13);
+            StyleClickable(button);
 
             string path = template.Path;
             button.Pressed += () =>
@@ -174,6 +252,7 @@ public partial class StartScreenUI : Control
             CustomMinimumSize = new Vector2(300, 38),
             TooltipText = "No parts and no tags — build a line from the palette",
         };
+        StyleClickable(blank);
         blank.Pressed += () => { EmitSignal(SignalName.EmptySceneChosen); Dismiss(); };
         right.AddChild(blank);
 
@@ -183,6 +262,7 @@ public partial class StartScreenUI : Control
             Alignment = HorizontalAlignment.Left,
             CustomMinimumSize = new Vector2(300, 38),
         };
+        StyleClickable(open);
         open.Pressed += ShowOpenDialog;
         right.AddChild(open);
 
@@ -198,6 +278,7 @@ public partial class StartScreenUI : Control
         RebuildRecent();
 
         var quit = new Button { Text = "  Quit", Alignment = HorizontalAlignment.Left };
+        StyleClickable(quit);
         quit.Pressed += () => GetTree().Quit();
         right.AddChild(quit);
     }
@@ -220,12 +301,16 @@ public partial class StartScreenUI : Control
             ("Ctrl+R", "Reset the run"),
             ("C", "Orbit / fly camera"),
             ("M", "Move selected part"),
-            ("R", "Rotate before placing"),
+            ("R", "Rotate — while placing, or a selected part"),
             ("Del", "Delete selected part"),
             ("Ctrl+Z / Y", "Undo / redo"),
+            ("Ctrl+D", "Duplicate selected part"),
+            ("Ctrl+S / O", "Save / open a scene"),
             ("F4", "I/O wiring and export"),
             ("F5", "Connect a PLC driver"),
             ("Esc", "Cancel placement"),
+            ("", ""),
+            ("", ""),
             ("", ""),
         };
 
@@ -304,6 +389,7 @@ public partial class StartScreenUI : Control
                 CustomMinimumSize = new Vector2(300, 32),
             };
             button.AddThemeFontSizeOverride("font_size", 12);
+            StyleClickable(button);
             string captured = path;
             button.Pressed += () =>
             {

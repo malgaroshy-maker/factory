@@ -27,8 +27,15 @@ dist/
 # Temporary screenshots & logs. Working screenshots land in the repo root and
 # are throwaway; anything under docs/images/ is documentation and belongs in
 # the repo, so it is exempted rather than force-added case by case.
+#
+# engine/icon.png is exempted too -- it is the actual app icon referenced by
+# project.godot and both export presets (FF-31), not a throwaway screenshot.
+# Without this line it would match *.png, never get committed, and every
+# clone but this one would export with a missing icon -- the exact shape of
+# bug FF-30 already found once with a different ignored file.
 *.png
 !docs/images/**/*.png
+!engine/icon.png
 *.log
 scratch/
 

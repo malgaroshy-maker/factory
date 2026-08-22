@@ -62,6 +62,8 @@ public partial class SceneSelfTest : Node
         {
             CheckRoundTrip();
             CheckDispatchSurvives();
+            CheckClearUndo();
+            CheckRotateAndDuplicate();
         }
         catch (System.Exception ex)
         {
@@ -273,6 +275,64 @@ public partial class SceneSelfTest : Node
         Editor!._PhysicsProcess(1.0 / 60.0);
         Editor._PhysicsProcess(1.0 / 60.0);
         Expect(true, "part dispatch survives every output being driven");
+    }
+
+    /// <summary>
+    /// Clear is the most destructive action in the editor (FF-01): it must be
+    /// undoable, and undoing it must bring back every part with its tags and
+    /// wiring intact, not a fresh scene that merely looks similar.
+    /// </summary>
+    private void CheckClearUndo()
+    {
+        var before = Editor!.PlacedPartIds().OrderBy(id => id).ToList();
+        Expect(before.Count == AllTypes.Length, "scene has parts to clear before the check runs");
+
+        Editor.ClearAllPlacedPartsWithUndo();
+        Expect(Editor.PlacedPartIds().Count == 0, "Clear removes every part");
+
+        Editor.Undo();
+        var after = Editor.PlacedPartIds().OrderBy(id => id).ToList();
+        Expect(after.SequenceEqual(before), $"Undo restores every part (got {after.Count} of {before.Count})");
+
+        foreach (string type in AllTypes)
+        {
+            if (type == "Chute") continue;   // no I/O of its own, by design
+            string id = $"probe_{type.ToLowerInvariant()}";
+            Expect(PartTagManager.HasTagsFor(id, Tags), $"{type} kept its tags after undoing Clear");
+        }
+    }
+
+    /// <summary>
+    /// FF-20 (rotate a selected part, not just while placing) and FF-21
+    /// (Ctrl+D duplicate). Both must be undoable — rotate back to exactly the
+    /// original angle, duplicate removing exactly the one part it added.
+    /// </summary>
+    private void CheckRotateAndDuplicate()
+    {
+        const string probeId = "probe_conveyorbelt";
+
+        Expect(Editor!.SelectPartForInspection(probeId), "a probe part is selectable to rotate/duplicate");
+        float before = Editor.RotationYOf(probeId) ?? 0f;
+
+        Editor.RotateSelectedPart();
+        float rotated = Editor.RotationYOf(probeId) ?? 0f;
+        Expect(!Mathf.IsEqualApprox(rotated, before), "rotating a selected part changes its Y rotation");
+        Expect(Mathf.IsEqualApprox(rotated, before + Mathf.Pi / 2f), "rotate turns exactly 90 degrees");
+
+        Editor.Undo();
+        Expect(Mathf.IsEqualApprox(Editor.RotationYOf(probeId) ?? -999f, before),
+               "undoing a rotate restores the original angle");
+
+        var beforeDuplicate = Editor.PlacedPartIds().ToHashSet();
+        Editor.SelectPartForInspection(probeId);
+        Editor.DuplicateSelectedPart();
+        var afterDuplicate = Editor.PlacedPartIds().ToHashSet();
+        Expect(afterDuplicate.Count == beforeDuplicate.Count + 1,
+               $"duplicate adds exactly one part (before {beforeDuplicate.Count}, after {afterDuplicate.Count})");
+
+        Editor.Undo();
+        Expect(Editor.PlacedPartIds().ToHashSet().SetEquals(beforeDuplicate),
+               "undoing a duplicate removes exactly the part it added");
     }
 
     private void ExpectNear(IDictionary<string, string> props, string key, float want, string type)

@@ -22,12 +22,15 @@ public partial class TagInspectorUI : Control
 
     private void BuildUI()
     {
-        CustomMinimumSize = new Vector2(300, 400);
+        // Wider than before: the name column is the one thing a user needs to
+        // read out of this panel — it is what goes into a PLC mapping file —
+        // and 300px total left it truncated to "weight_readout.va…" (FF-19).
+        CustomMinimumSize = new Vector2(360, 400);
         SetAnchorsAndOffsetsPreset(LayoutPreset.TopRight, LayoutPresetMode.KeepSize, 20);
 
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(300, 400),
+            CustomMinimumSize = new Vector2(360, 400),
         };
         AddChild(panel);
 
@@ -51,7 +54,7 @@ public partial class TagInspectorUI : Control
 
         var scroll = new ScrollContainer
         {
-            CustomMinimumSize = new Vector2(280, 340),
+            CustomMinimumSize = new Vector2(340, 340),
             SizeFlagsVertical = SizeFlags.ExpandFill,
         };
         mainBox.AddChild(scroll);
@@ -78,13 +81,27 @@ public partial class TagInspectorUI : Control
             var row = new HBoxContainer();
             _listContainer.AddChild(row);
 
-            var nameLabel = new Label
+            // A button, not a label: this is the identifier a user has to
+            // retype into a PLC mapping, and click-to-copy is what makes that
+            // fast instead of error-prone. Elided in the *middle* rather than
+            // Godot's own end-truncation — the suffix (".value", ".detect")
+            // is what tells two similarly-prefixed tags apart, so cutting it
+            // off is exactly backwards. See FF-19.
+            var nameBtn = new Button
             {
-                Text = tag.Id,
-                CustomMinimumSize = new Vector2(120, 0),
-                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                Text = ElideMiddle(tag.Id, 20),
+                CustomMinimumSize = new Vector2(170, 0),
+                Alignment = HorizontalAlignment.Left,
+                Flat = true,
+                TooltipText = $"{tag.Id}\n{tag.Type} · {tag.Kind}\nClick to copy",
             };
-            row.AddChild(nameLabel);
+            string fullId = tag.Id;
+            nameBtn.Pressed += () =>
+            {
+                DisplayServer.ClipboardSet(fullId);
+                GD.Print($"copied tag id: {fullId}");
+            };
+            row.AddChild(nameBtn);
 
             var valLabel = new Label
             {
@@ -105,6 +122,17 @@ public partial class TagInspectorUI : Control
             row.AddChild(forceBtn);
             _forceButtons[tagId] = forceBtn;
         }
+    }
+
+    /// <summary>Shorten to at most <paramref name="maxChars"/>, cutting from
+    /// the middle so the id's discriminating suffix survives.</summary>
+    private static string ElideMiddle(string id, int maxChars)
+    {
+        if (id.Length <= maxChars) return id;
+        int keep = maxChars - 1;   // one char reserved for the ellipsis glyph
+        int left = keep * 2 / 5;   // favour the suffix: it is what differs
+        int right = keep - left;
+        return id[..left] + "…" + id[^right..];
     }
 
     private void ToggleForce(string tagId)

@@ -23,6 +23,11 @@ public partial class SceneEditor : Node3D
     public SortingScene? Scene { get; set; }
     public PartPropertyInspectorUI PropertyInspector { get; set; } = null!;
 
+    /// <summary>Set by Main so Ctrl+S / Ctrl+O can open the same dialogs the
+    /// toolbar buttons do — one dialog implementation, two ways to reach it.
+    /// See FF-21.</summary>
+    public SceneToolbarUI? Toolbar { get; set; }
+
     /// <summary>Raised when the mode changes, so the toolbar and palette follow
     /// it rather than each keeping their own idea of what mode we are in.</summary>
     [Signal] public delegate void ModeChangedEventHandler(bool running);
@@ -40,7 +45,53 @@ public partial class SceneEditor : Node3D
     /// simulation owns: deleting the default belt must not delete
     /// conveyor.rotate, which SortingScene writes on every tick.
     /// </summary>
-    private sealed record PlacedPart(Node3D Node, string InstanceId, string PartType, bool OwnsTags);
+    private sealed record PlacedPart(Node3D Node, string InstanceId, string PartType, bool OwnsTags)
+    {
+        private Dictionary<string, string>? _tagIds;
+
+        /// <summary>
+        /// Suffix -> full "{InstanceId}.{suffix}" id, for the fixed set of
+        /// tags this part type's dispatch reads or writes every physics
+        /// tick. Built once, on first access, instead of a fresh string
+        /// concatenation per tag per part per tick — the actual allocation
+        /// FF-15 measured (~4,500/sec on a 30-part scene).
+        ///
+        /// Rename must call <see cref="InvalidateTagIds"/>: a record's
+        /// <c>with</c> expression copies this cache along with everything
+        /// else, so without that a renamed part would keep dispatching
+        /// against its old ids.
+        /// </summary>
+        public Dictionary<string, string> TagIds => _tagIds ??= BuildTagIdCache(InstanceId, PartType);
+
+        public void InvalidateTagIds() => _tagIds = null;
+
+        private static readonly Dictionary<string, string[]> TagSuffixesByType = new()
+        {
+            ["ConveyorBelt"] = new[] { "rotate" },
+            ["RollerConveyor"] = new[] { "rotate" },
+            ["WeighingConveyor"] = new[] { "rotate", "weight" },
+            ["PusherMechanism"] = new[] { "extend", "extended", "retracted" },
+            ["PhotoelectricSensor"] = new[] { "detect" },
+            ["RetroreflectiveSensor"] = new[] { "detect" },
+            ["InductiveSensor"] = new[] { "detect" },
+            ["Emitter"] = new[] { "emit" },
+            ["ButtonPanel"] = new[] { "green", "red", "estop" },
+            ["StackLight"] = new[] { "green", "yellow", "red" },
+            ["DigitalDisplay"] = new[] { "value" },
+            ["LightArray"] = new[] { "height", "blocked" },
+            ["LevelTank"] = new[] { "level", "fill", "drain" },
+        };
+
+        private static Dictionary<string, string> BuildTagIdCache(string instanceId, string partType)
+        {
+            if (!TagSuffixesByType.TryGetValue(partType, out var suffixes))
+                return new Dictionary<string, string>();
+
+            var cache = new Dictionary<string, string>(suffixes.Length);
+            foreach (var suffix in suffixes) cache[suffix] = $"{instanceId}.{suffix}";
+            return cache;
+        }
+    }
 
     private PlacedPart? _selectedPart;
     private readonly List<PlacedPart> _placedParts = new();
@@ -67,6 +118,18 @@ public partial class SceneEditor : Node3D
 
     /// <summary>Is a part currently following the cursor, waiting to be placed?</summary>
     public bool HasPlacementPreview => _previewNode is not null;
+
+    /// <summary>Anything placed right now, so Clear can skip its own
+    /// confirmation when there is nothing to lose.</summary>
+    public bool HasPlacedParts => _placedParts.Count > 0;
+
+    /// <summary>True once the scene differs from what was last saved or
+    /// loaded. Drives the unsaved-changes prompt on Home, Load, and quit —
+    /// there is no reliable way to tell "safe to discard" apart from
+    /// "about to lose twenty minutes of work" without it.</summary>
+    public bool IsDirty { get; private set; }
+
+    public void MarkDirty() => IsDirty = true;
 
     private void NotifyTagsChanged()
     {
@@ -172,6 +235,18 @@ public partial class SceneEditor : Node3D
             {
                 Redo();
             }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.S)
+            {
+                Toolbar?.ShowSaveDialog();
+            }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.O)
+            {
+                Toolbar?.ShowLoadDialog();
+            }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.D && _selectedPart is not null)
+            {
+                DuplicateSelectedPart();
+            }
             else if (keyEvent.Keycode == Key.M && _selectedPart is not null)
             {
                 StartMoveSelectedPart();
@@ -180,6 +255,10 @@ public partial class SceneEditor : Node3D
             {
                 _previewRotationY += Mathf.Pi / 2.0f;
                 _previewNode.Rotation = new Vector3(0, _previewRotationY, 0);
+            }
+            else if (keyEvent.Keycode == Key.R && _previewNode is null && _selectedPart is not null)
+            {
+                RotateSelectedPart();
             }
             else if (keyEvent.Keycode == Key.Escape)
             {
@@ -197,12 +276,16 @@ public partial class SceneEditor : Node3D
 
     public void Undo()
     {
-        GD.Print(_history.Undo() ? "Undid last editor action" : "Nothing to undo");
+        bool did = _history.Undo();
+        if (did) MarkDirty();
+        GD.Print(did ? "Undid last editor action" : "Nothing to undo");
     }
 
     public void Redo()
     {
-        GD.Print(_history.Redo() ? "Redid last editor action" : "Nothing to redo");
+        bool did = _history.Redo();
+        if (did) MarkDirty();
+        GD.Print(did ? "Redid last editor action" : "Nothing to redo");
     }
 
     /// <summary>
@@ -325,6 +408,8 @@ public partial class SceneEditor : Node3D
                 if (Tags is not null && Tags.Contains($"{part.InstanceId}.estop"))
                     Tags.Set($"{part.InstanceId}.estop", true);
             }
+            if (part.Node is Emitter emitter) emitter.ResetCount();
+
             if (part.Node is not Remover remover) continue;
 
             remover.ResetCount();
@@ -518,6 +603,7 @@ public partial class SceneEditor : Node3D
         ClearPanelPulses(entry.InstanceId);
 
         var renamed = entry with { InstanceId = newId };
+        renamed.InvalidateTagIds();   // `with` copies the old id cache too
         _placedParts[index] = renamed;
         if (_selectedPart == entry)
         {
@@ -528,6 +614,7 @@ public partial class SceneEditor : Node3D
             PropertyInspector?.InspectNode(renamed.Node, newId, renamed.PartType);
         }
 
+        MarkDirty();
         NotifyTagsChanged();
         GD.Print($"Renamed '{entry.InstanceId}' to '{newId}'");
         return true;
@@ -554,6 +641,14 @@ public partial class SceneEditor : Node3D
         return ids;
     }
 
+    /// <summary>A placed part's Y rotation in radians, for tests and tooling
+    /// — verifying FF-20's rotate-in-place without a mouse.</summary>
+    public float? RotationYOf(string instanceId)
+    {
+        int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
+        return index < 0 ? null : _placedParts[index].Node.Rotation.Y;
+    }
+
     private void DeselectPart()
     {
         _selectedPart = null;
@@ -573,6 +668,7 @@ public partial class SceneEditor : Node3D
         DeselectPart();
         _history.ExecuteCommand(new PartCommand(this, partType, position, rotation,
                                                 isPlacement: false, instanceId: entry.InstanceId));
+        MarkDirty();
         NotifyTagsChanged();
     }
 
@@ -741,6 +837,7 @@ public partial class SceneEditor : Node3D
         if (Scene is null && Tags is not null) SortingTags.Undeclare(Tags);
 
         SceneName = "untitled";
+        IsDirty = false;
         NotifyTagsChanged();
         GD.Print("New empty scene");
     }
@@ -757,6 +854,7 @@ public partial class SceneEditor : Node3D
 
         SceneName = "sorting-by-height";
         RegisterDefaultSceneParts(physical: Scene is null);
+        IsDirty = false;
         NotifyTagsChanged();
     }
 
@@ -779,22 +877,12 @@ public partial class SceneEditor : Node3D
         string stem = System.IO.Path.GetFileNameWithoutExtension(path);
         if (stem.Length > 0 && stem != "custom_scene") SceneName = stem;
 
-        var data = new SceneData { Name = SceneName };
-        foreach (var part in _placedParts)
-        {
-            data.Parts.Add(new PartInstanceData
-            {
-                Id = part.InstanceId,
-                Type = part.PartType,
-                Position = new float[] { part.Node.Position.X, part.Node.Position.Y, part.Node.Position.Z },
-                Rotation = new float[] { part.Node.Rotation.X, part.Node.Rotation.Y, part.Node.Rotation.Z },
-                Properties = PartProperties.Capture(part.Node)
-            });
-        }
+        var data = new SceneData { Name = SceneName, Parts = CapturePartsSnapshot() };
 
         string json = data.ToJson();
         using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Write);
         file?.StoreString(json);
+        IsDirty = false;
         GD.Print($"Saved scene to {path} ({_placedParts.Count} parts)");
     }
 
@@ -815,30 +903,28 @@ public partial class SceneEditor : Node3D
 
         if (data.Name is { Length: > 0 }) SceneName = data.Name;
 
-        foreach (var p in data.Parts)
-        {
-            var node = CreatePartNode(p.Type);
-            if (node is not null)
-            {
-                node.Position = new Vector3(p.Position[0], p.Position[1], p.Position[2]);
-                node.Rotation = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
-                // Before AddChild: parts build their geometry from these in
-                // _Ready, so applying afterwards would leave the mesh showing
-                // the old configuration.
-                PartProperties.Apply(node, p.Properties);
-                GetParent()?.AddChild(node);
+        // Before AddChild inside RestorePartsFromSnapshot: parts build their
+        // geometry from position/rotation/properties in _Ready, so applying
+        // them afterwards would leave the mesh showing the old configuration.
+        RestorePartsFromSnapshot(data.Parts);
 
-                // Reuse the saved id so the reloaded scene keeps its wiring.
-                var (instanceId, owns) = PartTagManager.RegisterPartTags(node, p.Type, Tags, p.Id);
-                _placedParts.Add(new PlacedPart(node, instanceId, p.Type, owns));
-            }
-        }
-
-        NotifyTagsChanged();
+        IsDirty = false;
         GD.Print($"Loaded scene from {path} ({_placedParts.Count} parts)");
     }
 
     public void ClearAllPlacedParts()
+    {
+        ClearPlacedPartsCore();
+        _history.Clear();   // its commands refer to parts that are now gone
+        GD.Print("Cleared all editor placed parts");
+    }
+
+    /// <summary>The wipe itself, with no opinion on history. Shared by the
+    /// scene-loading paths (which drop history entirely — it refers to parts
+    /// this just freed) and <see cref="ClearSceneCommand"/> (which needs the
+    /// wipe to be redoable without also being the thing that erases itself).
+    /// </summary>
+    private void ClearPlacedPartsCore()
     {
         foreach (var part in _placedParts)
         {
@@ -848,11 +934,179 @@ public partial class SceneEditor : Node3D
         }
         _placedParts.Clear();
         PartTagManager.ResetCounters();
-        _history.Clear();   // its commands refer to parts that are now gone
         _movingPart = null;
         DeselectPart();
         NotifyTagsChanged();
-        GD.Print("Cleared all editor placed parts");
+    }
+
+    /// <summary>Everything needed to rebuild the current parts exactly as they
+    /// stand — the same shape <see cref="SaveSceneToFile"/> writes to disk,
+    /// kept in memory instead so Clear can be undone without a file.</summary>
+    private List<PartInstanceData> CapturePartsSnapshot()
+    {
+        var list = new List<PartInstanceData>();
+        foreach (var part in _placedParts)
+        {
+            list.Add(new PartInstanceData
+            {
+                Id = part.InstanceId,
+                Type = part.PartType,
+                Position = new float[] { part.Node.Position.X, part.Node.Position.Y, part.Node.Position.Z },
+                Rotation = new float[] { part.Node.Rotation.X, part.Node.Rotation.Y, part.Node.Rotation.Z },
+                Properties = PartProperties.Capture(part.Node),
+            });
+        }
+        return list;
+    }
+
+    /// <summary>Rebuild parts from a snapshot, preserving their ids so wiring
+    /// and mappings survive. Shared by scene loading and Clear's undo.</summary>
+    private void RestorePartsFromSnapshot(List<PartInstanceData> parts)
+    {
+        foreach (var p in parts) SpawnFromData(p, notify: false);
+        NotifyTagsChanged();
+    }
+
+    /// <summary>
+    /// Build, parent and register one part from captured data — position,
+    /// rotation, type and every property PartProperties knows how to apply.
+    /// The single-part building block <see cref="RestorePartsFromSnapshot"/>
+    /// and <see cref="DuplicateSelectedPart"/> both reduce to: the whole
+    /// difference between "rebuild ten parts" and "paste one part with its
+    /// settings intact" is how many <see cref="PartInstanceData"/> you hand it.
+    /// </summary>
+    private PlacedPart? SpawnFromData(PartInstanceData p, bool notify = true)
+    {
+        var node = CreatePartNode(p.Type);
+        if (node is null) return null;
+
+        node.Position = new Vector3(p.Position[0], p.Position[1], p.Position[2]);
+        node.Rotation = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
+        PartProperties.Apply(node, p.Properties);
+        GetParent()?.AddChild(node);
+
+        var (instanceId, owns) = PartTagManager.RegisterPartTags(node, p.Type, Tags, p.Id);
+        var placed = new PlacedPart(node, instanceId, p.Type, owns);
+        _placedParts.Add(placed);
+        if (notify) NotifyTagsChanged();
+        return placed;
+    }
+
+    /// <summary>Duplicate the selected part one grid cell over, with its
+    /// current properties, as a single undoable placement. See FF-21.</summary>
+    public void DuplicateSelectedPart()
+    {
+        if (_selectedPart is not { } source) return;
+
+        float step = Grid?.CellSize ?? 0.5f;
+        var offset = source.Node.Position + new Vector3(step, 0, 0);
+        var data = new PartInstanceData
+        {
+            // Empty, not "part": RegisterPartTags only auto-numbers a fresh id
+            // when preferredId is empty. A literal non-empty placeholder here
+            // would make every duplicate "adopt" the first one's tags instead
+            // of getting its own — same bug a duplicate id from a file guards
+            // against, self-inflicted.
+            Id = "",
+            Type = source.PartType,
+            Position = new[] { offset.X, offset.Y, offset.Z },
+            Rotation = new[] { source.Node.Rotation.X, source.Node.Rotation.Y, source.Node.Rotation.Z },
+            Properties = PartProperties.Capture(source.Node),
+        };
+
+        _history.ExecuteCommand(new DuplicateCommand(this, data));
+        MarkDirty();
+        GD.Print($"Duplicated '{source.InstanceId}'");
+    }
+
+    private sealed class DuplicateCommand : IEditorCommand
+    {
+        private readonly SceneEditor _editor;
+        private readonly PartInstanceData _data;
+        private PlacedPart? _placed;
+
+        public DuplicateCommand(SceneEditor editor, PartInstanceData data)
+        {
+            _editor = editor;
+            _data = data;
+        }
+
+        public void Execute() => _placed = _editor.SpawnFromData(_data);
+
+        public void Undo()
+        {
+            if (_placed is { } placed) _editor.ForgetPart(placed);
+            _placed = null;
+        }
+    }
+
+    /// <summary>Rotate the selected part 90° in place, undoable. Before this,
+    /// R only rotated a part while it was still following the cursor — to
+    /// rotate one already placed you had to press M, then R, then re-commit
+    /// with a click. See FF-20.</summary>
+    public void RotateSelectedPart()
+    {
+        if (_selectedPart is not { } selected) return;
+
+        var from = selected.Node.Rotation;
+        var to = new Vector3(from.X, from.Y + Mathf.Pi / 2.0f, from.Z);
+        _history.ExecuteCommand(new RotateCommand(selected.Node, from, to));
+        MarkDirty();
+    }
+
+    private sealed class RotateCommand : IEditorCommand
+    {
+        private readonly Node3D _node;
+        private readonly Vector3 _from;
+        private readonly Vector3 _to;
+
+        public RotateCommand(Node3D node, Vector3 from, Vector3 to)
+        {
+            _node = node;
+            _from = from;
+            _to = to;
+        }
+
+        public void Execute() => _node.Rotation = _to;
+        public void Undo() => _node.Rotation = _from;
+    }
+
+    /// <summary>Clear pushed onto the history as a single undoable step,
+    /// rather than dropping history the way loading a different scene does.
+    /// Older history is still dropped: it refers to nodes this just freed, and
+    /// undoing Clear rebuilds new instances, not the originals.</summary>
+    private sealed class ClearSceneCommand : IEditorCommand
+    {
+        private readonly SceneEditor _editor;
+        private readonly List<PartInstanceData> _snapshot;
+
+        public ClearSceneCommand(SceneEditor editor, List<PartInstanceData> snapshot)
+        {
+            _editor = editor;
+            _snapshot = snapshot;
+        }
+
+        public void Execute() => _editor.ClearPlacedPartsCore();
+        public void Undo() => _editor.RestorePartsFromSnapshot(_snapshot);
+    }
+
+    /// <summary>What the toolbar's Clear button actually calls: same wipe as
+    /// <see cref="ClearAllPlacedParts"/>, but a single Ctrl+Z brings it back.
+    /// Clear is the most destructive action in the editor and the one most
+    /// likely to be a mis-click, so it is the one Clear-family action worth
+    /// paying for an undo step on.</summary>
+    public void ClearAllPlacedPartsWithUndo()
+    {
+        if (_placedParts.Count == 0)
+        {
+            ClearAllPlacedParts();
+            return;
+        }
+
+        var snapshot = CapturePartsSnapshot();
+        _history.ExecuteAsOnly(new ClearSceneCommand(this, snapshot));
+        MarkDirty();
+        GD.Print("Cleared all editor placed parts (Ctrl+Z to restore)");
     }
 
     private void UpdatePreviewPosition()
@@ -874,6 +1128,18 @@ public partial class SceneEditor : Node3D
             {
                 var hitPoint = from + dir * t;
                 var snappedPoint = Grid?.SnapToGrid(hitPoint) ?? hitPoint;
+                // Clamp to the build volume the grid displays (FF-24) — the
+                // floor and its collision extend well past it so a carton
+                // that outruns a line still lands somewhere, but nothing
+                // should be *placed* out past the visible grid where the
+                // student building it can no longer see where its edges are.
+                if (Grid is not null)
+                {
+                    float maxX = Grid.GridExtentX * Grid.CellSize;
+                    float maxZ = Grid.GridExtentZ * Grid.CellSize;
+                    snappedPoint.X = Mathf.Clamp(snappedPoint.X, -maxX, maxX);
+                    snappedPoint.Z = Mathf.Clamp(snappedPoint.Z, -maxZ, maxZ);
+                }
                 _previewNode.Position = new Vector3(snappedPoint.X, 0.5f, snappedPoint.Z);
             }
         }
@@ -900,40 +1166,76 @@ public partial class SceneEditor : Node3D
                                                 _previewNode.Rotation,
                                                 isPlacement: true,
                                                 instanceId: movedId));
+        MarkDirty();
         GD.Print($"Placed component '{_activePartType}' at {_previewNode.Position}");
         ClearPreview();
     }
+
+    /// <summary>Below this, a carton has fallen off the world and is not
+    /// coming back: a live RigidBody3D with ContinuousCd doing broad- and
+    /// narrow-phase work every physics step, forever, since the only despawn
+    /// paths were a Remover zone and Reset. See FF-12.</summary>
+    private const float KillPlaneY = -2.0f;
+
+    /// <summary>Sweeping every tick would be wasted work for something that
+    /// only needs to be noticed within about a second.</summary>
+    private const float KillPlaneIntervalSeconds = 1.0f;
+
+    /// <summary>Live cartons above this pause the emitter and raise a
+    /// warning, rather than an unattended scene accumulating rigid bodies
+    /// without bound. Not a hard limit on anything already alive — cartons
+    /// already on the belt are left to reach a remover normally.</summary>
+    public const int LiveItemCap = 200;
+
+    private float _killPlaneAccumulator;
+
+    /// <summary>As of the last sweep (at most <see cref="KillPlaneIntervalSeconds"/>
+    /// stale) — good enough for a status chip, not a physics guarantee.</summary>
+    public int LiveItemCount { get; private set; }
+    public bool ItemCapHit { get; private set; }
 
     public override void _PhysicsProcess(double delta)
     {
         if (Tags is null) return;
         float dt = (float)delta;
 
-        foreach (var (node, instanceId, partType, _) in _placedParts)
+        _killPlaneAccumulator += dt;
+        if (_killPlaneAccumulator >= KillPlaneIntervalSeconds)
         {
-            switch (partType)
+            _killPlaneAccumulator = 0f;
+            SweepBoxes();
+        }
+
+        foreach (var part in _placedParts)
+        {
+            var node = part.Node;
+            string instanceId = part.InstanceId;
+            var ids = part.TagIds;
+
+            switch (part.PartType)
             {
                 case "RollerConveyor":
                 case "ConveyorBelt":
-                    if (node is ConveyorBelt belt && Tags.Contains($"{instanceId}.rotate"))
+                    if (node is ConveyorBelt belt && ids.TryGetValue("rotate", out var rotateId)
+                        && Tags.TryGetVisible(rotateId, out var rotateVal))
                     {
-                        belt.SetRunning((bool)Tags.Visible($"{instanceId}.rotate"));
+                        belt.SetRunning((bool)rotateVal);
                         if (Scene is not null && instanceId == "conveyor")
                             Scene.TransportSpeed = belt.Speed;
                     }
                     break;
 
                 case "PusherMechanism":
-                    if (node is PusherMechanism pusher && Tags.Contains($"{instanceId}.extend"))
+                    if (node is PusherMechanism pusher && ids.TryGetValue("extend", out var extendId)
+                        && Tags.TryGetVisible(extendId, out var extendVal))
                     {
-                        bool extend = (bool)Tags.Visible($"{instanceId}.extend");
-                        pusher.UpdateExtension(extend, dt);
+                        pusher.UpdateExtension((bool)extendVal, dt);
                         // A VisualOnly pusher mirrors a pusher the scene already
                         // simulates, so the scene keeps the limit switches.
                         if (!pusher.VisualOnly)
                         {
-                            Tags.Set($"{instanceId}.extended", pusher.IsExtended);
-                            Tags.Set($"{instanceId}.retracted", pusher.IsRetracted);
+                            Tags.TrySet(ids["extended"], pusher.IsExtended);
+                            Tags.TrySet(ids["retracted"], pusher.IsRetracted);
                         }
                     }
                     break;
@@ -941,26 +1243,39 @@ public partial class SceneEditor : Node3D
                 case "RetroreflectiveSensor":
                 case "InductiveSensor":
                 case "PhotoelectricSensor":
-                    if (node is PhotoelectricSensor sensor && Tags.Contains($"{instanceId}.detect"))
+                    if (node is PhotoelectricSensor sensor && ids.TryGetValue("detect", out var detectId))
                     {
                         if (sensor.VisualOnly)
-                            sensor.SetBeamActive((bool)Tags.Visible($"{instanceId}.detect"));
+                        {
+                            if (Tags.TryGetVisible(detectId, out var detectVal))
+                                sensor.SetBeamActive((bool)detectVal);
+                        }
                         else
-                            Tags.Set($"{instanceId}.detect", sensor.IsDetected);
+                        {
+                            Tags.TrySet(detectId, sensor.IsDetected);
+                        }
                     }
                     break;
 
                 case "Emitter":
                     // Rising edge only: holding the tag high must not fire a box
                     // every frame, which is how a real emitter input behaves.
-                    if (node is Emitter emitter && Tags.Contains($"{instanceId}.emit"))
+                    if (node is Emitter emitter && ids.TryGetValue("emit", out var emitId)
+                        && Tags.TryGetVisible(emitId, out var emitVal))
                     {
-                        bool emit = (bool)Tags.Visible($"{instanceId}.emit");
+                        bool emit = (bool)emitVal;
                         if (emit && !_emitEdges.Contains(instanceId))
                         {
-                            _emitEdges.Add(instanceId);
-                            emitter.SpawnBox(_emitAlternate);
-                            _emitAlternate = !_emitAlternate;
+                            // Left off _emitEdges (not marked as fired) while
+                            // capped, so the same rising edge spawns the
+                            // instant the count drops rather than needing the
+                            // signal to re-pulse. See FF-12.
+                            if (LiveItemCount < LiveItemCap)
+                            {
+                                _emitEdges.Add(instanceId);
+                                emitter.SpawnBox(_emitAlternate);
+                                _emitAlternate = !_emitAlternate;
+                            }
                         }
                         else if (!emit)
                         {
@@ -972,75 +1287,80 @@ public partial class SceneEditor : Node3D
                 case "Remover":
                     if (node is Remover remover)
                     {
+                        // Not cacheable the way the others are: CountTag is a
+                        // user-editable string, not a fixed "{id}.suffix".
                         string countTag = remover.CountTag.Length > 0
                             ? remover.CountTag
                             : $"{instanceId}.count";
-                        if (Tags.Contains(countTag)) Tags.Set(countTag, remover.RemovedCount);
+                        Tags.TrySet(countTag, remover.RemovedCount);
                     }
                     break;
 
                 case "ButtonPanel":
                     if (node is ButtonPanel panel)
                     {
-                        if (Tags.Contains($"{instanceId}.green"))
-                            panel.SetGreenLamp((bool)Tags.Visible($"{instanceId}.green"));
-                        if (Tags.Contains($"{instanceId}.red"))
-                            panel.SetRedLamp((bool)Tags.Visible($"{instanceId}.red"));
+                        if (ids.TryGetValue("green", out var panelGreenId) && Tags.TryGetVisible(panelGreenId, out var panelGreenVal))
+                            panel.SetGreenLamp((bool)panelGreenVal);
+                        if (ids.TryGetValue("red", out var panelRedId) && Tags.TryGetVisible(panelRedId, out var panelRedVal))
+                            panel.SetRedLamp((bool)panelRedVal);
 
-                        StepPanelButtons(panel, instanceId);
+                        StepPanelButtons(panel, part);
                     }
                     break;
 
                 case "StackLight":
                     if (node is StackLight light)
                     {
-                        if (Tags.Contains($"{instanceId}.green"))
-                            light.SetGreenLamp((bool)Tags.Visible($"{instanceId}.green"));
+                        if (ids.TryGetValue("green", out var lightGreenId) && Tags.TryGetVisible(lightGreenId, out var lightGreenVal))
+                            light.SetGreenLamp((bool)lightGreenVal);
 
-                        if (Tags.Contains($"{instanceId}.yellow"))
-                            light.SetYellowLamp((bool)Tags.Visible($"{instanceId}.yellow"));
+                        if (ids.TryGetValue("yellow", out var lightYellowId) && Tags.TryGetVisible(lightYellowId, out var lightYellowVal))
+                            light.SetYellowLamp((bool)lightYellowVal);
 
-                        if (Tags.Contains($"{instanceId}.red"))
-                            light.SetRedLamp((bool)Tags.Visible($"{instanceId}.red"));
+                        if (ids.TryGetValue("red", out var lightRedId) && Tags.TryGetVisible(lightRedId, out var lightRedVal))
+                            light.SetRedLamp((bool)lightRedVal);
                     }
                     break;
 
                 case "DigitalDisplay":
-                    if (node is DigitalDisplay display && Tags.Contains($"{instanceId}.value"))
+                    if (node is DigitalDisplay display && ids.TryGetValue("value", out var valueId)
+                        && Tags.TryGetVisible(valueId, out var valueVal))
                     {
-                        display.Value = (int)Tags.Visible($"{instanceId}.value");
+                        display.Value = (int)valueVal;
                     }
                     break;
 
                 case "LightArray":
                     if (node is LightArray curtain)
                     {
-                        if (Tags.Contains($"{instanceId}.height"))
-                            Tags.Set($"{instanceId}.height", (double)curtain.MeasuredHeight);
-                        if (Tags.Contains($"{instanceId}.blocked"))
-                            Tags.Set($"{instanceId}.blocked", curtain.IsBlocked);
+                        if (ids.TryGetValue("height", out var heightId))
+                            Tags.TrySet(heightId, (double)curtain.MeasuredHeight);
+                        if (ids.TryGetValue("blocked", out var blockedId))
+                            Tags.TrySet(blockedId, curtain.IsBlocked);
                     }
                     break;
 
                 case "LevelTank":
-                    if (node is LevelTank tank && Tags.Contains($"{instanceId}.level"))
+                    if (node is LevelTank tank && ids.TryGetValue("level", out var levelId)
+                        && Tags.TryGetVisible(ids["fill"], out var fillVal)
+                        && Tags.TryGetVisible(ids["drain"], out var drainVal))
                     {
                         // dt is scaled simulation time, so the tank obeys pause
                         // and the time-scale control like everything else.
-                        tank.Step((float)System.Convert.ToDouble(Tags.Visible($"{instanceId}.fill")),
-                                  (float)System.Convert.ToDouble(Tags.Visible($"{instanceId}.drain")),
+                        tank.Step((float)System.Convert.ToDouble(fillVal),
+                                  (float)System.Convert.ToDouble(drainVal),
                                   dt);
-                        Tags.Set($"{instanceId}.level", (double)tank.Level);
+                        Tags.TrySet(levelId, (double)tank.Level);
                     }
                     break;
 
                 case "WeighingConveyor":
                     if (node is WeighingConveyor weighBelt)
                     {
-                        if (Tags.Contains($"{instanceId}.rotate"))
-                            weighBelt.SetRunning((bool)Tags.Visible($"{instanceId}.rotate"));
-                        if (Tags.Contains($"{instanceId}.weight"))
-                            Tags.Set($"{instanceId}.weight", (int)weighBelt.MeasuredWeight);
+                        if (ids.TryGetValue("rotate", out var weighRotateId) && Tags.TryGetVisible(weighRotateId, out var weighRotateVal))
+                            weighBelt.SetRunning((bool)weighRotateVal);
+                        if (ids.TryGetValue("weight", out var weightId))
+                            Tags.TrySet(weightId, (int)weighBelt.MeasuredWeight);
                     }
                     break;
             }
@@ -1050,6 +1370,45 @@ public partial class SceneEditor : Node3D
     /// <summary>Tags a panel drove high on the previous tick, so they can be
     /// dropped on this one. Keyed by instance id.</summary>
     private readonly Dictionary<string, List<string>> _panelPulses = new();
+
+    /// <summary>
+    /// Free any carton that has fallen off the world, and update the live
+    /// count the toolbar's status chip reads. Boxes are children of the
+    /// scene root, not <see cref="_placedParts"/> — the same place
+    /// <see cref="ResetItems"/> already looks for them.
+    /// </summary>
+    private void SweepBoxes()
+    {
+        int count = 0;
+        int killed = 0;
+        foreach (var child in GetParent()?.GetChildren() ?? new Godot.Collections.Array<Node>())
+        {
+            if (child is not BoxPhysics box) continue;
+            if (box.GlobalPosition.Y < KillPlaneY)
+            {
+                box.QueueFree();
+                killed++;
+                continue;
+            }
+            count++;
+        }
+
+        if (killed > 0)
+            GD.Print($"kill plane: freed {killed} carton(s) that fell off the world");
+
+        LiveItemCount = count;
+        bool overCap = count >= LiveItemCap;
+        if (overCap && !ItemCapHit)
+        {
+            ItemCapHit = true;
+            GD.PushWarning($"item cap reached ({LiveItemCap} live cartons) — the emitter is "
+                          + "paused until the count drops");
+        }
+        else if (!overCap && ItemCapHit)
+        {
+            ItemCapHit = false;
+        }
+    }
 
     /// <summary>
     /// Drive a panel's button tags for one tick.
@@ -1064,31 +1423,34 @@ public partial class SceneEditor : Node3D
     /// The E-stop is level, not edge, and inverted: the contact is normally
     /// closed, so the tag is true while the circuit is healthy.
     /// </summary>
-    private void StepPanelButtons(ButtonPanel panel, string instanceId)
+    private void StepPanelButtons(ButtonPanel panel, PlacedPart part)
     {
+        string instanceId = part.InstanceId;
         if (!_panelPulses.TryGetValue(instanceId, out var lastTick))
         {
             lastTick = new List<string>();
             _panelPulses[instanceId] = lastTick;
         }
 
-        foreach (string id in lastTick)
-        {
-            if (Tags.Contains(id)) Tags.Set(id, false);
-        }
+        foreach (string id in lastTick) Tags.TrySet(id, false);
         lastTick.Clear();
 
+        // Not cached: built only when a button is actually pressed, which is
+        // human-interaction frequency rather than the every-tick cost FF-15
+        // targeted. Existence and "written" must stay two separate checks
+        // here — TrySet's return also folds in "already true" and "forced",
+        // and skipping lastTick.Add for either of those would leave a pulse
+        // never cleared on the next tick.
         foreach (var which in panel.ConsumePresses())
         {
             string id = $"{instanceId}.{PartTagManager.PanelTagSuffix(which)}";
             if (!Tags.Contains(id)) continue;
-
             Tags.Set(id, true);
             lastTick.Add(id);
         }
 
-        string estop = $"{instanceId}.estop";
-        if (Tags.Contains(estop)) Tags.Set(estop, !panel.EmergencyStopEngaged);
+        if (part.TagIds.TryGetValue("estop", out var estopId))
+            Tags.TrySet(estopId, !panel.EmergencyStopEngaged);
     }
 
     /// <summary>Forget a panel's pending pulse, so a tag it raised is not

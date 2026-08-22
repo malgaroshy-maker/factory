@@ -41,6 +41,16 @@ public partial class Main : Node
     /// particular line.</summary>
     private string? _scenePath;
 
+    /// <summary>Skip the start screen and start the built-in demo driver
+    /// immediately, for scripting a screenshot or a recording of "Watch it
+    /// run" without a mouse. See FF-23.</summary>
+    private bool _autoDemo;
+
+    /// <summary>Start with the simulation paused. Exists for the G6 self-test
+    /// (FF-14): forcing an input tag while paused must still reach the bus,
+    /// and that needs an engine that is paused before anything can connect.</summary>
+    private bool _startPaused;
+
     public override void _Ready()
     {
         foreach (var arg in OS.GetCmdlineUserArgs())
@@ -61,6 +71,10 @@ public partial class Main : Node
                 _selfTest = arg.Substring("--self-test=".Length);
             else if (arg.StartsWith("--scene="))
                 _scenePath = arg.Substring("--scene=".Length);
+            else if (arg == "--demo")
+                _autoDemo = true;
+            else if (arg == "--paused")
+                _startPaused = true;
         }
 
         // Rigid bodies by default — the parts are real colliders, so properties,
@@ -83,6 +97,7 @@ public partial class Main : Node
         _sim = new SimulationControls { Name = "SimulationControls" };
         AddChild(_sim);
         if (_timeScale > 0.0f) _sim.SetRate(_timeScale);
+        if (_startPaused) _sim.SetPaused(true);
         _startedAt = Time.GetTicksMsec() / 1000.0;
 
         // The renderer is optional: headless CI runs the same scene with no view
@@ -127,10 +142,25 @@ public partial class Main : Node
         {
             AddChild(new ClickPathSelfTest { Name = "ClickPathSelfTest", Tags = tags, Editor = _editor });
         }
+        if (_selfTest == "parity")
+        {
+            AddChild(new TagParitySelfTest { Name = "TagParitySelfTest" });
+        }
     }
 
     private void BuildView(TagTable tags)
     {
+        // Intercept the window's close button so an unsaved scene gets the
+        // same prompt as Home and Load, instead of vanishing silently. Only
+        // windowed interactive runs reach BuildView; headless CI and the
+        // harness's own GetTree().Quit() calls are untouched by this.
+        GetTree().AutoAcceptQuit = false;
+
+        // Below this, the start screen's 980x640 card and the parts palette
+        // both start clipping (FF-17, FF-18). project.godot sets a sane
+        // default size; this is the floor a user can still resize down to.
+        GetWindow().MinSize = new Vector2I(1000, 700);
+
         StudioEnvironment.AddEnvironment(this);
         StudioEnvironment.AddFloor(this);
 
@@ -178,6 +208,15 @@ public partial class Main : Node
         var driverConnectionUI = new DriverConnectionUI { Name = "DriverConnectionUI" };
         AddChild(driverConnectionUI);
 
+        // An in-engine stand-in PLC, so the app demonstrates itself with
+        // nothing installed (FF-23). Checks _bus.HasClient every frame and
+        // stands itself down the instant a real driver connects.
+        var demo = new DemoDriver { Name = "DemoDriver", Tags = tags, Bus = _bus };
+        AddChild(demo);
+
+        var idleHint = new IdleHintUI { Name = "IdleHintUI", Bus = _bus, Tags = tags, Demo = demo };
+        AddChild(idleHint);
+
         var toolbarUI = new SceneToolbarUI { Name = "SceneToolbarUI" };
         toolbarUI.SaveRequested += (path) =>
         {
@@ -186,38 +225,81 @@ public partial class Main : Node
         };
         toolbarUI.LoadRequested += (path) =>
         {
-            editor.LoadSceneFromFile(path);
-            StartScreenUI.Remember(path);
-            AdoptSceneName(editor);
+            void DoLoad()
+            {
+                demo.Stop();
+                editor.LoadSceneFromFile(path);
+                StartScreenUI.Remember(path);
+                AdoptSceneName(editor);
+            }
+
+            if (editor.IsDirty)
+            {
+                EditorConfirm.Ask(this, "Discard unsaved changes?",
+                    $"Loading '{path.GetFile()}' discards the current unsaved scene. Continue?",
+                    DoLoad);
+            }
+            else DoLoad();
         };
-        toolbarUI.ClearRequested += () => editor.ClearAllPlacedParts();
+        toolbarUI.ClearRequested += () =>
+        {
+            if (!editor.HasPlacedParts) { editor.ClearAllPlacedPartsWithUndo(); return; }
+            EditorConfirm.Ask(this, "Clear the scene?",
+                "This removes every part from the scene. Ctrl+Z immediately after will bring it back.",
+                editor.ClearAllPlacedPartsWithUndo);
+        };
         toolbarUI.WiringRequested += () => wiringUI.ToggleVisibility();
         toolbarUI.DriverRequested += () => driverConnectionUI.ToggleVisibility();
         toolbarUI.PauseToggled += () => _sim.TogglePause();
         toolbarUI.ResetRequested += ResetSimulation;
         toolbarUI.RateSelected += (rate) => _sim.SetRate(rate);
         toolbarUI.ModeToggled += () => editor.ToggleMode();
+        toolbarUI.DemoToggled += () =>
+        {
+            if (demo.Active) demo.Stop();
+            else demo.Start();
+        };
+        toolbarUI.Bus = _bus;
+        toolbarUI.Demo = demo;
+        toolbarUI.Editor = editor;
+        editor.Toolbar = toolbarUI;
         AddChild(toolbarUI);
 
         // The start screen goes on last so it draws over everything, and it is
         // only ever a GUI thing — headless runs and the self-tests never see it.
         var startScreen = new StartScreenUI { Name = "StartScreenUI" };
         AddChild(startScreen);
-        startScreen.DefaultSceneChosen += editor.LoadDefaultSortingScene;
-        startScreen.EmptySceneChosen += editor.NewEmptyScene;
+        startScreen.DefaultSceneChosen += () => { demo.Stop(); editor.LoadDefaultSortingScene(); };
+        startScreen.EmptySceneChosen += () => { demo.Stop(); editor.NewEmptyScene(); };
         startScreen.TemplateChosen += (path) =>
         {
+            demo.Stop();
             editor.LoadTemplate(path);
             AdoptSceneName(editor);
         };
         startScreen.OpenRequested += (path) =>
         {
+            demo.Stop();
             editor.LoadTemplate(path);
             StartScreenUI.Remember(path);
             AdoptSceneName(editor);
         };
+        startScreen.DemoRequested += () =>
+        {
+            editor.LoadDefaultSortingScene();
+            demo.Start();
+        };
         if (_selfTest is not null) startScreen.Visible = false;
-        toolbarUI.StartScreenRequested += startScreen.Reopen;
+        toolbarUI.StartScreenRequested += () =>
+        {
+            if (editor.IsDirty)
+            {
+                EditorConfirm.Ask(this, "Leave this scene?",
+                    "You have unsaved changes. Discard them and return to the start screen?",
+                    startScreen.Reopen);
+            }
+            else startScreen.Reopen();
+        };
 
         // An explicitly requested scene means the choice has already been made.
         if (_scenePath is { Length: > 0 })
@@ -225,6 +307,12 @@ public partial class Main : Node
             startScreen.Visible = false;
             editor.LoadTemplate(_scenePath);
             AdoptSceneName(editor);
+        }
+        else if (_autoDemo)
+        {
+            startScreen.Visible = false;
+            editor.LoadDefaultSortingScene();
+            demo.Start();
         }
 
         // Mode lives on the editor; the toolbar and palette only reflect it, so
@@ -250,6 +338,28 @@ public partial class Main : Node
         // shortcuts and the buttons can never disagree.
         _sim.StateChanged += (paused, rate) => toolbarUI.ShowState(paused, rate);
         toolbarUI.ShowState(_sim.Paused, _sim.Rate);
+    }
+
+    /// <summary>
+    /// The window's close button (or Alt+F4) raises this instead of quitting
+    /// outright, since <see cref="BuildView"/> turned off auto-accept. An
+    /// unsaved scene gets the same confirmation Home and Load already give it;
+    /// anything else — no editor (headless), or nothing unsaved — quits at once.
+    /// </summary>
+    public override void _Notification(int what)
+    {
+        if (what != (int)NotificationWMCloseRequest) return;
+
+        if (_editor is { IsDirty: true })
+        {
+            EditorConfirm.Ask(this, "Quit FactoryForge?",
+                "You have unsaved changes. Quit anyway?",
+                () => GetTree().Quit());
+        }
+        else
+        {
+            GetTree().Quit();
+        }
     }
 
     /// <summary>
@@ -355,7 +465,10 @@ public partial class Main : Node
             steps++;
         }
         if (_accumulator > interval * MaxCatchUpSteps) _accumulator = 0;
-        if (steps > 0) _bus.SendUpdates();
+        // Unconditional: a paused sim (TimeScale=0, steps stays 0) still needs
+        // forced tag changes from the inspector to reach the bus. Delta-only
+        // encoding means an idle scene still produces zero traffic.
+        _bus.SendUpdates();
 
         if (_screenshotPath is not null && _screenshotAt >= 0 && _elapsed >= _screenshotAt)
         {

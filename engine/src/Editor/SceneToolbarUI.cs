@@ -1,4 +1,6 @@
 using System.IO;
+using FactoryForge.Sim;
+using FactoryForge.TagBus;
 using Godot;
 
 namespace FactoryForge.Editor;
@@ -8,6 +10,31 @@ namespace FactoryForge.Editor;
 /// </summary>
 public partial class SceneToolbarUI : Control
 {
+    /// <summary>Set by Main so the status chip has something to poll. Before
+    /// this, whether a driver was connected was visible nowhere in the UI —
+    /// <c>HasClient</c> had zero references outside the bus itself, and a
+    /// failed port bind only ever printed to a console a packaged build does
+    /// not have. See FF-04.</summary>
+    public TagBusServer? Bus { get; set; }
+
+    /// <summary>Set by Main so the demo toggle has something to drive. See FF-23.</summary>
+    public DemoDriver? Demo { get; set; }
+
+    /// <summary>Set by Main so the status chip can show the live item count
+    /// and the cap warning. See FF-12.</summary>
+    public SceneEditor? Editor { get; set; }
+
+    private Label _connectionChip = null!;
+    private bool? _lastListening;
+    private bool? _lastHasClient;
+    private string? _lastSceneName;
+    private int _lastTagCount = -1;
+    private int _lastItemCount = -1;
+    private bool? _lastItemCapHit;
+
+    private Button _demoBtn = null!;
+    private bool? _lastDemoActive;
+
     [Signal] public delegate void SaveRequestedEventHandler(string path);
     [Signal] public delegate void LoadRequestedEventHandler(string path);
     [Signal] public delegate void ClearRequestedEventHandler();
@@ -18,6 +45,7 @@ public partial class SceneToolbarUI : Control
     [Signal] public delegate void RateSelectedEventHandler(float rate);
     [Signal] public delegate void ModeToggledEventHandler();
     [Signal] public delegate void StartScreenRequestedEventHandler();
+    [Signal] public delegate void DemoToggledEventHandler();
 
     private Button _pauseBtn = null!;
     private OptionButton _rateBox = null!;
@@ -49,6 +77,16 @@ public partial class SceneToolbarUI : Control
             if (Mathf.IsEqualApprox(Sim.SimulationControls.Rates[i], rate)) _rateBox.Selected = i;
         }
     }
+
+    /// <summary>Ctrl+S's target — the same dialog the Save button opens, so
+    /// the keyboard path and the mouse path can never disagree about what
+    /// "save" means. See FF-21.</summary>
+    public void ShowSaveDialog() => ShowFileDialog(FileDialog.FileModeEnum.SaveFile);
+
+    /// <summary>Ctrl+O's target. Routes through the same <c>LoadRequested</c>
+    /// signal the Load button uses, which is also where the unsaved-changes
+    /// guard (FF-02) lives — so the keyboard path gets it for free.</summary>
+    public void ShowLoadDialog() => ShowFileDialog(FileDialog.FileModeEnum.OpenFile);
 
     /// <summary>
     /// Pick a scene file. Save and Load used to be hardwired to a single
@@ -94,12 +132,12 @@ public partial class SceneToolbarUI : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(790, 44);
+        CustomMinimumSize = new Vector2(1080, 44);
         SetAnchorsAndOffsetsPreset(LayoutPreset.CenterTop, LayoutPresetMode.KeepSize, 10);
 
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(790, 44),
+            CustomMinimumSize = new Vector2(1080, 44),
         };
         AddChild(panel);
 
@@ -161,19 +199,19 @@ public partial class SceneToolbarUI : Control
         var saveBtn = new Button
         {
             Text = "💾 Save",
-            TooltipText = "Save this scene to a file you choose",
+            TooltipText = "Save this scene to a file you choose (Ctrl+S)",
             CustomMinimumSize = new Vector2(78, 32),
         };
-        saveBtn.Pressed += () => ShowFileDialog(FileDialog.FileModeEnum.SaveFile);
+        saveBtn.Pressed += ShowSaveDialog;
         hbox.AddChild(saveBtn);
 
         var loadBtn = new Button
         {
             Text = "📂 Load",
-            TooltipText = "Open a saved scene",
+            TooltipText = "Open a saved scene (Ctrl+O)",
             CustomMinimumSize = new Vector2(78, 32),
         };
-        loadBtn.Pressed += () => ShowFileDialog(FileDialog.FileModeEnum.OpenFile);
+        loadBtn.Pressed += ShowLoadDialog;
         hbox.AddChild(loadBtn);
 
         var driverBtn = new Button
@@ -184,6 +222,16 @@ public partial class SceneToolbarUI : Control
         };
         driverBtn.Pressed += () => EmitSignal(SignalName.DriverRequested);
         hbox.AddChild(driverBtn);
+
+        _demoBtn = new Button
+        {
+            Text = "🎬 Demo",
+            TooltipText = "Run the built-in demo driver — stands down automatically "
+                         + "the moment a real driver connects",
+            CustomMinimumSize = new Vector2(82, 32),
+        };
+        _demoBtn.Pressed += () => EmitSignal(SignalName.DemoToggled);
+        hbox.AddChild(_demoBtn);
 
         var wiringBtn = new Button
         {
@@ -211,5 +259,88 @@ public partial class SceneToolbarUI : Control
         };
         homeBtn.Pressed += () => EmitSignal(SignalName.StartScreenRequested);
         hbox.AddChild(homeBtn);
+
+        hbox.AddChild(new VSeparator());
+
+        _connectionChip = new Label
+        {
+            CustomMinimumSize = new Vector2(150, 32),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _connectionChip.AddThemeFontSizeOverride("font_size", 12);
+        hbox.AddChild(_connectionChip);
+    }
+
+    /// <summary>
+    /// Polls rather than subscribes to a signal: whether a driver is
+    /// connected changes on its own time (a sidecar attaching or dying), not
+    /// in response to anything the editor does, so there is no natural event
+    /// to hang this off. The chip only actually redraws on a real change.
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (Demo is not null && Demo.Active != _lastDemoActive)
+        {
+            _lastDemoActive = Demo.Active;
+            _demoBtn.Text = Demo.Active ? "⏹ Demo" : "🎬 Demo";
+            _demoBtn.AddThemeColorOverride("font_color",
+                Demo.Active ? new Color(0.45f, 0.95f, 0.55f) : Colors.White);
+        }
+
+        if (Bus is null) return;
+
+        bool listening = Bus.IsListening;
+        bool hasClient = Bus.HasClient;
+        string sceneName = Bus.SceneName;
+        int tagCount = Bus.Tags?.Count ?? 0;
+        int itemCount = Editor?.LiveItemCount ?? 0;
+        bool itemCapHit = Editor?.ItemCapHit ?? false;
+
+        if (listening == _lastListening && hasClient == _lastHasClient
+            && sceneName == _lastSceneName && tagCount == _lastTagCount
+            && itemCount == _lastItemCount && itemCapHit == _lastItemCapHit) return;
+
+        _lastListening = listening;
+        _lastHasClient = hasClient;
+        _lastSceneName = sceneName;
+        _lastTagCount = tagCount;
+        _lastItemCount = itemCount;
+        _lastItemCapHit = itemCapHit;
+
+        // The live item count matters regardless of connection state — an
+        // unattended emitter with nothing downstream leaks cartons whether or
+        // not a driver happens to be watching (FF-12).
+        string items = $" · {itemCount} item{(itemCount == 1 ? "" : "s")}";
+
+        if (!listening)
+        {
+            _connectionChip.Text = "● No tag bus" + items;
+            _connectionChip.AddThemeColorOverride("font_color", new Color(1.0f, 0.35f, 0.35f));
+            _connectionChip.TooltipText = "The tag bus port never bound — another FactoryForge "
+                + "engine is probably already running. Close it; no driver can connect until "
+                + "you do, however healthy the scene looks.";
+        }
+        else if (!hasClient)
+        {
+            _connectionChip.Text = "● No driver" + items;
+            _connectionChip.AddThemeColorOverride("font_color", new Color(0.98f, 0.80f, 0.35f));
+            _connectionChip.TooltipText = "Listening for a driver on the tag bus. Press F5 to start one.";
+        }
+        else
+        {
+            _connectionChip.Text = $"● {sceneName} ({tagCount})" + items;
+            _connectionChip.AddThemeColorOverride("font_color", new Color(0.45f, 0.95f, 0.55f));
+            _connectionChip.TooltipText = $"A driver is connected — scene '{sceneName}', {tagCount} tags.";
+        }
+
+        // The cap warning overrides whatever colour the connection state
+        // picked: a leaking scene is the more urgent thing to notice.
+        if (itemCapHit)
+        {
+            _connectionChip.AddThemeColorOverride("font_color", new Color(1.0f, 0.55f, 0.25f));
+            _connectionChip.TooltipText += $"\n⚠ Item cap reached ({SceneEditor.LiveItemCap}) — "
+                + "the emitter is paused until the count drops. A remover is probably missing "
+                + "somewhere on this line.";
+        }
     }
 }
