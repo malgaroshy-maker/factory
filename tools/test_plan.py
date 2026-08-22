@@ -235,6 +235,10 @@ def section_c() -> None:
     # own buttons off the frame. Nothing in A-E could see it: no tag is wrong
     # when a dialog is unusable.
     _self_test("C5", "F5 driver modal still fits on screen with a long status message", "layout")
+    # The Tag Inspector's Force button only ever handled bit tags; pressing it
+    # on an int or float tag did nothing, silently, and the tank template (all
+    # float I/O) could not be operated by hand at all.
+    _self_test("C6", "Tag Inspector forces int and float tags, not just bits", "force")
 
 
 def section_d(enabled: bool) -> None:

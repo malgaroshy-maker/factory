@@ -150,6 +150,10 @@ public partial class Main : Node
         {
             AddChild(new LayoutSelfTest { Name = "LayoutSelfTest" });
         }
+        if (_selfTest == "force")
+        {
+            AddChild(new TagForceSelfTest { Name = "TagForceSelfTest" });
+        }
     }
 
     private void BuildView(TagTable tags)

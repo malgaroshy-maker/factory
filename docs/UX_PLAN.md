@@ -1,7 +1,7 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Phase 3 (UX-23…UX-29) is done. Everything else is
-still proposal.
+**Status:** in progress. Phase 3 (UX-23…UX-29) and Phase 5's UX-35/UX-36 are
+done. Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -669,7 +669,7 @@ thing it switches.
 drag the fill valve, watch the level rise.
 *Size:* L. *Depends on:* UX-35.
 
-**UX-35 — Force any tag type, not just bits**
+**UX-35 — Force any tag type, not just bits — done**
 *Files:* `engine/src/Editor/TagInspectorUI.cs`.
 *Done when:* `int` and `float` tags can be forced to a typed value from the
 inspector. The plumbing exists — `TagTable.Force` takes an `object` and parts
@@ -679,11 +679,29 @@ tank scene operable at all.
 42; the display reads 42.
 *Size:* M.
 
-**UX-36 — Until UX-35 lands, refuse audibly**
+Implemented as a `LineEdit` beside the Force button for any non-bit tag,
+pre-filled with the live value and left alone while it has focus or while the
+tag is forced. Guarded by a new headless self-test (`--self-test=force`,
+`tools/test_plan.py` C6) that drives the inspector's real controls — the same
+LineEdit and Button a click would use, found by the row's own tooltip rather
+than a test-only accessor — for a bit, an int and a float tag, and confirms
+`TagTable` actually changed. Verified the guard is real by reverting the fix
+and watching C6 fail (`Force did not force`), then restoring it.
+
+The `tank.fill` / `display.value` verify steps above need a template loaded
+headless or windowed by hand — Phase 1 (UX-10) isn't done yet, so this was
+verified with a synthetic tag table instead (one bit, one int, one float tag),
+which exercises the same code path.
+
+**UX-36 — Until UX-35 lands, refuse audibly — done, folded into UX-35**
 *Files:* `engine/src/Editor/TagInspectorUI.cs`.
 *Done when:* pressing Force on a non-bit tag says why instead of doing nothing.
 *Verify:* press it on `counter.tall`; a message appears.
 *Size:* S.
+
+Landed alongside UX-35 rather than as a stopgap ahead of it: an unparseable
+value flashes the input field red for a second instead of silently doing
+nothing. Covered by the same C6 self-test (`CheckInvalid`).
 
 **UX-37 — Click a component in Run mode to operate it**
 *Files:* `engine/src/Editor/SceneEditor.cs` (`PressControlAt`, `:515`), the part

@@ -56,6 +56,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C3 | Scene save/load round-trip, every part type, undo/redo | `--self-test=scene` |
 | C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
 | C5 | F5 driver modal's minimum size still fits the screen once auto-detect writes a long status message | `--self-test=layout` |
+| C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value | `--self-test=force` |
 
 ### D. Engine self-tests (need a display)
 
