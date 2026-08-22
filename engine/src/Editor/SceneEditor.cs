@@ -192,6 +192,17 @@ public partial class SceneEditor : Node3D
             return;
         }
 
+        // Save and Open work in both modes, checked ahead of the Run-mode
+        // return below. Undo/redo/move/rotate/delete are genuinely edit-only;
+        // Ctrl+S silently doing nothing in Run mode was never a deliberate
+        // choice, just a side effect of that same early return (§2.7 -> UX-40).
+        if (@event is InputEventKey saveOpenKey && saveOpenKey.Pressed && !saveOpenKey.Echo
+            && saveOpenKey.CtrlPressed)
+        {
+            if (saveOpenKey.Keycode == Key.S) { Toolbar?.ShowSaveDialog(); return; }
+            if (saveOpenKey.Keycode == Key.O) { Toolbar?.ShowLoadDialog(); return; }
+        }
+
         if (Mode == EditorMode.Run)
         {
             if (@event is InputEventMouseButton runClick && runClick.Pressed
@@ -235,14 +246,9 @@ public partial class SceneEditor : Node3D
             {
                 Redo();
             }
-            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.S)
-            {
-                Toolbar?.ShowSaveDialog();
-            }
-            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.O)
-            {
-                Toolbar?.ShowLoadDialog();
-            }
+            // Ctrl+S / Ctrl+O are handled above, ahead of the Run-mode return,
+            // so they are unreachable here (Edit mode already returned via
+            // that branch too) rather than duplicated.
             else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.D && _selectedPart is not null)
             {
                 DuplicateSelectedPart();

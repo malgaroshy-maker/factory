@@ -32,6 +32,12 @@ public partial class SceneToolbarUI : Control
     private int _lastItemCount = -1;
     private bool? _lastItemCapHit;
 
+    /// <summary>Visible only while something is forced (UX-41) — a tag left
+    /// forced beats a driver that connects later, and that is worth a chip
+    /// nobody has to open the Tag Inspector to notice.</summary>
+    private Button _forcedChip = null!;
+    private int _lastForcedCount = -1;
+
     private Button _demoBtn = null!;
     private bool? _lastDemoActive;
 
@@ -59,10 +65,14 @@ public partial class SceneToolbarUI : Control
     /// </summary>
     public void ShowMode(bool running)
     {
-        _modeBtn.Text = running ? "▶ RUN" : "✎ EDIT";
+        // Neither word nor glyph shared with the pause button (UX-38): this
+        // used to read "▶ RUN" while ShowState below reads "▶ Run" for pause
+        // resuming from a paused Run-mode scene -- two adjacent buttons
+        // saying the same thing about two different pieces of state.
+        _modeBtn.Text = running ? "👆 Operate" : "✎ Build";
         _modeBtn.TooltipText = running
-            ? "Running: click the panel buttons to operate the line. F1 to edit."
-            : "Editing: click parts to select, M to move, Delete to remove. F1 to run.";
+            ? "Operating: click the panel buttons to operate the line. F1 to build."
+            : "Building: click parts to select, M to move, Delete to remove. F1 to operate.";
         _modeBtn.AddThemeColorOverride("font_color",
             running ? new Color(0.45f, 0.95f, 0.55f) : new Color(0.98f, 0.80f, 0.35f));
     }
@@ -158,7 +168,7 @@ public partial class SceneToolbarUI : Control
         // Shortcuts moved from the labels into tooltips when this button was
         // added — nine buttons each carrying "(Key)" overflowed the bar at the
         // default window size and clipped Clear Scene off the right-hand end.
-        _modeBtn = new Button { Text = "✎ EDIT", CustomMinimumSize = new Vector2(82, 32) };
+        _modeBtn = new Button { Text = "✎ Build", CustomMinimumSize = new Vector2(100, 32) };
         _modeBtn.Pressed += () => EmitSignal(SignalName.ModeToggled);
         hbox.AddChild(_modeBtn);
 
@@ -269,6 +279,20 @@ public partial class SceneToolbarUI : Control
         };
         _connectionChip.AddThemeFontSizeOverride("font_size", 12);
         hbox.AddChild(_connectionChip);
+
+        // Hidden by default (Visible = false) so it takes no space on a scene
+        // nothing is forced on -- an HBoxContainer skips invisible children.
+        _forcedChip = new Button
+        {
+            Visible = false,
+            Flat = true,
+            CustomMinimumSize = new Vector2(0, 32),
+            TooltipText = "Click to release every tag currently held by hand.",
+        };
+        _forcedChip.AddThemeFontSizeOverride("font_size", 12);
+        _forcedChip.AddThemeColorOverride("font_color", new Color(0.98f, 0.65f, 0.25f));
+        _forcedChip.Pressed += () => Editor?.Tags.ClearAllForces();
+        hbox.AddChild(_forcedChip);
     }
 
     /// <summary>
@@ -285,6 +309,15 @@ public partial class SceneToolbarUI : Control
             _demoBtn.Text = Demo.Active ? "⏹ Demo" : "🎬 Demo";
             _demoBtn.AddThemeColorOverride("font_color",
                 Demo.Active ? new Color(0.45f, 0.95f, 0.55f) : Colors.White);
+        }
+
+        int forcedCount = Editor?.Tags.ForcedCount ?? 0;
+        if (forcedCount != _lastForcedCount)
+        {
+            _lastForcedCount = forcedCount;
+            _forcedChip.Visible = forcedCount > 0;
+            if (forcedCount > 0)
+                _forcedChip.Text = $"🔓 {forcedCount} forced — release";
         }
 
         if (Bus is null) return;

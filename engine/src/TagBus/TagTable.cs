@@ -71,12 +71,22 @@ public sealed class TagTable : IEnumerable<Tag>
         return _tags[id].Differs(pinned);
     }
 
+    /// <summary>Release every forced tag at once (UX-41) — the toolbar's
+    /// "release all" chip, so a tag left forced from an earlier session does
+    /// not sit there silently outlasting the reason it was forced.</summary>
+    public void ClearAllForces() => _forced.Clear();
+
     public bool IsForced(string id) => _forced.ContainsKey(id);
 
     /// <summary>Whether anything is currently forced — the idle hint (FF-23)
     /// uses this to tell "nobody has touched this scene yet" apart from
     /// "somebody is driving it by hand from the inspector".</summary>
     public bool AnyForced => _forced.Count > 0;
+
+    /// <summary>How many tags are currently forced — the toolbar's chip shows
+    /// this count so a tag left forced is not just invisible until the PLC
+    /// that connects later mysteriously loses the argument (UX-41).</summary>
+    public int ForcedCount => _forced.Count;
 
     /// <summary>
     /// <see cref="Contains"/> then <see cref="Visible"/> collapsed into one
