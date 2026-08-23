@@ -1474,6 +1474,34 @@ rather than asserted in a README; `outfeed.count` advances.
 
 ---
 
+**Delivered in full on 2026-08-23.** `tools/try_scene.py` originally implemented
+the *driving* half of every scene above and only the weakest of the assertions —
+"both counters advanced", "the level reached the band" — which pass while the
+thing the scene exists to teach is broken. Every §4 assertion above is now
+actually checked, and every scene now runs as a shift does rather than as a
+wiring test: start, produce, stop feeding, drain, stop.
+
+| Scene | Was | Now |
+|---|---|---|
+| 4.1 sorting | `tall=5 short=5`, exact | unchanged — this is E1/E2's regression contract, and its timing is not something to perturb for tidiness |
+| 4.2 start/stop | interlocks only; **`produced=0` every run**, because the whole script fitted inside one emitter half-period | interlocks, then a real production run; `counter.count` asserted to advance, and the E-stop **timed** against §4.2's 200 ms (measured 32–47 ms) |
+| 4.3 tank | one setpoint, gain 4 — which saturates the valve instantly, so it was bang-bang control hiding the very nonlinearity the scene teaches | two setpoints with a modulating gain, both settling times printed side by side: **10.4 s to reach 70 %, 20.3 s to reach 20 %**, with the reason stated |
+| 4.4 light curtain | `tall > 0 and short > 0` | conservation — `tall + short` must equal cartons emitted, after a drain phase, so a diverter that drops or double-counts a carton fails |
+| 4.5 roller | `outfeed > 0` and metal seen once | cartons weighed counted by scale rising edges, the scale required to return to zero between them, and metal detections asserted **non-zero and strictly fewer** than cartons — the difference between an inductive sensor and a presence sensor, checked |
+
+Each new assertion was verified by a deliberate break: removing the drain phase
+(*"10 cartons emitted but 8 counted — lost 2"*), setting the template's
+`metal_every` to 1 (*"fired for every carton (7 of 7) — it is behaving like a
+presence sensor"*), and tightening the E-stop limit to 10 ms (*"took 47 ms"*).
+
+One honest departure from the spec above: §4.3 asks both setpoints to be held
+for 10 s, and only the **high** one is held to that standard. The low one is
+required to reach its band. Demanding an identical hold at both ends would be
+demanding the Torricelli nonlinearity not exist — the drain valve loses
+authority as the tank empties, which is the whole lesson.
+
+---
+
 ## 5. Operating components by hand
 
 ### 5.1 What this should feel like

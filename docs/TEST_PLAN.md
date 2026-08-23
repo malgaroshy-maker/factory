@@ -117,10 +117,10 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | # | Check | Why |
 |---|---|---|
 | H1 | `sorting-by-height`: `try_scene.py` drives it to `tall=5 short=5` | the exact `drive_engine.py` contract, run through the newer self-contained script |
-| H2 | `start-stop-station`: the full Start → E-stop → Start-while-tripped (refused) → Reset → Start sequence, driven over the wire | mirrors `StartStopStationProfile` and its C# self-test (C10), from the outside |
-| H3 | `tank-level-control`: the controller settles within the band | mirrors `TankLevelControlProfile` / C11 |
-| H4 | `light-curtain-sorting`: both counters advance | mirrors `LightCurtainSortingProfile` / C12 |
-| H5 | `roller-line-weighing`: outfeed counts and the inductive sensor fires for metal | mirrors `RollerLineWeighingProfile` / C13 |
+| H2 | `start-stop-station`: the full Start → E-stop → Start-while-tripped (refused) → Reset → Start sequence, **then a production run** — `counter.count` must advance, and the E-stop is **timed** against §4.2's 200 ms | mirrors `StartStopStationProfile` and C10, from the outside. The sequence alone used to end with `produced=0`: it fitted inside one emitter half-period, so the line never made anything |
+| H3 | `tank-level-control`: the same controller run at **two** setpoints, with both times reported — reaches and holds 70%, then reaches 20% | mirrors `TankLevelControlProfile` / C11. One setpoint proves the controller runs; two prove the process, since outflow follows Torricelli and the drain valve loses authority as the tank empties (§4.3) |
+| H4 | `light-curtain-sorting`: **conservation** — `tall + short` equals the cartons emitted, after a drain phase, and nothing measured below the threshold is diverted | mirrors `LightCurtainSortingProfile` / C12. "Both counters advanced" passes while the diverter drops cartons on the floor or double-counts them, which is this scene's most likely failure |
+| H5 | `roller-line-weighing`: cartons weighed (counted by scale rising edges), the scale returns to zero between them, and metal detections are non-zero **and strictly fewer** than cartons | mirrors `RollerLineWeighingProfile` / C13. "Metal was seen once" passes for a sensor that fires on everything — the exact confusion this scene exists to clear up |
 
 Needs no display — the spike behind UX-10 proved templates simulate headless
 — so this runs in the same job as A/C/E, not behind `--gui`. Each check
