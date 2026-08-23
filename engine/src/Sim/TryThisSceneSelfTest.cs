@@ -5,21 +5,23 @@ using Godot;
 namespace FactoryForge.Sim;
 
 /// <summary>
-/// Assert the toolbar's "Try this scene" button (UX-31) finds the right
-/// manifest entry, and refuses honestly through the actual on-screen hint
-/// when the loaded scene has no built-in exercise -- the same
-/// FF-06/FF-23/UX-30 dishonesty class closed everywhere else in this plan.
+/// Assert the toolbar's "Try this scene" button (UX-31) and F5's own
+/// "Try this scene" offer (UX-33) both find the right manifest entry through
+/// the one <see cref="TryScene"/> they share, and both refuse honestly
+/// through the actual on-screen hint when the loaded scene has no built-in
+/// exercise -- the same FF-06/FF-23/UX-30 dishonesty class closed everywhere
+/// else in this plan.
 ///
 /// <code>godot --headless --path engine -- --self-test=tryscene</code>
 ///
-/// Deliberately does not exercise the matching path through
-/// <see cref="SceneToolbarUI.TryThisScene"/> itself: that path spawns a real
-/// terminal process (<see cref="TerminalLauncher.Spawn"/>), which is not
-/// something a headless CI run should ever trigger. The matching logic
-/// (<see cref="SceneToolbarUI.FindManifestEntry"/>) is checked directly
-/// instead, since it is a pure lookup with no side effect; only the refusal
-/// path -- which returns before any process would be spawned -- is driven
-/// through the real button method.
+/// Deliberately does not exercise the matching path through either button:
+/// that path spawns a real terminal process
+/// (<see cref="TerminalLauncher.Spawn"/>), which is not something a headless
+/// CI run should ever trigger. The matching logic
+/// (<see cref="TryScene.FindManifestEntry"/>) is checked directly instead,
+/// since it is a pure lookup with no side effect; only the refusal path --
+/// which returns before any process would be spawned -- is driven through
+/// both real button methods.
 /// </summary>
 public partial class TryThisSceneSelfTest : Node
 {
@@ -55,13 +57,13 @@ public partial class TryThisSceneSelfTest : Node
 
     private void CheckFindManifestEntry(ref bool ok)
     {
-        var sorting = SceneToolbarUI.FindManifestEntry("sorting-by-height");
+        var sorting = TryScene.FindManifestEntry("sorting-by-height");
         Expect(sorting is { Id: "sorting-by-height" }, "sorting-by-height resolves to its manifest entry", ref ok);
 
-        var tank = SceneToolbarUI.FindManifestEntry("tank-level-control");
+        var tank = TryScene.FindManifestEntry("tank-level-control");
         Expect(tank is { Id: "tank-level-control" }, "tank-level-control resolves to its manifest entry", ref ok);
 
-        var unknown = SceneToolbarUI.FindManifestEntry("a-custom-scene-nobody-shipped");
+        var unknown = TryScene.FindManifestEntry("a-custom-scene-nobody-shipped");
         Expect(unknown is null, "a custom scene name resolves to no manifest entry", ref ok);
     }
 
@@ -91,10 +93,25 @@ public partial class TryThisSceneSelfTest : Node
 
         var panel = idleHint.GetChild<PanelContainer>(0);
         var label = FindLabel(panel);
-        Expect(panel.Visible, "the hint is forced visible on refusal", ref ok);
+        Expect(panel.Visible, "toolbar: the hint is forced visible on refusal", ref ok);
         Expect(label is not null && label.Text.Contains("No built-in exercise")
                && label.Text.Contains("my_custom_line"),
-               $"the label names the actual scene, not a generic message (got '{label?.Text}')", ref ok);
+               $"toolbar: the label names the actual scene, not a generic message (got '{label?.Text}')", ref ok);
+
+        // UX-33: F5's own offer goes through the same TryScene.Run, found and
+        // pressed the way a user would -- by its real text, not a test-only
+        // accessor -- so a regression in that wiring fails here too.
+        panel.Visible = false;
+        var driverUI = new DriverConnectionUI { Editor = Editor, IdleHint = idleHint };
+        AddChild(driverUI);   // _Ready() builds the real modal, including the exercise row
+
+        var exerciseBtn = FindButton(driverUI, "🧪 Try this scene");
+        Expect(exerciseBtn is not null, "F5 dialog: has a \"Try this scene\" button", ref ok);
+        exerciseBtn?.EmitSignal(BaseButton.SignalName.Pressed);
+
+        Expect(panel.Visible, "F5 dialog: the same button also reaches the hint on refusal", ref ok);
+        Expect(label is not null && label.Text.Contains("my_custom_line"),
+               $"F5 dialog: names the actual scene too (got '{label?.Text}')", ref ok);
 
         bus.Free();
         Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
@@ -106,6 +123,17 @@ public partial class TryThisSceneSelfTest : Node
         {
             if (child is Label l) return l;
             var found = FindLabel(child);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static Button? FindButton(Node node, string text)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is Button b && b.Text.Trim() == text) return b;
+            var found = FindButton(child, text);
             if (found is not null) return found;
         }
         return null;

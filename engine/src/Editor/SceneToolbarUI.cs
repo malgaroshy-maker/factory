@@ -1,4 +1,3 @@
-using System.IO;
 using FactoryForge.Sim;
 using FactoryForge.TagBus;
 using Godot;
@@ -136,47 +135,14 @@ public partial class SceneToolbarUI : Control
     }
 
     /// <summary>
-    /// UX-31: run <c>tools/try_scene.py</c> for whatever scene is loaded,
-    /// the same shape as F5's <em>Apply &amp; Connect</em> — copy the command,
-    /// print it, and open a visible terminal running it. <c>try_scene.py</c>
-    /// itself attaches to this already-running engine rather than spawning a
-    /// second one on the same port, so the exercise plays out right here in
-    /// the window that is already open, not in an invisible headless copy.
+    /// UX-31: run <c>tools/try_scene.py</c> for whatever scene is loaded, the
+    /// same shape as F5's <em>Apply &amp; Connect</em>. <see cref="TryScene.Run"/>
+    /// is also what F5's own empty state offers (UX-33), so the two can never
+    /// resolve a different scene id or refuse with a different message.
     /// </summary>
     public void TryThisScene()
     {
-        if (Editor is null) return;
-
-        var entry = FindManifestEntry(Editor.SceneName);
-        if (entry is null)
-        {
-            IdleHint?.Announce($"No built-in exercise for scene '{Editor.SceneName}' — "
-                + "try one of the five shipped templates instead.");
-            return;
-        }
-
-        string engineDir = ProjectSettings.GlobalizePath("res://").TrimEnd('/', '\\');
-        string repoRoot = Path.GetDirectoryName(engineDir) ?? engineDir;
-        string command = TerminalLauncher.PythonCommand($"tools/try_scene.py --scene {entry.Id}");
-        DisplayServer.ClipboardSet(command);
-        GD.Print($"try_scene.py command (copied to clipboard):\n  {command}");
-
-        if (TerminalLauncher.Spawn(repoRoot, command) <= 0)
-        {
-            IdleHint?.Announce("Could not start python. The command is on your clipboard — run it yourself.");
-        }
-    }
-
-    /// <summary>Public for the self-test (<c>--self-test=tryscene</c>): a pure
-    /// lookup, safe to exercise directly without risking the process-spawn
-    /// side effect <see cref="TryThisScene"/> has once a scene matches.</summary>
-    public static TemplateEntry? FindManifestEntry(string sceneName)
-    {
-        foreach (var entry in TemplateManifest.Load())
-        {
-            if (entry.Scene == sceneName) return entry;
-        }
-        return null;
+        if (Editor is not null) TryScene.Run(Editor, IdleHint);
     }
 
     /// <summary>Scenes go beside the project by default, where a person can

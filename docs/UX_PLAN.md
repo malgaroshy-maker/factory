@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
-(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4's UX-30/UX-31/UX-32 (UX-33
-now unblocked by UX-31 but not yet started), and all of Phase 5 (UX-34…UX-41).
-Everything else is still proposal.
+(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), and all
+of Phase 5 (UX-34…UX-41). Only Phase 0 (ship a binary) and Phase 6 (hold the
+line) remain.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -769,7 +769,7 @@ stays opt-in via a flag.
 
 ---
 
-### Phase 4 — Tell the truth in the UI — UX-30/31/32 done, UX-33 not started (unblocked)
+### Phase 4 — Tell the truth in the UI — done (UX-30…UX-33)
 
 **UX-30 — The Demo button refuses honestly — done**
 *Files:* `engine/src/Sim/DemoDriver.cs`, `engine/src/Editor/SceneToolbarUI.cs`.
@@ -891,12 +891,39 @@ Verified by screenshot: `--scene=tank_level_control.json` now shows "Tank
 level control" and its real blurb, scrolling correctly, not "Sorting by
 height" left over from the scene that was replaced.
 
-**UX-33 — F5's empty state offers the exercise — not started, unblocked**
+**UX-33 — F5's empty state offers the exercise — done**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
 *Done when:* with no driver connected the dialog reads *"No PLC yet? Run the
 built-in exercise for this scene first."* with a button.
 *Verify:* open F5 on a fresh launch.
 *Size:* S. *Depends on:* UX-31.
+
+The exact copy the item asks for, as the first row inside the modal — ahead
+of the driver dropdown and every IP/instance field, so it is the first thing
+read on a fresh open rather than something found after scrolling past
+configuration a first-time user has no PLC to point at yet.
+
+**The button's logic was factored out of `SceneToolbarUI` rather than
+duplicated a second time**, since UX-31's toolbar button and this one now
+do the identical thing (resolve the loaded scene against the manifest, copy
+`python tools/try_scene.py --scene <id>`, spawn a terminal, or refuse by
+name): both now call a new `engine/src/Editor/TryScene.cs`
+(`TryScene.Run`/`TryScene.FindManifestEntry`), and `SceneToolbarUI.TryThisScene()`
+was rewritten as a one-line forward to it. Verified the F5 modal's minimum
+size is unaffected by the new row: `--self-test=layout` (C5) still reports
+690×520, unchanged from before this item.
+
+Verified by screenshot (a temporarily-extended hold on `LayoutSelfTest`, since
+its normal 8-tick run quits before a screenshot timer can fire — reverted
+after): the dialog opens with *"No PLC yet? Run the built-in exercise for
+this scene first."* and a *"🧪 Try this scene"* button as the very first row,
+above the driver dropdown. Covered by the same `--self-test=tryscene`
+(`tools/test_plan.py` C18) UX-31 added, extended to find this button by its
+real text and press it — deliberately only on the no-manifest-match refusal
+path, for the same reason as the toolbar button: a headless CI run must never
+spawn a real terminal process. Deliberately unwired the button's `Pressed`
+handler and watched the self-test fail (*"F5 dialog: the same button also
+reaches the hint on refusal"*), then restored it.
 
 ---
 
@@ -1554,7 +1581,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-30 | The Demo button refuses honestly | 4 | S | UX-16 | done |
 | UX-31 | A "Try this scene" affordance | 4 | M | UX-21 | done |
 | UX-32 | Keep "what this scene teaches" reachable | 4 | M | UX-13 | done |
-| UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 |  |
+| UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 | done |
 | UX-34 | Live I/O in the part property panel | 5 | L | UX-35 | done |
 | UX-35 | Force any tag type, not just bits | 5 | M | — | done |
 | UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |

@@ -23,6 +23,11 @@ public partial class DriverConnectionUI : Control
     private LineEdit _dbInput = null!;
     private Label _statusLabel = null!;
 
+    /// <summary>Set by Main so the empty-state offer (UX-33) can name and run
+    /// the loaded scene's exercise.</summary>
+    public SceneEditor? Editor { get; set; }
+    public IdleHintUI? IdleHint { get; set; }
+
     public string SelectedDriver { get; private set; } = "plcsim-advanced";
     public string IpAddress { get; private set; } = "";
     public string PortOrUrl { get; private set; } = "4840";
@@ -108,6 +113,29 @@ public partial class DriverConnectionUI : Control
         var closeBtn = new Button { Text = " ❌ Close " };
         closeBtn.Pressed += () => Visible = false;
         header.AddChild(closeBtn);
+
+        mainBox.AddChild(new HSeparator());
+
+        // UX-33: the first thing a fresh open of this dialog offers, ahead of
+        // any driver configuration -- "no PLC yet" is the normal state for
+        // someone who has never touched TIA Portal, not a problem to route
+        // around straight into IP addresses and instance names.
+        var exerciseRow = new HBoxContainer();
+        mainBox.AddChild(exerciseRow);
+
+        var exerciseLabel = new Label
+        {
+            Text = "No PLC yet? Run the built-in exercise for this scene first.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        exerciseLabel.AddThemeColorOverride("font_color", new Color(0.70f, 0.90f, 0.80f));
+        exerciseRow.AddChild(exerciseLabel);
+
+        var exerciseBtn = new Button { Text = " 🧪 Try this scene " };
+        exerciseBtn.Pressed += () => { if (Editor is not null) TryScene.Run(Editor, IdleHint); };
+        exerciseRow.AddChild(exerciseBtn);
 
         mainBox.AddChild(new HSeparator());
 

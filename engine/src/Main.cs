@@ -354,6 +354,8 @@ public partial class Main : Node
         toolbarUI.Demo = demo;
         toolbarUI.Editor = editor;
         toolbarUI.IdleHint = idleHint;
+        driverConnectionUI.Editor = editor;
+        driverConnectionUI.IdleHint = idleHint;
         editor.Toolbar = toolbarUI;
         AddChild(toolbarUI);
 
