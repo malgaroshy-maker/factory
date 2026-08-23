@@ -266,6 +266,9 @@ def section_c() -> None:
     # was dead in Run mode however loud the toolbar's Operate label claimed
     # otherwise.
     _self_test("C16", "Run mode's click operates the part it lands on, not just the panel", "operate")
+    # Run mode used to be silent about whether anything on screen would
+    # respond to a click at all.
+    _self_test("C17", "entering Run mode says what's clickable, or says plainly nothing is", "modehint")
 
 
 def section_d(enabled: bool) -> None:

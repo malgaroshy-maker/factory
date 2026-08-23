@@ -96,6 +96,12 @@ public partial class SceneEditor : Node3D
     private PlacedPart? _selectedPart;
     private readonly List<PlacedPart> _placedParts = new();
 
+    /// <summary>Whichever part the cursor is over in Run mode, for the hover
+    /// outline (UX-39) -- so a click's own hit test is not the first time a
+    /// player learns a part is clickable.</summary>
+    private Node3D? _hoveredNode;
+    private MeshInstance3D? _hoverOutline;
+
     /// <summary>Emitters whose emit tag is currently high, for edge detection.</summary>
     private readonly HashSet<string> _emitEdges = new();
     private bool _emitAlternate;
@@ -156,6 +162,10 @@ public partial class SceneEditor : Node3D
             ClearPreview();
             DeselectPart();
         }
+        else
+        {
+            ClearHoverHighlight();
+        }
 
         EmitSignal(SignalName.ModeChanged, mode == EditorMode.Run);
         GD.Print(mode == EditorMode.Run
@@ -213,6 +223,10 @@ public partial class SceneEditor : Node3D
                 // which is the difference between a testable path and one that
                 // can only be checked by hand.
                 PressControlAt(runClick.Position);
+            }
+            else if (@event is InputEventMouseMotion runMotion)
+            {
+                UpdateHoverHighlight(runMotion.Position);
             }
             return;
         }
@@ -538,6 +552,17 @@ public partial class SceneEditor : Node3D
         PressControlAtRay(camera.ProjectRayOrigin(screenPosition), camera.ProjectRayNormal(screenPosition));
     }
 
+    /// <summary>What a ray landed on: either a panel cap (<paramref name="Panel"/>
+    /// set), or a part and, for a precise part, which of its regions
+    /// (<paramref name="Region"/>) -- shared between the click dispatch
+    /// (<see cref="PressControlAtRay"/>) and the hover highlight (UX-39), so
+    /// the two can never disagree about what the cursor is over.</summary>
+    private readonly record struct OperableHit(ButtonPanel? Panel, PanelButton PanelButton,
+                                                 PlacedPart? Part, string? Region)
+    {
+        public Node3D? Node => (Node3D?)Panel ?? Part?.Node;
+    }
+
     /// <summary>
     /// Every part decides for itself what a click on it means (UX-37). Two
     /// tiers, both ray-tested and compared on the same nearest-wins footing:
@@ -550,15 +575,14 @@ public partial class SceneEditor : Node3D
     ///   against its whole bounding box, the same box selection uses, and
     ///   toggles the one tag it owns.
     /// </summary>
-    public void PressControlAtRay(Vector3 from, Vector3 dir)
+    private OperableHit? FindOperableTarget(Vector3 from, Vector3 dir)
     {
-        if (Tags is null) return;
-
         float nearest = float.MaxValue;
         ButtonPanel? hitPanel = null;
         PanelButton hitButton = default;
         PlacedPart? hitPart = null;
         string? hitRegion = null;
+        bool found = false;
 
         foreach (var entry in _placedParts)
         {
@@ -577,9 +601,11 @@ public partial class SceneEditor : Node3D
                     distance = MeasureDistance(entry.Node, from, dir);
                     if (distance >= nearest) continue;
                     nearest = distance;
+                    found = true;
                     hitPanel = panel;
                     hitButton = which;
                     hitPart = null;
+                    hitRegion = null;
                     continue;
 
                 case StackLight light:
@@ -604,13 +630,22 @@ public partial class SceneEditor : Node3D
 
             if (distance >= nearest) continue;
             nearest = distance;
+            found = true;
             hitPanel = null;
             hitPart = entry;
             hitRegion = region;
         }
 
-        if (hitPanel is not null) { hitPanel.Press(hitButton); return; }
-        if (hitPart is not null) OperatePart(hitPart, hitRegion);
+        return found ? new OperableHit(hitPanel, hitButton, hitPart, hitRegion) : null;
+    }
+
+    public void PressControlAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Tags is null) return;
+        if (FindOperableTarget(from, dir) is not { } hit) return;
+
+        if (hit.Panel is not null) hit.Panel.Press(hit.PanelButton);
+        else if (hit.Part is not null) OperatePart(hit.Part, hit.Region);
     }
 
     /// <summary>Ray-parameter distance to a part, for comparing candidates of
@@ -623,6 +658,98 @@ public partial class SceneEditor : Node3D
     /// which should not happen for a part the sub-region test already hit.</summary>
     private static float MeasureDistance(Node3D node, Vector3 from, Vector3 dir) =>
         PartBounds.RayDistance(node, from, dir) ?? from.DistanceTo(node.GlobalPosition);
+
+    /// <summary>Run mode's hover: the same hit test a click would use, so the
+    /// outline never promises a control the click itself would miss (UX-39).
+    /// </summary>
+    private void UpdateHoverHighlight(Vector2 screenPosition)
+    {
+        var camera = GetViewport().GetCamera3D();
+        if (camera is null) { SetHoverTarget(null); return; }
+
+        var from = camera.ProjectRayOrigin(screenPosition);
+        var dir = camera.ProjectRayNormal(screenPosition);
+        SetHoverTarget(FindOperableTarget(from, dir)?.Node);
+    }
+
+    private void SetHoverTarget(Node3D? node)
+    {
+        if (node == _hoveredNode) return;
+        _hoveredNode = node;
+
+        if (node is null) { ClearHoverHighlight(); return; }
+
+        _hoverOutline ??= BuildHoverOutline();
+        if (_hoverOutline.GetParent() is null) AddChild(_hoverOutline);
+
+        var box = PartBounds.Measure(node);
+        _hoverOutline.Mesh = new BoxMesh { Size = box.Size * 1.08f };
+        // World-space placement rather than reparenting under the hovered
+        // node: a part can be deleted while still hovered (a scene reload
+        // triggered from the toolbar, say), which would free a reparented
+        // outline right along with it.
+        _hoverOutline.GlobalTransform = node.GlobalTransform *
+            new Transform3D(Basis.Identity, box.Position + box.Size / 2);
+        _hoverOutline.Visible = true;
+    }
+
+    /// <summary>Hide the outline without necessarily forgetting it exists --
+    /// called on every mode switch away from Run and every scene wipe, so a
+    /// deleted or reloaded part never leaves a highlight floating over empty
+    /// space.</summary>
+    private void ClearHoverHighlight()
+    {
+        _hoveredNode = null;
+        if (_hoverOutline is not null) _hoverOutline.Visible = false;
+    }
+
+    private static MeshInstance3D BuildHoverOutline() => new()
+    {
+        Name = "RunModeHoverOutline",
+        Visible = false,
+        MaterialOverride = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(1.0f, 0.85f, 0.2f, 0.35f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        },
+    };
+
+    /// <summary>How many parts in the scene would respond to a click in Run
+    /// mode, and a short list naming what kinds -- the entering-Run hint
+    /// (UX-39) uses this so a scene built with nothing operable says that
+    /// plainly instead of presenting a mode that silently does nothing.
+    /// </summary>
+    public (int Count, string Kinds) DescribeOperableParts()
+    {
+        var kinds = new List<string>();
+        int count = 0;
+
+        foreach (var entry in _placedParts)
+        {
+            if (entry.Node is not (ButtonPanel or StackLight or LevelTank)
+                && !WholeBodyOperableTag.ContainsKey(entry.PartType))
+                continue;
+
+            count++;
+            string kind = entry.PartType switch
+            {
+                "ConveyorBelt" => "conveyor",
+                "RollerConveyor" => "roller conveyor",
+                "WeighingConveyor" => "weigh conveyor",
+                "PusherMechanism" => "pusher",
+                "Emitter" => "emitter",
+                "StackLight" => "stack light",
+                "LevelTank" => "tank",
+                "ButtonPanel" => "panel",
+                _ => entry.PartType,
+            };
+            if (!kinds.Contains(kind)) kinds.Add(kind);
+        }
+
+        return (count, string.Join(", ", kinds));
+    }
 
     /// <summary>Apply a click's effect once <see cref="PressControlAtRay"/> has
     /// picked a part and, for a precise part, which of its regions was hit.
@@ -1065,6 +1192,7 @@ public partial class SceneEditor : Node3D
     /// </summary>
     private void ClearPlacedPartsCore()
     {
+        ClearHoverHighlight();
         foreach (var part in _placedParts)
         {
             if (part.OwnsTags && Tags is not null)

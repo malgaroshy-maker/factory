@@ -90,8 +90,30 @@ public partial class IdleHintUI : Control
     /// ambient nag they already dismissed.</summary>
     private void OnDemoRefused(string reason)
     {
-        _label.Text = $"Demo can't run this scene: {reason}. Pick a template with a "
-                     + "built-in exercise, or connect a real driver instead (F5).";
+        ShowInterrupt($"Demo can't run this scene: {reason}. Pick a template with a "
+                     + "built-in exercise, or connect a real driver instead (F5).");
+    }
+
+    /// <summary>Entering Run mode says what is clickable, or says plainly that
+    /// nothing is (UX-39, §2.7) -- Run mode used to be a mode that silently did
+    /// nothing on a line built without a Control Panel, the same class of
+    /// dishonesty FF-06/FF-23/UX-30 already closed elsewhere.</summary>
+    public void ShowModeEnteredHint(int operableCount, string kinds)
+    {
+        ShowInterrupt(operableCount == 0
+            ? "Nothing in this scene responds to a click yet. Add a conveyor, "
+              + "pusher, panel or other part from the palette in Build mode."
+            : $"{operableCount} part{(operableCount == 1 ? "" : "s")} respond to a "
+              + $"click: {kinds}. Hover to see which.");
+    }
+
+    /// <summary>Force the hint visible with specific text for a few seconds,
+    /// even if the ambient idle nag was already dismissed — this is a direct
+    /// response to something the user just did, not an ambient nag they
+    /// already dismissed.</summary>
+    private void ShowInterrupt(string text)
+    {
+        _label.Text = text;
         _panel.Visible = true;
         _refusalUntil = _totalElapsed + RefusalDisplaySeconds;
     }

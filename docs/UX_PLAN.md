@@ -3,8 +3,7 @@
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20
 (the C# side; UX-21/22, `tools/try_scene.py`, not started), Phase 3
 (UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and all of
-Phase 5 except UX-39 (blocked on nothing now that UX-37 has landed, but not
-yet started). Everything else is still proposal.
+Phase 5 (UX-34…UX-41). Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -810,7 +809,7 @@ built-in exercise for this scene first."* with a button.
 
 ---
 
-### Phase 5 — Operate any component by hand — UX-34/35/36/37/38/40/41 done, UX-39 not started
+### Phase 5 — Operate any component by hand — done (UX-34…UX-41)
 
 **The phase that makes the app explorable.** Specification in §5. Today, turning
 a conveyor on means knowing it owns a `.rotate` tag, knowing the part name is
@@ -996,7 +995,7 @@ claim made twice. Verified by clean build and reading the two labels together
 in both mode/pause combinations; no dedicated self-test — this is a string
 change with no branching logic to regress.
 
-**UX-39 — Run mode explains itself**
+**UX-39 — Run mode explains itself — done**
 *Files:* `engine/src/Editor/SceneEditor.cs`,
 `engine/src/Editor/IdleHintUI.cs`.
 *Done when:* entering Run mode says what is clickable; a scene with nothing
@@ -1004,6 +1003,47 @@ operable says *that* rather than presenting a dead mode; operable parts
 highlight on hover.
 *Verify:* enter Run mode on an empty scene, then on a full one.
 *Size:* M. *Depends on:* UX-37.
+
+New `SceneEditor.DescribeOperableParts()` counts every part UX-37's dispatch
+would recognise and names the kinds present (`"conveyor, pusher, stack
+light, panel, emitter"` on the default scene); `IdleHintUI.ShowModeEnteredHint`
+forces the existing idle-hint banner visible for a few seconds on every entry
+into Run mode, reusing the same forced-visible-then-auto-hide mechanism
+UX-30's Demo refusal already uses, so the two share one code path instead of
+two ways to interrupt the same label. An empty scene reads *"Nothing in this
+scene responds to a click yet…"* rather than presenting Run mode as though it
+does something — the same FF-06/FF-23/UX-30 dishonesty class, closed here too.
+
+Hover highlighting reuses UX-37's own hit test rather than a second one:
+`PressControlAtRay`'s candidate-search loop was factored out into
+`FindOperableTarget`, returning what a ray landed on without applying it, so
+the click path and a new mouse-motion handler in Run mode both ask the same
+question and can never disagree about what the cursor is over. The highlight
+itself is a translucent box sized to the hovered part's own bounds
+(`PartBounds.Measure`), positioned in world space rather than reparented
+under the part, so a part deleted or replaced mid-hover (a scene reload from
+the toolbar, say) cannot take the highlight node down with it. Cleared
+explicitly on every mode switch away from Run and on every scene wipe
+(`ClearPlacedPartsCore`), rather than left to whatever the next hover update
+happens to do.
+
+Covered by a new self-test, `--self-test=modehint` (`tools/test_plan.py`
+C17): `DescribeOperableParts()` checked against the real default scene (5
+operable parts, then 0 after `ClearAllPlacedParts()`), and
+`ShowModeEnteredHint` checked against the actual on-screen label text for
+zero, one and several operable parts (singular "1 part" vs plural "3
+parts"), using the same standalone-`IdleHintUI` technique
+`DemoRefusalSelfTest` (UX-30) already established. Deliberately broke the
+pluralization (`"3 part respond"`) and separately dropped `StackLight` from
+the operable check (5 → 4, "stack light" missing from the list) and watched
+each fail before restoring it. The hover outline itself has no headless
+coverage — needs a display, the same class as `--self-test=click` — verified
+instead by screenshot: entering Run mode showed *"5 parts respond to a
+click: conveyor, pusher, stack light, panel, emitter. Hover to see which."*
+at the bottom of the screen, and a synthetic mouse-motion event aimed at the
+Control Panel drew a translucent yellow box around its housing, pedestal and
+lamps. `python -m pytest -q` unaffected (71 passed); full `test_plan.py
+--only A,C,E` 25 passed.
 
 **UX-40 — `Ctrl+S` and `Ctrl+O` survive Run mode — done**
 *Files:* `engine/src/Editor/SceneEditor.cs:195`.
@@ -1354,8 +1394,9 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
   compatible.** Making templates deterministic too would be a large piece of
   work buying exact-count assertions §4's band-based ones don't need.
   Revisit only if the band-based assertions prove flaky in practice.
-* **UX-34 vs UX-37 — the panel leads.** UX-34 landed; UX-37 (click the part
-  itself) is still open and remains complementary, not superseded.
+* **UX-34 vs UX-37 — the panel leads.** Both landed, as complementary, not
+  competing, routes to the same `TagTable.Force` call: UX-34 for a part not
+  yet on screen or off camera, UX-37 for the part you are already looking at.
 
 ### Still open
 
@@ -1428,7 +1469,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |
 | UX-37 | Click a component in Run mode to operate it | 5 | L | — | done |
 | UX-38 | End the "Run" collision in the toolbar | 5 | S | — | done |
-| UX-39 | Run mode explains itself | 5 | M | UX-37 |  |
+| UX-39 | Run mode explains itself | 5 | M | UX-37 | done |
 | UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — | done |
 | UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 | done |
 | UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 |  |

@@ -228,6 +228,10 @@ public partial class Main : Node
         {
             AddChild(new ClickOperateSelfTest { Name = "ClickOperateSelfTest", Tags = tags, Editor = _editor! });
         }
+        if (_selfTest == "modehint")
+        {
+            AddChild(new RunModeHintSelfTest { Name = "RunModeHintSelfTest", Editor = _editor! });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -424,6 +428,11 @@ public partial class Main : Node
         {
             toolbarUI.ShowMode(running);
             paletteUI.ShowForMode(running);
+            if (running)
+            {
+                var (count, kinds) = editor.DescribeOperableParts();
+                idleHint.ShowModeEnteredHint(count, kinds);
+            }
         };
         toolbarUI.ShowMode(editor.Mode == EditorMode.Run);
         paletteUI.ShowForMode(editor.Mode == EditorMode.Run);
