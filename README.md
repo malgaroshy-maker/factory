@@ -167,6 +167,7 @@ See [Getting Started](docs/GETTING_STARTED.md#-connecting-a-scene-you-built-your
 | ✅ **[TEST_PLAN.md](docs/TEST_PLAN.md)** | What is tested, what is not, and the last run's results |
 | 📦 **[PACKAGING.md](docs/PACKAGING.md)** | Building a distributable binary (not yet verified) |
 | 📋 **[PLAN.md](docs/PLAN.md)** | Architectural specifications, design choices, and status |
+| 🧹 **[LOOSE_ENDS_PLAN.md](docs/LOOSE_ENDS_PLAN.md)** | Claims without code, controls without effect — what a full sweep of the app found, and the plan to close it |
 | 🗺️ **[ROADMAP.md](docs/ROADMAP.md)** | Milestone completion tracking |
 | 📑 **[PRD.md](docs/PRD.md)** | Problem statement, target audience, and success criteria |
 | ⚡ **[tag-bus.md](docs/tag-bus.md)** | WebSocket tag bus protocol specification |

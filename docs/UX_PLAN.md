@@ -1737,6 +1737,13 @@ left in place for someone to either wire up or delete deliberately — this revi
 is not the place to decide which, but shipping the claim was the same
 report-it-working-while-doing-nothing failure as §2.1.
 
+That finding prompted a full sweep of the app for others like it — every type,
+key, flag, button and property slider — which found two more (a property slider
+that moves nothing, and a part that measures something and displays it nowhere)
+and cleared everything else. Both the sweep and the plan to close what it found
+live in **[`docs/LOOSE_ENDS_PLAN.md`](LOOSE_ENDS_PLAN.md)** (LE-01…LE-12); the
+last `readout ✗` above is its LE-08.
+
 ---
 
 ## 6. Decisions
