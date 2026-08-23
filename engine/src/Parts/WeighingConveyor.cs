@@ -13,6 +13,13 @@ public partial class WeighingConveyor : ConveyorBelt
 
     public float MeasuredWeight { get; private set; }
 
+    /// <summary>The reading, on the scale (LE-08). Every other part that
+    /// measures something shows it on itself — the light curtain's height, the
+    /// tank's level, the display's number — and this one computed a weight and
+    /// displayed it nowhere, so watching a carton land on the scale told you
+    /// nothing without hunting its tag down in the inspector.</summary>
+    private Label3D _readout = null!;
+
     public override void _Ready()
     {
         base._Ready();
@@ -31,6 +38,20 @@ public partial class WeighingConveyor : ConveyorBelt
             MaterialOverride = scaleMat,
         };
         AddChild(scaleFrame);
+
+        // Same treatment as LevelTank's and LightArray's readouts: a large font
+        // scaled right down, so it reads at working distance without becoming a
+        // billboard across the scene.
+        _readout = new Label3D
+        {
+            Text = "0 g",
+            Position = new Vector3(0, Size.Y + 0.34f, 0),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            FontSize = 84,
+            PixelSize = 0.0015f,
+            Modulate = new Color(1.0f, 0.85f, 0.35f),
+        };
+        AddChild(_readout);
 
         // Weighing detection Area3D
         _scaleArea = new Area3D { Name = "ScaleArea" };
@@ -75,5 +96,8 @@ public partial class WeighingConveyor : ConveyorBelt
             }
         }
         MeasuredWeight = total;
+        // Only here, not every frame: the weight changes exactly when a carton
+        // enters or leaves, and setting Label3D.Text rebuilds its glyph mesh.
+        if (_readout is not null) _readout.Text = $"{MeasuredWeight:0} g";
     }
 }

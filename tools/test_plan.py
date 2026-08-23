@@ -165,6 +165,43 @@ def sidecar(args: list[str], timeout: float = 60) -> tuple[int, str]:
     return run([sys.executable, "-m", "factoryforge_sidecar"] + args, cwd=SIDECAR, timeout=timeout)
 
 
+#: Types declared and used only inside their own file. Nested helper records and
+#: the Godot entry point are the honest cases; anything else here means dead
+#: code, so the list is short on purpose and every addition needs a reason.
+SELF_CONTAINED_TYPES = {
+    "OperableHit",   # SceneEditor's own hit record
+    "PlacedPart",    # SceneEditor's own placed-part record
+}
+
+
+def dead_types() -> tuple[bool, str]:
+    """Find every type in engine/src referenced nowhere outside its own file.
+
+    A whole feature once shipped this way: FloatingTagBadge3D was a complete,
+    working billboard label that README advertised and nothing ever constructed
+    (LE-02/LE-12). Nothing in A1-A5 could see it -- dead code builds cleanly.
+    """
+    sources = {path: path.read_text(encoding="utf-8", errors="replace")
+               for path in (ENGINE / "src").rglob("*.cs")}
+    declaration = re.compile(
+        r"\b(?:public|internal)\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+)*"
+        r"(?:class|enum|interface|record(?:\s+struct)?)\s+(\w+)")
+
+    declared: dict[str, Path] = {}
+    for path, text in sources.items():
+        for name in declaration.findall(text):
+            declared.setdefault(name, path)
+
+    dead = []
+    for name, home in declared.items():
+        if name in SELF_CONTAINED_TYPES:
+            continue
+        word = re.compile(r"\b" + re.escape(name) + r"\b")
+        if not any(word.search(text) for path, text in sources.items() if path != home):
+            dead.append(f"{name} ({home.name})")
+    return not dead, ", ".join(sorted(dead))
+
+
 # --- A. build and static ----------------------------------------------------
 
 def section_a() -> None:
@@ -204,6 +241,9 @@ def section_a() -> None:
     record("A5", "hello/describe/update carry exactly the fields docs/tag-bus.md names",
            code == 0 and "RESULT OK" in out,
            out.strip().splitlines()[-1] if out.strip() else "no output")
+
+    record("A6", "no type in engine/src is referenced nowhere outside its own file",
+           *dead_types())
 
 
 # --- B. python suite --------------------------------------------------------
@@ -282,6 +322,12 @@ def section_c() -> None:
     # is the only check that a click means one thing in one mode and nothing
     # in the other, as a pair.
     _self_test("C20", "the Edit/Run contract holds as a pair: select only in Edit, operate only in Run", "modes")
+    # C15 covers the property panel's I/O half. Its *settings* half was
+    # uncovered, and that is where "Curtain Height" sat: a slider moving a value
+    # LightArray only read while building itself, so it moved and nothing
+    # happened (LE-01). This drives every settings row and asserts a named
+    # observable per control, and fails on a row it does not know how to drive.
+    _self_test("C21", "every settings control in the part panel reaches the simulation", "partsettings")
 
 
 def section_d(enabled: bool) -> None:

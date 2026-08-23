@@ -86,6 +86,11 @@ public partial class PartPropertyInspectorUI : Control
         _liveRefreshers.Clear();
         foreach (var child in _contentContainer.GetChildren())
         {
+            // RemoveChild first: QueueFree alone defers to the end of the frame,
+            // so the panel would briefly hold the old part's rows and the new
+            // one's at once. The parts' own Rebuild() methods use the same pair
+            // for the same reason.
+            _contentContainer.RemoveChild(child);
             child.QueueFree();
         }
 
@@ -104,12 +109,11 @@ public partial class PartPropertyInspectorUI : Control
         // Every property here must actually reach the simulation. Anything whose
         // value is only read when the part is built needs a Rebuild() alongside
         // it, or the slider moves and nothing happens.
-        if (node is WeighingConveyor weighBelt)
-        {
-            AddSliderProperty("Belt Speed (m/s)", weighBelt.Speed, 0.05f, 2.0f, 0.05f,
-                              val => weighBelt.Speed = val);
-        }
-        else if (node is ConveyorBelt belt)
+        // WeighingConveyor and RollerConveyor are both ConveyorBelt subclasses,
+        // so one branch serves all three. The weighing deck used to be split out
+        // above this and got Speed only, quietly losing the friction control
+        // every other belt has (LE-05).
+        if (node is ConveyorBelt belt)
         {
             AddSliderProperty("Belt Speed (m/s)", belt.Speed, 0.05f, 2.0f, 0.05f,
                               val => belt.Speed = val);
@@ -132,8 +136,14 @@ public partial class PartPropertyInspectorUI : Control
         }
         else if (node is LightArray curtain)
         {
+            // Both settings are read only while the curtain is built, so both
+            // need the Rebuild() alongside them the comment above demands. Until
+            // LE-01 they did not have it, and Curtain Height was the one control
+            // in this panel that moved and did nothing.
             AddSliderProperty("Curtain Height (m)", curtain.CurtainHeight, 0.1f, 1.0f, 0.02f,
-                              val => curtain.CurtainHeight = val);
+                              val => { curtain.CurtainHeight = val; curtain.Rebuild(); });
+            AddSliderProperty("Beams", curtain.BeamCount, 2, 24, 1,
+                              val => { curtain.BeamCount = (int)val; curtain.Rebuild(); });
         }
         else if (node is LevelTank tank)
         {
@@ -148,6 +158,20 @@ public partial class PartPropertyInspectorUI : Control
                               val => { chute.InclineAngleDegrees = val; chute.Rebuild(); });
             AddSliderProperty("Surface Friction", chute.SurfaceFriction, 0.02f, 1.0f, 0.02f,
                               val => { chute.SurfaceFriction = val; chute.Rebuild(); });
+        }
+        else if (node is Emitter emitter)
+        {
+            // The setting that makes an inductive sensor a different part from a
+            // photoelectric one. It was reachable only by editing a template's
+            // JSON, so the one thing roller_line_weighing exists to teach could
+            // not be tried on a line you built yourself (LE-03). Read fresh on
+            // every emission, so no rebuild.
+            AddSliderProperty("Metal every Nth", emitter.MetalEvery, 0, 10, 1,
+                              val => emitter.MetalEvery = (int)val);
+        }
+        else if (node is Remover remover)
+        {
+            AddCountTagRow(remover, instanceId);
         }
 
         AddTagControlsSection(instanceId);
@@ -488,6 +512,63 @@ public partial class PartPropertyInspectorUI : Control
             CustomMinimumSize = new Vector2(260, 0),
         });
         ResetScroll();
+    }
+
+    /// <summary>
+    /// Which tag a remover counts into (LE-04). A dropdown of the <c>int</c>
+    /// input tags the scene actually has, never a free-text field: the count is
+    /// published through <see cref="TagTable.TrySet"/>, which ignores an id
+    /// nothing owns, so a typo would be a silent no-op — a new one, in the panel
+    /// built to remove them.
+    /// </summary>
+    private void AddCountTagRow(Remover remover, string instanceId)
+    {
+        var tags = Editor?.Tags;
+        if (tags is null) return;
+
+        string ownTag = $"{instanceId}.count";
+        var options = new List<string> { ownTag };
+        foreach (var tag in tags)
+        {
+            if (tag.Type == TagType.Int && tag.Kind == TagKind.Input && tag.Id != ownTag)
+                options.Add(tag.Id);
+        }
+
+        string current = remover.CountTag.Length > 0 ? remover.CountTag : ownTag;
+        // A scene file can point a remover at a tag that no longer exists. Show
+        // it rather than silently snapping the selection to something else.
+        if (!options.Contains(current)) options.Insert(1, current);
+
+        var row = new HBoxContainer();
+        _contentContainer.AddChild(row);
+        row.AddChild(new Label { Text = "Counts into", CustomMinimumSize = new Vector2(100, 0) });
+
+        // FitToLongestItem off, ClipText on, and a fixed minimum. An
+        // OptionButton otherwise takes the width of its longest *menu item*,
+        // not its current one — measured at 316px against the 234-240px every
+        // other row asks for, which pushed this fixed-width panel off the right
+        // of the screen. Same failure the F5 dialog had once, and the reason the
+        // empty state below sits in a bounded ScrollContainer. C21 now asserts
+        // every row fits, so the next one cannot do it quietly.
+        var picker = new OptionButton
+        {
+            CustomMinimumSize = new Vector2(150, 0),
+            FitToLongestItem = false,
+            ClipText = true,
+            TooltipText = "Which tag this remover counts into.",
+        };
+        for (int i = 0; i < options.Count; i++)
+        {
+            picker.AddItem(options[i] == ownTag ? $"{ownTag} (own)" : options[i], i);
+            if (options[i] == current) picker.Selected = i;
+        }
+        picker.ItemSelected += index =>
+        {
+            string chosen = options[(int)index];
+            remover.CountTag = chosen == ownTag ? "" : chosen;
+            Editor?.MarkDirty();
+        };
+        row.AddChild(picker);
     }
 
     private void AddSliderProperty(string labelText, float initialValue, float min, float max, float step, System.Action<float> onChanged)

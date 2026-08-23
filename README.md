@@ -45,7 +45,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * 🏠 **Start screen with five templates**: open on a chooser rather than cold into one demo. Each template teaches a different thing — momentary buttons and a latching E-stop, analog level control with a nonlinear process, sorting on a measurement instead of two bits, a checkweigher with metal detection — plus recent scenes and the full key list.
 * 🕹️ **Operate any component by hand (`F1`)**: switch the toolbar from **`✎ Build`** to **`👆 Operate`** and click a conveyor, a pusher, a stack light lamp or a tank valve directly — not just the operator panel's Start/Stop/Reset/E-stop. A banner names what's clickable, hovering outlines it, and every part's own property panel carries a live toggle or slider for its I/O too, so you can see what a part does before writing a line of PLC code against it.
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
-* 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal allowing users to drag/click PLC addresses (`%I0.0`, `%Q0.0`) directly to factory component tags.
+* 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal — click a PLC address (`%I0.0`, `%Q0.0`), then click the component tag to map it to. **Auto-map** suggests an address for every tag in the loaded scene, and **Export** writes `io_mapping.json` and `io_tags.csv` for the sidecar and for whoever is building the PLC side.
 * 🏷️ **Live tag inspection and forcing**: the Tag Inspector lists every tag the loaded scene owns with its live value, and forces any of them — bit, int and float alike — with a typed value. A `🔓 N forced` chip in the toolbar shows what is being held by hand and releases it all in one click. The parts that measure something — the light curtain, the level tank, the digital display — also read out in 3D on the part itself.
 * 🧪 **A built-in exercise per scene**: `python tools/try_scene.py --scene <id>` (or the toolbar's **🧪 Try** button) spawns or attaches to the engine, drives the scene the way a PLC would, and reports pass/fail — the thing to run before writing a real program against it.
 * 🏭 **Native Siemens Integration**: **all three Siemens paths verified driving the 3D scene from a virtual S7-1500** — PLCSIM Advanced Simulation Runtime API (shared memory, no network, no OPC UA licence), OPC UA client, and Snap7 ISO-on-TCP. Belt, emitter, sensors, diverter and counters all run off the CPU's own program.
@@ -54,6 +54,11 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 ---
 
 ## 📦 15-Part Industrial Component Library
+
+The tag ids below are the built-in scene's names. **A part's Name is its tag
+prefix** — rename a pusher to `reject` in the property panel and its tags become
+`reject.extend`, `reject.extended`, `reject.retracted`. That is the whole naming
+rule, and it is what makes a scene you build addressable from a PLC.
 
 | Component | Description | Tag Bus Interface |
 |---|---|---|
@@ -67,9 +72,9 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 | **Stack Light** | 3-stage industrial tower light (Green, Yellow, Red) | `stacklight.green`, `yellow`, `red` |
 | **Digital Display** | 3D 7-segment LED panel displaying live integer counts | `display.value` (Int, Output) |
 | **Roller Conveyor** | Driven roller deck for pallets and totes that would scuff a belt; rollers spin at the true surface speed | `rollerconveyor.rotate` (Bit, Output) |
-| **Weight Scale Conveyor**| Integrated load cell scale returning box mass | `weighconveyor.weight` (Int, Input) |
+| **Weight Scale Conveyor**| Integrated load cell scale returning box mass, and showing it on the scale | `weighconveyor.weight` (Int, Input) |
 | **Box Emitter** | Spawner emitting tall & short rigid cartons, optionally every Nth in metal | `emitter.emit` (Bit, Output) |
-| **Box Remover** | Area3D zone despawning items & incrementing counters | `counter.tall`, `counter.short` (Int, Input) |
+| **Box Remover** | Area3D zone despawning items & incrementing a counter; the counted tag is pickable, so two removers can feed one total | `remover.count` (Int, Input) |
 | **Control Panel** | Operator station you can actually press. Start/Stop/Reset are momentary — one clean scan per click, however long you hold the mouse — and the mushroom is a maintained E-stop wired **normally closed**, so its tag is true while the circuit is healthy | `panel.start`, `.stop`, `.reset`, `.estop` (Bit, Input) · `panel.green`, `.red` (Bit, Output) |
 | **Level Tank** | Analog process tank; outflow follows Torricelli, so process gain varies with level and a PID tuned full overshoots when empty | `tank.fill`, `tank.drain` (Float, Output), `tank.level` (Float, Input) |
 

@@ -147,6 +147,28 @@ else if (node is CustomPart custom)
 }
 ```
 
+That rule is enforced, not just written down. **`--self-test=partsettings`
+(C21) fails on a settings row it does not know how to drive**, so adding the
+slider above without adding your part to `PartSettingsSelfTest` gives you:
+
+```
+FAIL  CustomPart: settings row 'Speed (m/s)' has no check in PartSettingsSelfTest
+```
+
+Add the row's label to that test's `Covered` map and a check that asserts a
+**named observable** — what a person would see change — rather than that the
+property was assigned, which is true by construction and proves nothing. The
+check exists because `LightArray`'s "Curtain Height" slider shipped moving a
+value the part only ever read while building itself: the slider moved and the
+curtain did not.
+
+C21 also fails a row wider than the panel's 260px content width. The panel is
+fixed-width with horizontal scrolling off, so an over-wide row does not scroll —
+it pushes the whole panel off the right of the screen. Keep labels short, and
+watch controls that size themselves to their content: an `OptionButton` takes
+the width of its longest *menu item* unless you set
+`FitToLongestItem = false`.
+
 ---
 
 ## Step 7: Parts the operator can touch (optional)

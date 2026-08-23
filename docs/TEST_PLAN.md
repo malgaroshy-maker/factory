@@ -40,6 +40,9 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | A1 | `dotnet build` succeeds with **zero warnings** | a failed build silently leaves the old binary in place and Godot runs it |
 | A2 | Sidecar package imports | catches a syntax error before it wastes a 40-second engine run |
 | A3 | No `TODO`/`FIXME`/temp probe left in `engine/src` | temporary verification hooks have escaped into commits before |
+| A4 | The C# tag model matches the shared parity fixture (`--self-test=parity`) | the C# and Python models are two implementations of one contract and drift silently |
+| A5 | `hello`/`describe`/`update` carry exactly the fields `docs/tag-bus.md` names (`check_protocol.py`) | the wire format is what every driver is written against |
+| A6 | No type in `engine/src` is referenced nowhere outside its own file | a whole feature once shipped this way — `FloatingTagBadge3D` was a complete billboard label the README advertised and nothing ever constructed. Dead code builds cleanly, so A1–A5 could not see it |
 
 ### B. Python unit and integration
 
@@ -71,6 +74,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C18 | "Try this scene" resolves the loaded scene to the right manifest entry, and refuses honestly (naming the scene) rather than pretending on a custom scene with no built-in exercise | `--self-test=tryscene` |
 | C19 | Every shipped scene's tag set (id/type/kind) matches `tests/fixtures/scene_tag_sets.json` -- catches a template edit that renames or retypes a tag out from under a mapping file | `--self-test=scenes` |
 | C20 | The Edit/Run contract as a pair: a click selects in Edit and does not in Run, a control operates in Run and does not in Edit, and entering Run clears both the placement preview and the selection | `--self-test=modes` |
+| C21 | Every **settings** control in the part property panel reaches the simulation — a named observable per control (top beam, raycast reach, physics-material friction, belt surface velocity, ramp deck transform); no row is wider than the panel's own scroll bound; and a row the test does not know how to drive is a failure | `--self-test=partsettings` |
 
 ### D. Engine self-tests (need a display)
 
@@ -192,6 +196,9 @@ Re-run the same day on **Godot 4.7.2-mono** after upgrading:
 a display) and F (needs the sidecar's driver stack); nothing behaved differently
 between the two engine builds. `project.godot` asks for feature `4.7`, so either
 patch release runs the project.
+
+Then again after `docs/LOOSE_ENDS_PLAN.md` landed, which added A6 and C21:
+`--only A,B,C,E,G,H` — **43 passed, 0 failed, 344s**.
 
 Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
 `docs/UX_PLAN.md` landing in between: ten more headless self-tests (C10…C19,

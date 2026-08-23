@@ -1567,7 +1567,7 @@ a pusher named `reject` gives `reject.extend` — then:
 |---|---|---|---|
 | **Conveyor Belt** | `.rotate` bit out | A run/stop toggle on the part. Belt surface moves, boxes ride. Raise `speed` and boxes outrun a diverter | ◐ |
 | **Roller Conveyor** | `.rotate` bit out | Same toggle; rollers spin at true surface speed, a box tracks without slipping | ◐ |
-| **Weight Conveyor** | `.rotate` bit out · `.weight` int in | Run toggle, plus a live weight readout on the part — non-zero while a box sits on it, zero between | ◐ / readout ✗ |
+| **Weight Conveyor** | `.rotate` bit out · `.weight` int in | Run toggle, plus a live weight readout on the part — non-zero while a box sits on it, zero between | ✓ since LE-08 |
 
 #### Sensors
 
@@ -1638,7 +1638,8 @@ because you stand in for the PLC one box at a time.
 
 **Roller line with weighing** — start `infeed` and `scale` and emit; watch
 `scale.weight` settle while a box sits on the scale and return to zero after.
-Set `metal_every` to 1 and confirm `metal_check.detect` follows metal only.
+Set the emitter's **Metal every Nth** to 1 on its property panel (LE-03)
+and confirm `metal_check.detect` follows metal only.
 `weight_readout.value` takes a typed number *(was blocked)*.
 
 ### 5.6 Checking the machinery, without the 3D app
@@ -1719,13 +1720,13 @@ Three things worth knowing, all still true and now all visible:
   what is clickable — or says plainly that nothing is (UX-39).
 
 What Phase 5 deliberately did **not** do: add a live readout to every part's own
-3D body. Three parts already had one and still do — the Light Array's `N mm`
-above the curtain, the Level Tank's `N.N %` and liquid column, and the Digital
-Display's 7-segment panel — and the rest report on the property panel and in the
-Tag Inspector, one click away, rather than floating over the machine. So of
-§5.4's `readout ✗` marks, only the **Weight Conveyor**'s is still open by that
-strict reading; the Light Array's was wrong when it was written (see the note in
-§5.4). Every other ✗ and ◐ in that table is closed.
+3D body. Four parts have one — the Light Array's `N mm` above the curtain, the
+Level Tank's `N.N %` and liquid column, the Digital Display's 7-segment panel,
+and (since LE-08) the Weight Conveyor's `N g` above the scale — and the rest
+report on the property panel and in the Tag Inspector, one click away, rather
+than floating over the machine. **Every ✗ and ◐ in §5.4's table is now closed**:
+the Light Array's ✗ was wrong when it was written (see the note there), and the
+Weight Conveyor's was the last one standing.
 
 **One claim outside this plan was found false while reviewing it (2026-08-23):**
 `README.md` advertised *"Floating 3D billboard labels above components with
@@ -1733,16 +1734,19 @@ interactive live forcing buttons"*. `engine/src/Editor/FloatingTagBadge3D.cs`
 implements exactly that — and **nothing in the repository ever constructs one**.
 The class is unreferenced; no badge can appear in any scene. The README bullet
 has been rewritten to describe the three routes that do exist. The dead class is
-left in place for someone to either wire up or delete deliberately — this review
-is not the place to decide which, but shipping the claim was the same
+left in place at the time for a deliberate decision rather than deleted in a
+docs pass — but shipping the claim was the same
 report-it-working-while-doing-nothing failure as §2.1.
 
 That finding prompted a full sweep of the app for others like it — every type,
 key, flag, button and property slider — which found two more (a property slider
 that moves nothing, and a part that measures something and displays it nowhere)
-and cleared everything else. Both the sweep and the plan to close what it found
-live in **[`docs/LOOSE_ENDS_PLAN.md`](LOOSE_ENDS_PLAN.md)** (LE-01…LE-12); the
-last `readout ✗` above is its LE-08.
+and cleared everything else. The sweep and the twelve items that closed it are
+in **[`docs/LOOSE_ENDS_PLAN.md`](LOOSE_ENDS_PLAN.md)** (LE-01…LE-12, all done):
+the badge class was deleted, the dead slider fixed, the Weight Conveyor given
+its readout, and two new checks added so none of the three can come back —
+`--self-test=partsettings` (C21) fails on a settings control that reaches
+nothing, and A6 fails on a type nothing references.
 
 ---
 

@@ -1,6 +1,8 @@
 # FactoryForge — Loose Ends: Claims Without Code, Controls Without Effect
 
-**Status:** proposed. Nothing in this plan has been implemented.
+**Status:** **done — all twelve items.** Phase 1 (LE-01…LE-05), Phase 2
+(LE-06/LE-07), Phase 3 (LE-08…LE-10) and Phase 4 (LE-11/LE-12) all landed on
+2026-08-23, the day the plan was written.
 **Written:** 2026-08-23, against `7dbec65`, on Godot 4.7.2-mono.
 **Work items:** LE-01 … LE-12, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -17,6 +19,11 @@ the same one the top of `UX_PLAN.md` §2.1 opens with. The gap is small enough t
 close in a few days, and worth closing precisely because the rest of the
 codebase is honest — a single dead slider is more expensive in a project whose
 selling point is that its parts really do what they say.
+
+It closed in one, in the end, and the two checks in Phase 4 are the part that
+outlasts it: a settings control that reaches nothing now fails C21, and a type
+nothing references now fails A6. Neither existed when this sweep had to be done
+by hand.
 
 Two of the items are not claims at all but the two remaining part-level gaps the
 UX plan left explicitly open (the Weight Conveyor's readout, the emitter's metal
@@ -96,6 +103,11 @@ That is a healthy result. The findings below are a short list, not a symptom.
 ---
 
 ## 1. Findings
+
+Written in the present tense against `7dbec65`, and left that way: each finding
+is the evidence for the item that closed it, and every one of them is closed —
+see the *done* notes under §2. Read this section as "what was true when the
+sweep ran", the same way `UX_PLAN.md` §2 reads.
 
 ### 1.1 The property panel ships a slider that does nothing — the app's own rule, broken
 
@@ -250,11 +262,32 @@ Total is a few days. Nothing here blocks `UX_PLAN.md`'s Phase 0 (ship a binary),
 and nothing here needs to land before a first release — though LE-01 and LE-08
 are the two a new user is most likely to notice.
 
+**How it actually went:** in that order, in one sitting. Phase 4 second earned
+its place immediately — writing C21 straight after LE-01 caught a third bug
+neither the plan nor the spikes had found (the panel's deferred row clearing,
+noted under Phase 1) and gave both Phase-1 fixes a break-then-restore proof
+rather than a screenshot. Phase 2's decision was the only thing that needed
+someone else's judgement.
+
 ---
 
-### Phase 1 — Controls that do what they say
+### Phase 1 — Controls that do what they say — done
 
-**LE-01 — `LightArray.Rebuild()`, and a slider wired to it**
+All five landed together in `engine/src/Parts/LightArray.cs` and
+`engine/src/Editor/PartPropertyInspectorUI.cs`, and all five are covered by
+LE-11's new self-test rather than only by eye.
+
+**A third bug found while writing that self-test, in the panel itself:**
+`InspectNode` cleared the previous part's rows with `QueueFree()` alone, which
+Godot defers to the end of the frame — so for the rest of the frame the panel
+held the old part's rows *and* the new one's at once. Invisible to a user
+(layout happens after the free), but it meant anything reading the panel's own
+state within the frame saw a mix of two parts, which is how the first run of the
+new self-test reported the chute offering "Curtain Height". Fixed by pairing
+`RemoveChild` with `QueueFree`, which is what the parts' own `Rebuild()`
+methods already do and for the same reason.
+
+**LE-01 — `LightArray.Rebuild()`, and a slider wired to it — done**
 *Files:* `engine/src/Parts/LightArray.cs`,
 `engine/src/Editor/PartPropertyInspectorUI.cs:135`.
 *Done when:* dragging **Curtain Height** rebuilds the curtain — posts, beams and
@@ -266,7 +299,14 @@ clears `_beams` and `_beamMeshes`, and rebuilds; call it from the slider the way
 LE-11 self-test.
 *Size:* S.
 
-**LE-02 — Beam count on the panel, or a stated reason not to**
+Implemented exactly as the spike measured: `_Ready` is now a one-line call to
+`BuildGeometry()`, and `Rebuild()` frees the children, clears `_beams` and
+`_beamMeshes` — both, since `_Process` walks them every frame and a stale entry
+is a freed node — and rebuilds. Verified by breaking it again after the fact:
+dropping the `Rebuild()` call from the slider and rerunning C21 gives
+*"Curtain Height rebuilds the curtain: top beam 0.54 -> 0.54"*, then restored.
+
+**LE-02 — Beam count on the panel, or a stated reason not to — done**
 *Files:* `engine/src/Editor/PartPropertyInspectorUI.cs`.
 *Done when:* `BeamCount` — the curtain's resolution, and the one setting that
 changes what the part can measure — is either a spin box beside Curtain Height,
@@ -275,7 +315,13 @@ or explicitly left out with a comment saying why. It is already captured by
 *Verify:* set beams to 4, watch the curtain coarsen and `.height` quantise.
 *Size:* S. *Depends on:* LE-01.
 
-**LE-03 — The Emitter's `metal_every` gets a control**
+Landed as a **Beams** spin box (2–24) beside Curtain Height, rebuilding the same
+way. It is the setting that changes what the curtain can measure — at 5 beams
+`height_gauge.height` visibly quantises — and it was already captured by
+`PartProperties`, so a scene saved with it kept it while the panel could not
+touch it.
+
+**LE-03 — The Emitter's `metal_every` gets a control — done**
 *Files:* `engine/src/Editor/PartPropertyInspectorUI.cs`.
 *Done when:* a selected Box Emitter shows a **Metal every Nth carton** spin box
 (0 = never), so the inductive sensor can be demonstrated without editing JSON —
@@ -285,7 +331,13 @@ metal only" becomes an instruction a reader can follow.
 follow every carton; set 0, watch it go quiet.
 *Size:* S.
 
-**LE-04 — The Box Remover's `count_tag` gets a control, or an honest note**
+A **Metal every Nth (0 = none)** spin box on a selected Box Emitter. Read fresh
+on every emission (`MetalEvery > 0 && _emitted % MetalEvery == 0`), so no
+rebuild. `UX_PLAN.md` §5.4's "set the Emitter's `metal_every` to 1 then 0 and
+watch it react to metal only" is now an instruction a reader can actually
+follow — before this it needed a text editor and a scene reload.
+
+**LE-04 — The Box Remover's `count_tag` gets a control, or an honest note — done**
 *Files:* `engine/src/Editor/PartPropertyInspectorUI.cs`.
 *Done when:* either the remover's counted tag is settable from the panel (a
 dropdown of the scene's `int` input tags is the honest shape — a free-text field
@@ -296,7 +348,32 @@ scene file.
 climb.
 *Size:* S.
 
-**LE-05 — Give the weighing deck the friction slider every other belt has**
+A **Counts into** dropdown, not a text field, and the reason is in the code:
+`SceneEditor` publishes the count through `Tags.TrySet`, which ignores an id
+nothing owns, so a typed-in tag name would have been a new silent no-op — in the
+panel built to remove them. The list offers the remover's own `{id}.count`
+first, then every `int` **input** tag in the scene. A scene file pointing at a
+tag that no longer exists keeps its value visible in the list rather than being
+snapped silently onto something else. C21 asserts every id the dropdown offers
+exists on the bus.
+
+**And it broke the panel's layout the moment it shipped, which is the fourth
+bug this plan found and the first one it caused.** A screenshot of the real
+window showed the property panel pushed off the right edge of the screen: an
+`OptionButton` takes the width of its **longest menu item**, not its current
+one, so one long tag id widened the row to **316px** against the 234–240px
+every other row asks for. `ClipText` alone does not help — it clips drawing,
+not the minimum size — so the fix is `FitToLongestItem = false` beside it.
+Nothing in the numbers gave it away: the panel's own *minimum* size read
+280×240 throughout, exactly as it does for every other part.
+
+Fixed for good rather than by eye: C21 now measures every row and fails any
+wider than the panel's 260px scroll bound, which is the same class of check
+`--self-test=layout` (C5) does for the F5 modal. Verified by removing
+`FitToLongestItem = false` and watching *"Remover: widest row is 316px, over
+the panel's 260px content width"*, then restoring it.
+
+**LE-05 — Give the weighing deck the friction slider every other belt has — done**
 *Files:* `engine/src/Editor/PartPropertyInspectorUI.cs:107`.
 *Done when:* `WeighingConveyor`'s branch offers Surface Friction as well as Belt
 Speed, or falls through to the `ConveyorBelt` branch for both. The property is
@@ -305,11 +382,18 @@ missing row and nothing else.
 *Verify:* select a weighing conveyor; both sliders are there and both bite.
 *Size:* S.
 
+Fixed by deleting the `WeighingConveyor` branch entirely rather than adding a
+row to it: the class is a `ConveyorBelt` subclass, so one branch now serves the
+belt, the roller deck and the weighing deck, and no future belt subclass can
+inherit the same accident. Verified by re-introducing the split branch and
+watching C21 fail with *"a weighing conveyor offers Surface Friction too
+(LE-05)"*, then restoring.
+
 ---
 
-### Phase 2 — Decide the badge
+### Phase 2 — Decide the badge — done
 
-**LE-06 — Decide: scope and resize it, or delete it**
+**LE-06 — Decide: scope and resize it, or delete it — done, deleted**
 *Files:* `docs/LOOSE_ENDS_PLAN.md` (this section), then whichever branch wins.
 *Done when:* the decision is recorded with its reason. The two branches, both
 measured in Spike 2:
@@ -323,7 +407,15 @@ measured in Spike 2:
 *Verify:* the decision is in §3 with a reason a stranger can weigh.
 *Size:* S — it is a decision.
 
-**LE-07 — Implement the chosen branch**
+**Decided: delete.** UX-34, UX-35 and UX-37 already put every tag one click from
+the part it belongs to; the three parts that measure something already read out
+in 3D on themselves; and the class's own headline — click a badge to force the
+tag — was never implemented, so keeping it meant building a new feature, not
+reviving an old one. Spike 2 measured the cost of the alternative and nothing
+argued its value. Reversible: the file is one `git revert` away if a floating
+in-world readout is ever wanted, and it would want a design pass either way.
+
+**LE-07 — Implement the chosen branch — done**
 *Files:* `engine/src/Editor/FloatingTagBadge3D.cs`,
 `engine/src/Editor/SceneEditor.cs`, `engine/src/Editor/SceneToolbarUI.cs`
 (if kept); just the first (if deleted).
@@ -336,11 +428,16 @@ it.
 deleted, a clean build and `test_plan.py --only A,C`.
 *Size:* M if kept, S if deleted. *Depends on:* LE-06.
 
+`engine/src/Editor/FloatingTagBadge3D.cs` deleted. The README bullet that
+advertised it had already been rewritten during the review that found it. A6
+(LE-12) went green with the deletion, and would have failed had anything still
+referenced the class.
+
 ---
 
-### Phase 3 — Readouts and small truths
+### Phase 3 — Readouts and small truths — done
 
-**LE-08 — The Weight Conveyor reads out its own weight**
+**LE-08 — The Weight Conveyor reads out its own weight — done**
 *Files:* `engine/src/Parts/WeighingConveyor.cs`.
 *Done when:* the scale shows its live weight above the deck, matching
 `LevelTank`'s and `LightArray`'s treatment (`FontSize = 84`,
@@ -350,7 +447,13 @@ recalculated). Spike 3 built and screenshotted exactly this.
 scale rises as a carton lands and returns to zero after it leaves.
 *Size:* S.
 
-**LE-09 — F4: drop the word "drag", or implement it**
+Twelve lines, exactly as spiked, updated inside the existing
+`RecalculateWeight()` rather than every frame — the weight changes exactly when
+a carton enters or leaves the scale, and setting `Label3D.Text` rebuilds its
+glyph mesh. Verified by screenshot against the running roller line: **`22 g`
+above the carton on the scale**, matching the tank's and curtain's readouts.
+
+**LE-09 — F4: drop the word "drag", or implement it — done, reworded**
 *Files:* `README.md`; `engine/src/Editor/DriverWiringUI.cs` if drag is chosen.
 *Done when:* the README describes the click-select-then-click-map flow the panel
 actually has — or Godot's `_GetDragData`/`_CanDropData`/`_DropData` are
@@ -358,7 +461,13 @@ implemented on the address and tag lists and the word is earned.
 *Verify:* follow the README sentence literally against the running panel.
 *Size:* S to reword, M to implement.
 
-**LE-10 — Correct the part table's tag column**
+Reworded rather than implemented: the panel's click-select-then-click-map flow
+works, and inventing drag-and-drop to justify a word in the README is the tail
+wagging the dog. The bullet now also names **Auto-Map** and **Export**, which
+are the two things the panel does that the old sentence never mentioned and
+that a person actually needs to know about.
+
+**LE-10 — Correct the part table's tag column — done**
 *Files:* `README.md`.
 *Done when:* the Box Remover row shows `{name}.count`, not the sorting scene's
 two counters; and one sentence above the table says the ids shown are the
@@ -368,11 +477,17 @@ give it.
 table.
 *Size:* S.
 
+The Box Remover row now reads `remover.count`, and a sentence above the table
+states the naming rule the table's ids only implied: **a part's Name is its tag
+prefix**, so renaming a pusher to `reject` gives `reject.extend`. That rule is
+what makes a scene you built addressable from a PLC, and it was documented
+everywhere except beside the table a reader meets first.
+
 ---
 
-### Phase 4 — Keep it from coming back
+### Phase 4 — Keep it from coming back — done
 
-**LE-11 — `--self-test=partsettings`: every slider reaches the simulation**
+**LE-11 — `--self-test=partsettings`: every slider reaches the simulation — done**
 *Files:* new `engine/src/Sim/PartSettingsSelfTest.cs`, `engine/src/Main.cs`,
 `tools/test_plan.py`, `docs/TEST_PLAN.md`.
 *Done when:* for each part type the inspector offers settings for, the test
@@ -386,7 +501,25 @@ ask "did this setting matter".
 pass. This is the check that would have caught §1.1 the day it shipped.
 *Size:* M. *Depends on:* LE-01.
 
-**LE-12 — A dead-type check beside A3**
+Landed as `engine/src/Sim/PartSettingsSelfTest.cs` / `tools/test_plan.py` C21,
+with the named-observable table the item asks for. Two of the observables span
+ticks rather than being readable immediately — the belt writes
+`ConstantLinearVelocity` from its own `_PhysicsProcess`, and the pusher's stroke
+takes ~42 ticks to travel its new 0.9 m — so those two assert on a later step
+rather than on the setter's return, which is the honest version of "reaches the
+simulation".
+
+The reverse-direction guard turned out to matter as much as the forward checks:
+**a settings row the test does not know how to drive is a failure**, so a new
+part with a slider cannot quietly join the untested set. `docs/PART_AUTHORING.md`
+Step 6 now documents that, including the exact failure text an author will see.
+
+Verified with two deliberate breaks: dropping LE-01's `Rebuild()` call
+(*"Curtain Height rebuilds the curtain: top beam 0.54 -> 0.54"*) and
+re-splitting LE-05's branch (*"a weighing conveyor offers Surface Friction too"*),
+each restored after.
+
+**LE-12 — A dead-type check beside A3 — done**
 *Files:* `tools/test_plan.py`, `docs/TEST_PLAN.md`.
 *Done when:* Section A gains a check that no type declared in `engine/src` is
 referenced nowhere outside its own file — the sweep that found
@@ -397,6 +530,14 @@ an explicit allowance.
 it; it passes. Today the sweep reports exactly one hit, so the check can go in
 green the moment LE-07 resolves it.
 *Size:* S.
+
+`tools/test_plan.py` A6, sharing `section_a` with A1–A5 since it is static
+analysis and needs no engine run (4s for the whole section). `FloatingTagBadge3D`
+was its first catch — the check went in red and turned green when LE-07 deleted
+the class, which is the right order: it proved it works before it was needed.
+`SELF_CONTAINED_TYPES` allows the two nested records declared and used inside
+`SceneEditor.cs`, and is kept short on purpose — every addition is a claim that
+a type is *meant* to be file-local.
 
 ---
 
@@ -417,13 +558,19 @@ green the moment LE-07 resolves it.
   a tag id nothing owns would be a new silent no-op, in a plan about removing
   them.
 
+* **The badge is deleted, not parked** (LE-06). The three arguments are in
+  LE-06's own table; what settled it is that keeping it meant *building* the
+  click-to-force feature its docstring claimed, not reviving one. A parked-but-
+  allowlisted class would have kept A6 green while leaving dead code in the
+  tree, which is the shape of problem this plan exists to remove.
+* **F4 keeps its click-select flow and loses the word "drag"** (LE-09).
+  Implementing drag-and-drop to justify a README sentence is the tail wagging
+  the dog. Revisit if someone watches a person reach for a drag and stall.
+
 ### Still open
 
-1. **LE-06 — the badge.** Keep it scoped and resized (M), or delete it (S).
-   Spike 2 measured the cost of keeping; nobody has argued the value. Decide
-   before LE-07, not before anything else.
-2. **LE-09 — drag in F4.** Wording is S and honest; real drag is M and better.
-   Worth deciding only once someone has watched a person use the panel.
+Nothing. All twelve items are closed. The two decisions this section opened with
+— the badge and F4's drag — are both settled above.
 
 ---
 
@@ -445,19 +592,19 @@ green the moment LE-07 resolves it.
 
 | # | Item | Phase | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| LE-01 | `LightArray.Rebuild()`, and a slider wired to it | 1 | S | — | open |
-| LE-02 | Beam count on the panel, or a stated reason not to | 1 | S | LE-01 | open |
-| LE-03 | The Emitter's `metal_every` gets a control | 1 | S | — | open |
-| LE-04 | The Box Remover's `count_tag` gets a control, or a note | 1 | S | — | open |
-| LE-05 | Friction slider for the weighing deck | 1 | S | — | open |
-| LE-06 | Decide the badge: scope and resize, or delete | 2 | S | — | open |
-| LE-07 | Implement the chosen branch | 2 | M / S | LE-06 | open |
-| LE-08 | The Weight Conveyor reads out its own weight | 3 | S | — | open |
-| LE-09 | F4: drop "drag", or implement it | 3 | S / M | — | open |
-| LE-10 | Correct the part table's tag column | 3 | S | — | open |
-| LE-11 | `--self-test=partsettings` | 4 | M | LE-01 | open |
-| LE-12 | A dead-type check beside A3 | 4 | S | — | open |
+| LE-01 | `LightArray.Rebuild()`, and a slider wired to it | 1 | S | — | done |
+| LE-02 | Beam count on the panel, or a stated reason not to | 1 | S | LE-01 | done |
+| LE-03 | The Emitter's `metal_every` gets a control | 1 | S | — | done |
+| LE-04 | The Box Remover's `count_tag` gets a control, or a note | 1 | S | — | done |
+| LE-05 | Friction slider for the weighing deck | 1 | S | — | done |
+| LE-06 | Decide the badge: scope and resize, or delete | 2 | S | — | done |
+| LE-07 | Implement the chosen branch (deleted) | 2 | S | LE-06 | done |
+| LE-08 | The Weight Conveyor reads out its own weight | 3 | S | — | done |
+| LE-09 | F4: drop "drag" (reworded) | 3 | S | — | done |
+| LE-10 | Correct the part table's tag column | 3 | S | — | done |
+| LE-11 | `--self-test=partsettings` | 4 | M | LE-01 | done |
+| LE-12 | A dead-type check beside A3 | 4 | S | — | done |
 
-**Totals:** 12 items — 9 S, 1 M, 2 either-or. By phase: 1→5, 2→2, 3→3, 4→2.
+**Totals:** 12 items — 11 S, 1 M as built (both either-or items took their S branch). By phase: 1→5, 2→2, 3→3, 4→2. **All done.**
 **The two a user notices first:** LE-01 (a slider that does nothing) and LE-08
 (a scale that shows nothing).

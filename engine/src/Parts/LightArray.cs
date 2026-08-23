@@ -35,7 +35,33 @@ public partial class LightArray : Node3D
     /// <summary>True while anything at all is in the curtain.</summary>
     public bool IsBlocked { get; private set; }
 
-    public override void _Ready()
+    public override void _Ready() => BuildGeometry();
+
+    /// <summary>
+    /// Re-create the posts, beams and readout for the current
+    /// <see cref="CurtainHeight"/>, <see cref="BeamCount"/> and
+    /// <see cref="Range"/>. All three are read only while building, so without
+    /// this the inspector's sliders moved a number nothing ever looked at
+    /// again — the curtain kept the height and resolution it was constructed
+    /// with. Same shape as <see cref="PhotoelectricSensor.Rebuild"/> and
+    /// <see cref="Chute.Rebuild"/>.
+    ///
+    /// The two lists must be cleared here, not just repopulated: _Process
+    /// walks them every frame, and a stale entry is a freed node.
+    /// </summary>
+    public void Rebuild()
+    {
+        foreach (var child in GetChildren())
+        {
+            RemoveChild(child);
+            child.QueueFree();
+        }
+        _beams.Clear();
+        _beamMeshes.Clear();
+        BuildGeometry();
+    }
+
+    private void BuildGeometry()
     {
         var steel = new StandardMaterial3D
         {
