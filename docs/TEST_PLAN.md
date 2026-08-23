@@ -70,6 +70,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C17 | Entering Run mode names what's clickable (count and kinds), or says plainly nothing is, in the actual on-screen hint label | `--self-test=modehint` |
 | C18 | "Try this scene" resolves the loaded scene to the right manifest entry, and refuses honestly (naming the scene) rather than pretending on a custom scene with no built-in exercise | `--self-test=tryscene` |
 | C19 | Every shipped scene's tag set (id/type/kind) matches `tests/fixtures/scene_tag_sets.json` -- catches a template edit that renames or retypes a tag out from under a mapping file | `--self-test=scenes` |
+| C20 | The Edit/Run contract as a pair: a click selects in Edit and does not in Run, a control operates in Run and does not in Edit, and entering Run clears both the placement preview and the selection | `--self-test=modes` |
 
 ### D. Engine self-tests (need a display)
 

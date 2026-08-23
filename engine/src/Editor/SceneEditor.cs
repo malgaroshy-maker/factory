@@ -125,6 +125,11 @@ public partial class SceneEditor : Node3D
     /// <summary>Is a part currently following the cursor, waiting to be placed?</summary>
     public bool HasPlacementPreview => _previewNode is not null;
 
+    /// <summary>The selected part's id, or null. Public for the self-test
+    /// (<c>--self-test=modes</c>, UX-44) to check that entering Run clears a
+    /// selection the same way it already clears a placement preview.</summary>
+    public string? SelectedInstanceId => _selectedPart?.InstanceId;
+
     /// <summary>Anything placed right now, so Clear can skip its own
     /// confirmation when there is nothing to lose.</summary>
     public bool HasPlacedParts => _placedParts.Count > 0;
@@ -492,8 +497,20 @@ public partial class SceneEditor : Node3D
         if (camera is null) return;
 
         var mousePos = GetViewport().GetMousePosition();
-        var from = camera.ProjectRayOrigin(mousePos);
-        var dir = camera.ProjectRayNormal(mousePos);
+        SelectPartAtRay(camera.ProjectRayOrigin(mousePos), camera.ProjectRayNormal(mousePos));
+    }
+
+    /// <summary>
+    /// Edit mode's click: select whatever the ray hits, or deselect. Refuses
+    /// outright in Run mode (UX-44) rather than trusting every caller to
+    /// check <see cref="Mode"/> first — <see cref="_UnhandledInput"/> already
+    /// only reaches this in Edit mode, but a selection made through some
+    /// other path while Run is active would be exactly the "a click selects
+    /// in Edit and does not in Run" contract broken from the inside.
+    /// </summary>
+    public void SelectPartAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Edit) return;
 
         // Pick the part the ray actually enters first. The previous test ranked
         // by camera distance to a part's *origin* and accepted anything within a
@@ -639,8 +656,14 @@ public partial class SceneEditor : Node3D
         return found ? new OperableHit(hitPanel, hitButton, hitPart, hitRegion) : null;
     }
 
+    /// <summary>Run mode's click, applied. Refuses outright in Edit mode
+    /// (UX-44) rather than trusting every caller to check <see cref="Mode"/>
+    /// first — the same defense-in-depth as <see cref="SelectPartAtRay"/>'s
+    /// own guard, so "a control operates in Run and does not in Edit" holds
+    /// regardless of what calls this.</summary>
     public void PressControlAtRay(Vector3 from, Vector3 dir)
     {
+        if (Mode != EditorMode.Run) return;
         if (Tags is null) return;
         if (FindOperableTarget(from, dir) is not { } hit) return;
 

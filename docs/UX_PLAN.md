@@ -2,8 +2,8 @@
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
 (UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), all of
-Phase 5 (UX-34…UX-41), and Phase 6's UX-42/UX-43. Only Phase 0 (ship a
-binary) and UX-44…UX-46 remain.
+Phase 5 (UX-34…UX-41), and Phase 6's UX-42/UX-43/UX-44. Only Phase 0 (ship a
+binary) and UX-45/UX-46 remain.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -1200,7 +1200,7 @@ over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
-### Phase 6 — Hold the line — UX-42/43 done, UX-44…UX-46 not started
+### Phase 6 — Hold the line — UX-42/43/44 done, UX-45/46 not started
 
 **UX-42 — `--self-test=scenes` — done**
 *Files:* new `engine/src/Sim/SceneTagSetSelfTest.cs`, `engine/src/Main.cs`, a
@@ -1271,7 +1271,7 @@ broke the tank driver's controller gain to 0 (so `tank.level` never leaves
 restored it. Full run `--only A,C,E,H` — 32 passed; `python -m pytest -q` —
 71 passed; no orphaned Godot process after any of it.
 
-**UX-44 — `--self-test=modes`**
+**UX-44 — `--self-test=modes` — done**
 *Files:* new `engine/src/Sim/ModeSelfTest.cs`, `engine/src/Main.cs`.
 *Done when:* the Edit/Run contract is asserted **as a pair**: a click selects in
 Edit and does not in Run, a control operates in Run and does not in Edit, and
@@ -1279,6 +1279,44 @@ entering Run clears the preview and the selection. `=click` and `=buttons` each
 cover one half; nothing covers the switch.
 *Verify:* run it; break `SetMode` and watch it fail.
 *Size:* M. *Depends on:* UX-37.
+
+**A real gap found while designing the test, not a bug already sitting in
+shipped code:** `SelectPartAtRay` (Edit-mode selection) and
+`PressControlAtRay` (Run-mode operate, UX-37) never checked `Mode`
+themselves — the *only* thing keeping select and operate from firing in the
+wrong mode was `_UnhandledInput`'s own dispatch calling the right one for
+the current mode. That is fragile in a way this item's own phrasing warns
+about: "a click selects in Edit and does not in Run" is a claim about the
+methods, not about `_UnhandledInput` alone, and any future caller reaching
+either method directly — a future toolbar shortcut, a script, exactly what
+this self-test itself needed to do headless — would have silently broken
+the contract. Fixed by moving the guard into both methods
+(`if (Mode != EditorMode.Edit) return;` / `if (Mode != EditorMode.Run)
+return;`), so the invariant holds regardless of caller, the same
+defense-in-depth already applied to `TagTable.Force` needing no caller to
+check ownership first.
+
+**This surfaced a real ordering bug in UX-37's own self-test**:
+`--self-test=operate` (`ClickOperateSelfTest`) called `PressControlAtRay`
+without ever calling `SetMode(Run)` first — it happened to pass only because
+nothing enforced the mode contract yet. Fixed by adding the explicit
+`SetMode(EditorMode.Run)` UX-37's test should have had from the start.
+
+Drives `SelectPartAtRay`/`PressControlAtRay` with synthetic rays, the same
+technique UX-37's own self-test uses, against the default scene's pusher —
+not the conveyor, which turned out to share a work-plane column with
+`sensor_low` (a real overlap between two placed parts, caught by the first
+draft of this test picking the wrong target, not a defect in either method).
+Also re-verifies the placement-preview half of the contract
+(`PanelSelfTest.CheckModeSwitching` already covered it, but restating it
+here keeps the full pairwise claim in one file rather than half in each).
+
+Deliberately removed each new guard in turn and watched the matching
+assertion fail (*"Edit mode: a click on the pusher leaves extend exactly as
+it was"*, then *"Run mode: a click on the pusher does not select it"*),
+confirming each is independently load-bearing, then restored both.
+`--self-test=click` (windowed) and `python -m pytest -q` (71 passed)
+unaffected; full `test_plan.py --only A,C,E` 28 passed.
 
 **UX-45 — Cover non-bit forcing**
 *Files:* new `tools/check_force_types.py`, `tools/test_plan.py`.
@@ -1644,7 +1682,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 | done |
 | UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 | done |
 | UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 | done |
-| UX-44 | `--self-test=modes` | 6 | M | UX-37 |  |
+| UX-44 | `--self-test=modes` | 6 | M | UX-37 | done |
 | UX-45 | Cover non-bit forcing | 6 | S | UX-35 |  |
 | UX-46 | Document all of it | 6 | S | — |  |
 

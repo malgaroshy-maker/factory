@@ -276,6 +276,10 @@ def section_c() -> None:
     # Nothing else catches a template edit that quietly renames or retypes a
     # tag out from under a mapping file.
     _self_test("C19", "every shipped scene's tag set (id/type/kind) matches tests/fixtures/scene_tag_sets.json", "scenes")
+    # =click and =buttons each cover one half of the Edit/Run contract; this
+    # is the only check that a click means one thing in one mode and nothing
+    # in the other, as a pair.
+    _self_test("C20", "the Edit/Run contract holds as a pair: select only in Edit, operate only in Run", "modes")
 
 
 def section_d(enabled: bool) -> None:

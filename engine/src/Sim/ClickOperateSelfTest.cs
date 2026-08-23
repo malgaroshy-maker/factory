@@ -68,6 +68,10 @@ public partial class ClickOperateSelfTest : Node
         switch (_step)
         {
             case 1:
+                // PressControlAtRay now refuses outright in Edit mode (UX-44) --
+                // the editor starts in Edit, so this test has to enter Run
+                // explicitly, the same way a real click would have to.
+                Editor.SetMode(EditorMode.Run);
                 RunDefaultSceneChecks();
                 break;
 

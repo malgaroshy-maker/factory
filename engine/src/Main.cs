@@ -240,6 +240,10 @@ public partial class Main : Node
         {
             AddChild(new SceneTagSetSelfTest { Name = "SceneTagSetSelfTest", Editor = _editor!, Tags = tags });
         }
+        if (_selfTest == "modes")
+        {
+            AddChild(new ModeSelfTest { Name = "ModeSelfTest", Editor = _editor!, Tags = tags });
+        }
     }
 
     private void BuildView(TagTable tags)
