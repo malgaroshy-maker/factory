@@ -14,7 +14,7 @@ parts, and €278/year. See [`docs/PRD.md`](docs/PRD.md) for the full rationale.
 | What | Path |
 |---|---|
 | **Repo** | `C:\Users\masal\source\factoryforge` |
-| **Godot 4.7.1 mono** (console build — use this, it prints to stdout) | `D:\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64\Godot_v4.7.1-stable_mono_win64_console.exe` |
+| **Godot 4.7.2 mono** (console build — use this, it prints to stdout) | `D:\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64_console.exe` |
 | Python 3.12 | `D:\Python312` (on PATH as `python`) |
 | .NET SDK | `C:\Program Files\dotnet` (v10; the project targets net8.0) |
 | Node-RED user dir | `C:\Users\masal\.node-red` — **contains the user's own flows, never overwrite** |

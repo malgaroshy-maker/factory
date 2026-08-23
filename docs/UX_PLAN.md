@@ -5,6 +5,12 @@
 (UX-30…UX-33), Phase 5 (UX-34…UX-41), and Phase 6 (UX-42…UX-46) are all
 complete. Phase 0 is the only proposal left standing.
 **Written:** 2026-08-22, against `9ac37d2`.
+**Last reviewed:** 2026-08-23, against `3679bbb`, on **Godot 4.7.2-mono** (the
+project asks `project.godot` only for feature `4.7`, so 4.7.1 and 4.7.2 both run
+it). `python -m pytest -q` — 71 passed; `tools/test_plan.py --only A,B,C,E,G,H`
+— 41 passed, 0 failed, 342s. §5 was written before Phase 5 landed and has been
+reconciled with what now ships (new §5.7 carries the current state); §0 and §2
+are left as the findings they were, dated and line-referenced to `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
 A plan for three things that turn out to be one problem:
@@ -79,8 +85,11 @@ or its UI claim, which is why each carries its evidence.
 
 ## 1. The five ready-to-use scenes
 
-Verified by connecting to a live engine and reading `describe`. This table does
-not exist anywhere in the repo today, which is itself part of the problem.
+Verified by connecting to a live engine and reading `describe`. When this was
+written the table existed nowhere in the repo, which was itself part of the
+problem; UX-13 put the id/title/blurb half of it in
+`engine/templates/manifest.json`, and UX-42 put the tag half in
+`tests/fixtures/scene_tag_sets.json`, where a self-test now checks it every run.
 
 | Scene | `scene` id | Tags | The I/O that makes it different |
 |---|---|---:|---|
@@ -335,12 +344,17 @@ you can look at" into "fifteen components you can switch on" — and after the
 spike it no longer waits on anything. Those two buy the most per hour spent.
 Phase 0's engineering is long-lead and independent, so it should start now.
 
+**Where this stands:** every phase in that order has landed. Only Phase 0 is
+left, so the sequencing below is now history rather than instruction — but the
+caveat under it is live, and its condition is met.
+
 One caveat on Phase 0, stated once: **cut the first release after Phases 3, 5
-and 2 land, not before.** A binary built from today's `master` would package a
-start screen offering five scenes, four of which cannot be made to move, and a
-tank that cannot be operated at all. Building the machinery now is right;
-shipping v0.1 out of it before there is something worth downloading is the part
-worth waiting on.
+and 2 land, not before.** A binary built from `master` as it was when this was
+written would have packaged a start screen offering five scenes, four of which
+could not be made to move, and a tank that could not be operated at all.
+Building the machinery then was right; shipping v0.1 out of it before there was
+something worth downloading was the part worth waiting on. **That wait is over:**
+all three phases landed, so the next binary produced is one worth releasing.
 
 **Platform scope:** Windows and Linux. Both export presets already exist and CI
 already runs Linux headless, so the second target is close to free. macOS is
@@ -350,14 +364,16 @@ deferred (§7).
 
 ### Phase 0 — Ship a binary
 
-Today, running FactoryForge means installing Godot 4.7.1-mono, the .NET 8 SDK
+Today, running FactoryForge means installing Godot 4.7-mono, the .NET 8 SDK
 and Python, then running `dotnet build` — a real barrier for a student who
 wanted to learn ladder logic, not to install a game engine and a compiler.
 
 `docs/PACKAGING.md` already lays out the intended recipe honestly, including its
-own status: **nothing in it is verified.** Confirmed while writing this — the
-Godot export templates are not installed on this machine, so no binary has ever
-been produced from `engine/export_presets.cfg`.
+own status: **nothing in it is verified.** Confirmed while writing this, and
+re-confirmed on 2026-08-23 after the move to Godot 4.7.2 —
+`%APPDATA%\Godot\export_templates` exists and is empty, so no binary has ever
+been produced from `engine/export_presets.cfg`. UX-01's ~1 GB template download
+is still the first thing this phase has to do.
 
 **UX-01 — Produce a Windows and a Linux binary at all**
 *Files:* none at first; `engine/export_presets.cfg` if the presets need fixing.
@@ -387,7 +403,8 @@ sidecar to a running engine.
 **UX-04 — Make the engine find a bundled sidecar**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
 *Done when:* F5's *Apply & Connect* starts the sidecar in a packaged build.
-Today `ApplyConnectionSettings` (`DriverConnectionUI.cs:391`) derives the
+Today `ApplyConnectionSettings` (`DriverConnectionUI.cs:434` as of `3679bbb`;
+`:391` when this was written) derives the
 sidecar directory from the **parent** of `ProjectSettings.GlobalizePath("res://")`
 — correct in a checkout, where `res://` is `engine/` and `sidecar/` sits beside
 it, but in an export `res://` resolves to the executable's own directory, so it
@@ -426,8 +443,11 @@ release.
 **UX-08 — Fix the fixture path that breaks self-tests in an export**
 *Files:* `engine/src/Sim/TagParitySelfTest.cs`, `.github/workflows/release.yml`.
 *Done when:* the exported-binary test run passes. `--self-test=parity` reads
-`res://../tests/fixtures/tag_cases.json` (`TagParitySelfTest.cs:35`), a path
-that does not exist in an export. Either ship the fixture as a resource or run
+`res://../tests/fixtures/tag_cases.json` (`TagParitySelfTest.cs:37` as of
+`3679bbb`), a path that does not exist in an export. **UX-42 added a second one
+with the same problem:** `--self-test=scenes` reads
+`tests/fixtures/scene_tag_sets.json` the same way, so whatever fix is chosen
+here has to cover both. Either ship the fixture as a resource or run
 that one test only in the source-tree job.
 *Verify:* run every self-test against the exported binary; all pass or are
 explicitly excluded with a reason.
@@ -729,7 +749,12 @@ the required build and where to put it.
 *Files:* `docs/GETTING_STARTED.md:20`, `tools/drv_trace.py:5`,
 `run_factoryforge.bat`.
 *Done when:* no shipped file contains `C:\Users\masal` or `D:\Godot...`.
-*Verify:* `grep -ri "users.masal\|D:\\\\Godot" --exclude-dir=.git .` is empty.
+*Verify:* `git grep -Iil -e "users.masal" -e "D:.Godot"` returns only `AGENTS.md`,
+`docs/FIX_PLAN.md` and this file — three deliberate hits, no shipped code or user
+doc. `AGENTS.md` is the developer cheat sheet, whose whole purpose is a table
+headed *"Absolute paths on this machine"*; the other two are findings (FF-30,
+§2.2/§2.4) quoting the very paths they exist to report removed. Nothing a user
+runs or reads carries one.
 *Size:* S.
 
 **UX-25 — Fix `demo` → `connect` in shipped material**
@@ -1463,9 +1488,13 @@ changes with level — before you write a line of control code against it.
 This is the specification for Phase 5. Everything in it is a statement about
 what should be true, with the current state marked.
 
-### 5.2 What you can do today, and why it is awkward
+### 5.2 What you could do before Phase 5, and why it was awkward
 
-Three routes exist, and each stops short:
+Written before Phase 5 landed and kept as the record of the gap it closed. All
+three routes below now reach the whole part library — **§5.7 is the current
+state**; read that first if you only want to know how the app behaves today.
+
+Three routes existed, and each stopped short:
 
 | Route | Reaches | Stops at |
 |---|---|---|
@@ -1473,7 +1502,7 @@ Three routes exist, and each stops short:
 | **Force it** — Tag Inspector → **Force** | any `bit` tag, input or output | silently does nothing on `int`/`float` *(§2.8 → UX-35)* |
 | **Run the demo** — 🎬 Demo | `sorting-by-height` only | silent no-op on all four templates *(§2.1 → UX-16…UX-20)* |
 
-So turning a conveyor on today means: know a conveyor owns a `.rotate` tag; know
+So turning a conveyor on meant: know a conveyor owns a `.rotate` tag; know
 the part's **Name** is the tag prefix; find `belt.rotate` in a 13–16 row list on
 the other side of the screen; press Force there. **Three indirections between
 the thing on screen and the switch that turns it on** — and the part's own
@@ -1504,7 +1533,7 @@ controlled separately by `Space`, `Ctrl+R` and the 0.25×–4× rate selector.
 | Left click | select a part, or place the palette part | operate the part — every operable type, not just the Control Panel (UX-37) |
 | `M` / `R` / `Del` / `Ctrl+D` | move / rotate / delete / duplicate | — |
 | `Ctrl+Z` / `Ctrl+Y` | undo / redo | — |
-| `Ctrl+S` / `Ctrl+O` | save / open | **— silently, §2.7 → UX-40** |
+| `Ctrl+S` / `Ctrl+O` | save / open | save / open — they survive Run mode (UX-40) |
 | `F1` | → Run | → Edit |
 | `Space`, `Ctrl+R`, rate selector | work | work |
 | `C`, WASD, mouse orbit | work | work |
@@ -1523,8 +1552,11 @@ before UX-34 and UX-37 landed and left as the historical record of the gap
 they closed — every row still marked ◐ for "only through the Tag Inspector"
 now also has a real toggle/slider on the part's own property panel (UX-34)
 and, for the actuator rows specifically, a working click in Run mode (UX-37,
-§5.3). The ✗ rows (a live readout on the part itself, and the two tags UX-35
-already unblocked) are the gap still open.
+§5.3). The two tags marked ✗ for their type — the tank's float commands and the
+display's `int` — were unblocked by UX-35. Of the ✗ marks that ask for a readout
+**on the part itself**, only the **Weight Conveyor**'s is still open: the Light
+Array's was wrong when written (that row is corrected below), and the Level Tank
+and Digital Display have drawn theirs in 3D since 2026-08-12. See §5.7.
 
 Place the part, name it in the properties panel — the name is the tag prefix, so
 a pusher named `reject` gives `reject.extend` — then:
@@ -1548,7 +1580,7 @@ my PLC do if this sensor is stuck on?"
 | **Photoelectric** | `.detect` bit in | Live indicator on the part, plus a force-on/force-off override | ◐ |
 | **Retroreflective** | `.detect` bit in | Same. Run it beside a photoelectric to see it catch matt boxes the diffuse one misses | ◐ |
 | **Inductive** | `.detect` bit in | Same. Set the Emitter's `metal_every` to 1 then 0 and watch it react to metal only | ◐ |
-| **Light Array** | `.height` float in · `.blocked` bit in | A live height readout on the part — the number changes per box, which is the whole point of the part | readout ✗ |
+| **Light Array** | `.height` float in · `.blocked` bit in | A live height readout on the part — the number changes per box, which is the whole point of the part | ◐ — **this ✗ was wrong when written**: `LightArray` has drawn `N mm` on a `Label3D` above the curtain since 2026-08-12, ten days before this plan |
 
 #### Actuators
 
@@ -1579,55 +1611,131 @@ close that; UX-35 unblocks the two ✗ rows.
 
 ### 5.5 Two minutes with each scene
 
-What you should be able to do on first launch. Steps marked **blocked** need
-Phase 5.
+What you can do on first launch. Every scene now has all three: a 🎬 **Demo**
+that runs it with no PLC (UX-16…UX-20), a 🧪 **Try** button that runs the
+asserted exercise (UX-21/31/33), and full hand operation — click the part in Run
+mode (UX-37) or use its own property panel (UX-34). Nothing here is blocked any
+more; the *(was blocked)* notes mark what Phase 5 opened.
 
-**Sorting by height** — press **Watch it run**. Belt starts, boxes emit, tall
-ones divert down the chute, `counter.tall` and `counter.short` climb. The one
-path that works end to end today.
+**Sorting by height** — press 🎬 **Demo**. Belt starts, boxes emit, tall ones
+divert down the chute, `counter.tall` and `counter.short` climb.
 
-**Start / stop station** — Force `belt.rotate` and `emitter.emit`; watch
-`part_present.detect` pulse and `counter.count` climb. `F1` → Run, press the
-E-stop, and note `panel.estop` goes **false** because it is normally closed.
-`produced.value` stays 0 *(blocked — int output)*.
+**Start / stop station** — `F1` → Operate and click the belt to start it, or
+flip its toggle on the property panel; the emitter's **Emit one** button drops a
+carton per click. Watch `part_present.detect` pulse and `counter.count` climb.
+Press the E-stop and note `panel.estop` goes **false** because it is normally
+closed. `produced.value` takes a typed number *(was blocked — int output)*.
 
-**Tank level control** — **blocked entirely.** Nothing in this scene can be
-driven by hand *(§2.8)*. After UX-35 it becomes the best scene in the set for
-learning analog behaviour: open the fill valve halfway, watch the level rise and
-the rate fall off as it climbs.
+**Tank level control** — the best scene in the set for analog behaviour, and the
+one Phase 5 changed most *(was blocked entirely)*. Click the tank's inlet pipe
+to open the fill valve, or drag its slider on the property panel, and watch the
+level rise with the rate falling off as it climbs — Torricelli, not a ramp.
 
-**Light curtain sorting** — Force `belt.rotate` and `emitter.emit`; watch
-`height_gauge.height` change per box; Force `diverter.extend` by hand as a tall
-one arrives and watch `tall_count.count` rise. The best scene *today* for
-learning what forcing does, because you stand in for the PLC one box at a time.
+**Light curtain sorting** — start the belt and emit; watch `height_gauge.height`
+change per box; stroke `diverter.extend` by hand as a tall one arrives and watch
+`tall_count.count` rise. Still the best scene for learning what forcing does,
+because you stand in for the PLC one box at a time.
 
-**Roller line with weighing** — Force `infeed.rotate`, `scale.rotate` and
-`emitter.emit`; watch `scale.weight` settle while a box sits on the scale and
-return to zero after. Set `metal_every` to 1 and confirm `metal_check.detect`
-follows metal only. `weight_readout.value` stays 0 *(blocked)*.
+**Roller line with weighing** — start `infeed` and `scale` and emit; watch
+`scale.weight` settle while a box sits on the scale and return to zero after.
+Set `metal_every` to 1 and confirm `metal_check.detect` follows metal only.
+`weight_readout.value` takes a typed number *(was blocked)*.
 
 ### 5.6 Checking the machinery, without the 3D app
 
-How to check a build before blaming your PLC. All of this ships today:
+How to check a build before blaming your PLC. All of this ships today. The list
+below is the state after Phase 6: **twenty** engine self-tests, not the eight
+that existed when this was written.
 
 | Command | Checks |
 |---|---|
-| `python tools/test_plan.py` | Everything below plus determinism; `--gui` adds the display-dependent click path |
+| `python tools/test_plan.py` | Everything below plus determinism and robustness; `--gui` adds the display-dependent click path |
 | `python -m pytest -q` | The 71-test Python suite: tag model, protocol, Modbus, OPC UA, Siemens |
-| `godot --headless --path engine -- --self-test=buttons` | Panel momentary and latching behaviour, from the tag side |
-| `… --self-test=io` | Rename and I/O export |
-| `… --self-test=scene` | Scene save/load round-trip, every part type |
-| `… --self-test=templates` | Every shipped template loads and registers its I/O |
-| `… --self-test=parity` | The C# and Python tag models agree |
-| `… --self-test=layout` | The F5 modal still fits on screen |
-| `godot --path engine -- --self-test=click` | A synthesized mouse click reaching a tag (needs a display) |
+| `python tools/try_scene.py --scene <id>` | Drives one shipped scene the way a PLC would and asserts the result; `--list` names all five *(UX-21/22)* |
+
+**Engine self-tests** — `godot --headless --path engine -- --self-test=<name>`:
+
+| `<name>` | Checks |
+|---|---|
+| `buttons` | Panel momentary and latching behaviour, from the tag side |
+| `io` | Rename and I/O export |
+| `scene` | Scene save/load round-trip, every part type |
+| `templates` | Every shipped template loads and registers its I/O |
+| `parity` | The C# and Python tag models agree |
+| `layout` | The F5 modal still fits on screen |
+| `force` | The Tag Inspector forces `int` and `float`, not just `bit` *(UX-35)* |
+| `demo` | Demo picks the right profile per scene, and refuses honestly otherwise *(UX-16/30)* |
+| `startstop`, `tank`, `lightcurtain`, `roller` | One per template profile: the §4 behaviour, physics-timed *(UX-17…UX-20)* |
+| `refusal` | Demo's refusal reaches the UI, not just the console *(UX-30)* |
+| `proppanel` | The part property panel drives live I/O, bit/int/float × output/input *(UX-34)* |
+| `operate` | Run mode's click operates the part it lands on, not just the panel *(UX-37)* |
+| `modehint` | Entering Run mode says what is clickable, or says plainly that nothing is *(UX-39)* |
+| `tryscene` | "Try this scene" finds the right exercise, refuses honestly otherwise *(UX-31/33)* |
+| `scenes` | Every scene's tag set matches `tests/fixtures/scene_tag_sets.json` *(UX-42)* |
+| `modes` | The Edit/Run contract as a pair: select only in Edit, operate only in Run *(UX-44)* |
+| `click` **(needs a display)** | A synthesized mouse click reaching a tag — run without `--headless` |
+
+**Wire-level checks** — each needs an engine already running:
+
+| Command | Checks |
+|---|---|
 | `python tools/check_protocol.py` | `hello`/`describe`/`update` carry exactly the documented fields |
 | `python tools/check_force_while_paused.py` | A forced input still reaches a driver while paused |
+| `python tools/check_force_types.py` | Forcing an `int` and a `float` both reach the bus *(UX-45)* |
 | `python examples/fake_plc.py` | A fake S7-1500 running the real SCL logic over OPC UA — sorting scene only |
 
-Gaps this plan fills: nothing tests the two modes as a pair (UX-44), nothing
-tests non-bit forcing (UX-45), and nothing covers four of the five scenes
-(UX-43).
+The three gaps this section originally named are closed: the two modes are
+tested as a pair (`modes`, UX-44), non-bit forcing is covered
+(`check_force_types.py`, UX-45), and all five scenes run in the same headless job
+as Section H (UX-43).
+
+### 5.7 Where it landed — the current state
+
+§5.2 through §5.5 above were written against the app as it was before Phase 5.
+This is what shipped. The three **by hand** routes all end in the same
+`TagTable.Force` call, so they are equally sticky and equally visible in the
+forced-tags chip; the fourth writes with `TagTable.Set`, the way a driver does,
+so a demo leaves nothing pinned behind it.
+
+| Route | Reaches | Where |
+|---|---|---|
+| **Click the part** — `F1` → **👆 Operate**, click it | Conveyors, roller and weighing decks, pushers, emitters (one carton per click), each stack-light lamp, each tank valve, and the panel caps | UX-37 |
+| **The part's own panel** — select it; its **I/O** section sits under its settings | Every tag the part owns: a toggle for `bit` outputs, a spin box for `int`, a slider for `float`, **Emit one** for the emitter's rising edge, and a live readout plus an **Override** checkbox for inputs | UX-34 |
+| **The Tag Inspector** — top right, **Force** | Any tag in the scene by id, any type, with a typed value field beside the button | UX-35/36 |
+| **Run the exercise** — 🎬 **Demo**, or 🧪 **Try** | All five scenes, no PLC and no Python for Demo; `try_scene.py` for the asserted version | UX-16…UX-22, UX-31/33 |
+
+Three things worth knowing, all still true and now all visible:
+
+* **Forcing is sticky**, whichever route set it. A tag left held beats a driver
+  that connects later — which is why the toolbar carries a
+  **`🔓 N forced — release`** chip while anything is held, clearing every force
+  in one click (UX-41).
+* **Forcing works while paused** — FF-14, kept fixed by
+  `tools/check_force_while_paused.py`, and now `check_force_types.py` for
+  non-bit tags.
+* **Mode is not time.** `✎ Build` / `👆 Operate` changes only what a click
+  means; `⏸ Pause` / `▶ Run` and the rate selector control time. Those two
+  buttons no longer share a word or a glyph (UX-38), and entering Operate names
+  what is clickable — or says plainly that nothing is (UX-39).
+
+What Phase 5 deliberately did **not** do: add a live readout to every part's own
+3D body. Three parts already had one and still do — the Light Array's `N mm`
+above the curtain, the Level Tank's `N.N %` and liquid column, and the Digital
+Display's 7-segment panel — and the rest report on the property panel and in the
+Tag Inspector, one click away, rather than floating over the machine. So of
+§5.4's `readout ✗` marks, only the **Weight Conveyor**'s is still open by that
+strict reading; the Light Array's was wrong when it was written (see the note in
+§5.4). Every other ✗ and ◐ in that table is closed.
+
+**One claim outside this plan was found false while reviewing it (2026-08-23):**
+`README.md` advertised *"Floating 3D billboard labels above components with
+interactive live forcing buttons"*. `engine/src/Editor/FloatingTagBadge3D.cs`
+implements exactly that — and **nothing in the repository ever constructs one**.
+The class is unreferenced; no badge can appear in any scene. The README bullet
+has been rewritten to describe the three routes that do exist. The dead class is
+left in place for someone to either wire up or delete deliberately — this review
+is not the place to decide which, but shipping the claim was the same
+report-it-working-while-doing-nothing failure as §2.1.
 
 ---
 
@@ -1688,15 +1796,15 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 
 | # | Item | Phase | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — |  |
-| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 |  |
-| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 |  |
-| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 |  |
-| UX-05 | Decide "one file" or "one folder" | 0 | S | — |  |
-| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 |  |
-| UX-07 | A release CI job | 0 | L | UX-01 |  |
-| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 |  |
-| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — |  |
+| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — | open |
+| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 | open |
+| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 | open |
+| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 | open |
+| UX-05 | Decide "one file" or "one folder" | 0 | S | — | open |
+| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 | open |
+| UX-07 | A release CI job | 0 | L | UX-01 | open |
+| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 | open |
+| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — | open |
 | UX-10 | Load `--scene=` headless | 1 | S | — | done |
 | UX-11 | Make `--scene` and `--demo` compose | 1 | S | — | done |
 | UX-12 | Reject `--deterministic --scene=` | 1 | S | — | done |
@@ -1736,6 +1844,8 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-46 | Document all of it | 6 | S | — | done |
 
 **Totals:** 46 items — 24 S, 17 M, 4 L, 1 S-or-L (UX-09). By phase: 0→9, 1→6, 2→7, 3→7, 4→4, 5→8, 6→5.
-**Critical path to a first release:** UX-24 → UX-26 → UX-35 → UX-34 → UX-13 →
-UX-10 → UX-16 → UX-17…UX-20, with UX-01 → UX-03 → UX-04 → UX-07 running beside
-it.
+**Status:** 37 done, 9 open — every open item is Phase 0.
+**Critical path to a first release:** the app half is done — UX-24 → UX-26 →
+UX-35 → UX-34 → UX-13 → UX-10 → UX-16 → UX-17…UX-20 all landed. What is left of
+the path is the packaging half: **UX-01 → UX-03 → UX-04 → UX-07**, with UX-08
+folded into UX-07's job (two fixture paths now, not one).

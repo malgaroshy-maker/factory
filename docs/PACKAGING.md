@@ -16,7 +16,7 @@ install a game engine and a compiler first.
 
 | | |
 |---|---|
-| **Godot 4.7.1 .NET (mono)** | the same version the project was built with |
+| **Godot 4.7.2 .NET (mono)** | the version the project is built and tested with; `project.godot` asks only for 4.7, so any 4.7.x works |
 | **Export templates** | Editor → Editor menu → *Manage Export Templates* → Download |
 | **.NET 8 SDK** | on the machine doing the export, not on the user's |
 

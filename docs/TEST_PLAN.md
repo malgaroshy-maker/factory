@@ -184,7 +184,14 @@ Honest list of what this plan does **not** prove:
 
 ## Results
 
-**2026-08-23 — 47 passed, 0 failed, 417s** (`python tools/test_plan.py --gui`).
+**2026-08-23 — 47 passed, 0 failed, 417s** (`python tools/test_plan.py --gui`,
+on Godot 4.7.1-mono).
+
+Re-run the same day on **Godot 4.7.2-mono** after upgrading:
+`--only A,B,C,E,G,H` — **41 passed, 0 failed, 342s**. Same checks minus D (needs
+a display) and F (needs the sidecar's driver stack); nothing behaved differently
+between the two engine builds. `project.godot` asks for feature `4.7`, so either
+patch release runs the project.
 
 Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
 `docs/UX_PLAN.md` landing in between: ten more headless self-tests (C10…C19,

@@ -52,7 +52,9 @@ PORT = 7411
 def find_godot() -> str | None:
     if (env := os.environ.get("GODOT")) and Path(env).exists():
         return env
-    for name in ("godot", "godot-mono", "Godot_v4.7.1-stable_mono_win64_console"):
+    for name in ("godot", "godot-mono",
+                 "Godot_v4.7.2-stable_mono_win64_console",
+                 "Godot_v4.7.1-stable_mono_win64_console"):
         if found := shutil.which(name):
             return found
     return None

@@ -8,7 +8,7 @@ Welcome to **FactoryForge**, a free, open 3D factory simulator for learning PLC 
 
 * **Operating System:** Windows 10/11 or Linux (x86_64)
 * **Python:** Python 3.11+ (Python 3.12 recommended)
-* **Godot:** Godot 4.7.1 Mono / C#
+* **Godot:** Godot 4.7 Mono / C# (4.7.2 recommended — any 4.7.x works)
 * **PLC Target (Optional):** Siemens S7-PLCSIM Advanced v3.0+, TIA Portal V14-V19, or Node-RED
 
 ---
@@ -37,7 +37,7 @@ python -m pytest -q
 python run.py
 ```
 
-`run.py` locates a Godot 4.7.1 .NET build (checking the `GODOT` environment
+`run.py` locates a Godot 4.7 .NET build (checking the `GODOT` environment
 variable, then `PATH`; if neither has it, it prints exactly what to download and
 where to put it), builds the C# engine, and launches it. Works the same on
 Windows and Linux; Windows users can also double-click `run_factoryforge.bat`.

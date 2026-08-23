@@ -23,12 +23,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "engine"
 
-GODOT_NAMES = [
-    "godot", "godot-mono",
-    "Godot_v4.7.1-stable_mono_win64_console", "Godot_v4.7.1-stable_mono_win64_console.exe",
-    "Godot_v4.7.1-stable_mono_linux.x86_64",
+#: Any 4.7.x .NET build runs this project — `project.godot` declares the feature
+#: as "4.7", not a patch version. Newest first, so a machine holding several
+#: picks the newest rather than whichever was released first.
+GODOT_VERSIONS = ["4.7.2", "4.7.1"]
+GODOT_NAMES = ["godot", "godot-mono"] + [
+    name
+    for version in GODOT_VERSIONS
+    for name in (f"Godot_v{version}-stable_mono_win64_console",
+                 f"Godot_v{version}-stable_mono_win64_console.exe",
+                 f"Godot_v{version}-stable_mono_linux.x86_64")
 ]
-GODOT_DOWNLOAD = "https://godotengine.org/download/archive/4.7.1-stable/ (the .NET build for your OS)"
+GODOT_DOWNLOAD = "https://godotengine.org/download/ (the .NET build for your OS, 4.7.2 or newer 4.7.x)"
 
 
 def find_godot() -> str | None:
@@ -86,7 +92,7 @@ def main(argv: list[str]) -> int:
 
     godot = find_godot()
     if not godot:
-        print("[ERROR] Could not find a Godot 4.7.1 .NET build.")
+        print("[ERROR] Could not find a Godot 4.7 .NET build.")
         print(f"  Download it from: {GODOT_DOWNLOAD}")
         print("  Then either put it on PATH, or set the GODOT environment variable")
         print("  to its full executable path.")

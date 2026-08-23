@@ -1,6 +1,6 @@
 # FactoryForge 🏭
 
-[![Godot 4.7](https://img.shields.io/badge/Godot-v4.7.1--mono-blue?logo=godotengine)](https://godotengine.org/)
+[![Godot 4.7](https://img.shields.io/badge/Godot-v4.7.2--mono-blue?logo=godotengine)](https://godotengine.org/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12+-green?logo=python)](https://www.python.org/)
 ![.NET 8.0](https://img.shields.io/badge/.NET-8.0-purple?logo=dotnet)
 [![Tests](https://img.shields.io/badge/Tests-71%20Passed-brightgreen)](tests/)
@@ -43,10 +43,10 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
 * 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
 * 🏠 **Start screen with five templates**: open on a chooser rather than cold into one demo. Each template teaches a different thing — momentary buttons and a latching E-stop, analog level control with a nonlinear process, sorting on a measurement instead of two bits, a checkweigher with metal detection — plus recent scenes and the full key list.
-* 🕹️ **Operate any component by hand (`F1`)**: switch to **Run** mode and click a conveyor, a pusher, a stack light lamp or a tank valve directly — not just the operator panel's Start/Stop/Reset/E-stop. A banner names what's clickable, hovering outlines it, and every part's own property panel carries a live toggle or slider for its I/O too, so you can see what a part does before writing a line of PLC code against it.
+* 🕹️ **Operate any component by hand (`F1`)**: switch the toolbar from **`✎ Build`** to **`👆 Operate`** and click a conveyor, a pusher, a stack light lamp or a tank valve directly — not just the operator panel's Start/Stop/Reset/E-stop. A banner names what's clickable, hovering outlines it, and every part's own property panel carries a live toggle or slider for its I/O too, so you can see what a part does before writing a line of PLC code against it.
 * 🛠️ **3D Scene Editor Suite**: Interactive voxel grid snapping, rotation (**`R`**), drag move (**`M`**), selection wireframe gizmo, and **`Ctrl+Z`** / **`Ctrl+Y`** undo/redo.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal allowing users to drag/click PLC addresses (`%I0.0`, `%Q0.0`) directly to factory component tags.
-* 🏷️ **Live In-Scene Tag Inspection & Floating 3D Badges**: Floating 3D billboard labels above components with interactive live forcing buttons — bit, int and float tags alike.
+* 🏷️ **Live tag inspection and forcing**: the Tag Inspector lists every tag the loaded scene owns with its live value, and forces any of them — bit, int and float alike — with a typed value. A `🔓 N forced` chip in the toolbar shows what is being held by hand and releases it all in one click. The parts that measure something — the light curtain, the level tank, the digital display — also read out in 3D on the part itself.
 * 🧪 **A built-in exercise per scene**: `python tools/try_scene.py --scene <id>` (or the toolbar's **🧪 Try** button) spawns or attaches to the engine, drives the scene the way a PLC would, and reports pass/fail — the thing to run before writing a real program against it.
 * 🏭 **Native Siemens Integration**: **all three Siemens paths verified driving the 3D scene from a virtual S7-1500** — PLCSIM Advanced Simulation Runtime API (shared memory, no network, no OPC UA licence), OPC UA client, and Snap7 ISO-on-TCP. Belt, emitter, sensors, diverter and counters all run off the CPU's own program.
 * 📊 **Multi-Protocol SCADA Support**: Built-in OPC UA client/server, Modbus TCP server, and Node-RED integration.
