@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using FactoryForge.Editor;
+using FactoryForge.Parts;
 using FactoryForge.TagBus;
 using Godot;
 
@@ -33,6 +34,13 @@ public partial class RollerProfileSelfTest : Node
     /// gambling on the timing, so this tracks whether it was EVER true.</summary>
     private bool _sawMetal;
 
+    /// <summary>A roller's own axis, sampled once the deck is turning. A roller
+    /// spins <em>about</em> this; if the axis itself moves, the roller is
+    /// tumbling instead of rolling.</summary>
+    private RollerConveyor? _deck;
+    private Vector3 _rollerAxis;
+    private Vector3 _rollerMark;
+
     private void Expect(bool condition, string what)
     {
         if (condition) return;
@@ -60,6 +68,16 @@ public partial class RollerProfileSelfTest : Node
             return;
         }
 
+        if (_step == 30)
+        {
+            _deck = FindDeck(GetParent());
+            if (FirstRoller(_deck) is { } roller)
+            {
+                _rollerAxis = roller.GlobalBasis.Y;   // the cylinder's own axis
+                _rollerMark = roller.GlobalBasis.X;   // a point on its rim
+            }
+        }
+
         if (_step > 3 && Tags.Contains("metal_check.detect") && Tags.Visible("metal_check.detect") is true)
             _sawMetal = true;
 
@@ -77,7 +95,55 @@ public partial class RollerProfileSelfTest : Node
         Expect(_sawMetal, "metal_check.detect fired at least once for a metal carton");
         GD.Print($"  outfeed={outfeed} sawMetal={_sawMetal} after {RunTicks} ticks");
 
+        CheckRollersRoll();
         Finish();
+    }
+
+    /// <summary>
+    /// A roller must turn <em>about its own axis</em>. Setting a Z euler
+    /// alongside the X lay-down does not do that -- Godot composes euler as
+    /// Y*X*Z, so the Z term applies first, in the mesh's own frame, where it
+    /// tips the cylinder over instead of spinning it. The deck then tumbles
+    /// end over end, which is what a person sees and no tag-level assertion
+    /// could ever catch.
+    /// </summary>
+    private void CheckRollersRoll()
+    {
+        if (FirstRoller(_deck) is not { } roller)
+        {
+            Expect(false, "roller deck: a roller mesh was found to check");
+            return;
+        }
+
+        Vector3 axisNow = roller.GlobalBasis.Y;
+        Vector3 markNow = roller.GlobalBasis.X;
+
+        float axisDrift = axisNow.AngleTo(_rollerAxis);
+        float turned = markNow.AngleTo(_rollerMark);
+
+        Expect(axisDrift < 0.02f,
+               $"a running roller keeps its own axis (drifted {Mathf.RadToDeg(axisDrift):0.0} degrees -- it is tumbling, not rolling)");
+        Expect(turned > 0.05f,
+               $"a running roller actually turns about that axis (rim moved {Mathf.RadToDeg(turned):0.0} degrees)");
+        GD.Print($"  roller axis drift={Mathf.RadToDeg(axisDrift):0.00} deg, rim turned={Mathf.RadToDeg(turned):0.0} deg");
+    }
+
+    private static RollerConveyor? FindDeck(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is RollerConveyor deck) return deck;
+            if (FindDeck(child) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static MeshInstance3D? FirstRoller(RollerConveyor? deck)
+    {
+        if (deck is null) return null;
+        foreach (var child in deck.GetChildren())
+            if (child is MeshInstance3D mesh && mesh.Mesh is CylinderMesh) return mesh;
+        return null;
     }
 
     private void Finish()
