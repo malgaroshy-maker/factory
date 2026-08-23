@@ -11,7 +11,18 @@ public partial class WeighingConveyor : ConveyorBelt
     private Area3D _scaleArea = null!;
     private readonly HashSet<BoxPhysics> _boxesOnScale = new();
 
+    private const float KgToGrams = 1000.0f;
+
+    /// <summary>Grams on the deck right now.</summary>
     public float MeasuredWeight { get; private set; }
+
+    /// <summary>How many cartons the load cell is carrying. A checkweigher
+    /// holding two at once reads the sum, which is neither carton's weight, so
+    /// this is worth being able to check rather than assume.</summary>
+    public int CartonsOnScale { get; private set; }
+
+    /// <summary>The most it has ever carried at once, for the same reason.</summary>
+    public int PeakCartonsOnScale { get; private set; }
 
     /// <summary>The reading, on the scale (LE-08). Every other part that
     /// measures something shows it on itself — the light curtain's height, the
@@ -88,13 +99,22 @@ public partial class WeighingConveyor : ConveyorBelt
     private void RecalculateWeight()
     {
         float total = 0f;
+        int cartons = 0;
         foreach (var box in _boxesOnScale)
         {
             if (IsInstanceValid(box))
             {
-                total += box.Mass * 10f; // Scale factor 10kg per mass unit
+                // BoxPhysics.Mass is kilograms -- density in kg/m3 times the
+                // carton's volume -- so grams is a straight x1000, and the tag
+                // is an Int, which grams suits and kilograms would not. The old
+                // "x10, scale factor 10kg per mass unit" was neither: it showed
+                // a documented 2.16 kg carton as "21 g".
+                total += box.Mass * KgToGrams;
+                cartons++;
             }
         }
+        CartonsOnScale = cartons;
+        PeakCartonsOnScale = Mathf.Max(PeakCartonsOnScale, cartons);
         MeasuredWeight = total;
         // Only here, not every frame: the weight changes exactly when a carton
         // enters or leaves, and setting Label3D.Text rebuilds its glyph mesh.

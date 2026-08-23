@@ -72,7 +72,7 @@ rule, and it is what makes a scene you build addressable from a PLC.
 | **Stack Light** | 3-stage industrial tower light (Green, Yellow, Red) | `stacklight.green`, `yellow`, `red` |
 | **Digital Display** | 3D 7-segment LED panel displaying live integer counts | `display.value` (Int, Output) |
 | **Roller Conveyor** | Driven roller deck for pallets and totes that would scuff a belt; rollers spin at the true surface speed | `rollerconveyor.rotate` (Bit, Output) |
-| **Weight Scale Conveyor**| Integrated load cell scale returning box mass, and showing it on the scale | `weighconveyor.weight` (Int, Input) |
+| **Weight Scale Conveyor**| Integrated load cell scale reading the carton's mass **in grams** — 720 g for a short carton, 2160 g for a tall one, 12960 g for a metal one — and showing it on the scale | `weighconveyor.weight` (Int, Input) |
 | **Box Emitter** | Spawner emitting tall & short rigid cartons, optionally every Nth in metal | `emitter.emit` (Bit, Output) |
 | **Box Remover** | Area3D zone despawning items & incrementing a counter; the counted tag is pickable, so two removers can feed one total | `remover.count` (Int, Input) |
 | **Control Panel** | Operator station you can actually press. Start/Stop/Reset are momentary — one clean scan per click, however long you hold the mouse — and the mushroom is a maintained E-stop wired **normally closed**, so its tag is true while the circuit is healthy | `panel.start`, `.stop`, `.reset`, `.estop` (Bit, Input) · `panel.green`, `.red` (Bit, Output) |

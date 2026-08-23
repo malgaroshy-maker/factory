@@ -104,12 +104,46 @@ public partial class DigitalDisplay : Node3D
         UpdateDisplay();
     }
 
+    private const float BasePixelSize = 0.005f;
+
+    /// <summary>Fraction of the bezel the reading may occupy, so it sits inside
+    /// the frame rather than touching it.</summary>
+    private const float FitMargin = 0.90f;
+
+    /// <summary>Width of the bezel the reading has to fit inside, in metres.
+    /// Matches the screen mesh built above.</summary>
+    public const float PanelWidth = 0.42f;
+
+    /// <summary>How wide the current reading actually renders, in metres --
+    /// real font metrics, not a guess. A display whose number runs off its own
+    /// panel is reporting something nobody can read, and nothing at tag level
+    /// would ever show it.</summary>
+    public float RenderedWidth()
+    {
+        if (_label3D is null) return 0.0f;
+        var font = ThemeDB.FallbackFont;
+        return font.GetStringSize(_label3D.Text, HorizontalAlignment.Left, -1,
+                                  _label3D.FontSize).X * _label3D.PixelSize;
+    }
+
     private void UpdateDisplay()
     {
-        if (_label3D is not null)
+        if (_label3D is null) return;
+
+        string text = _isAnalog ? _value.ToString("0.0") : Value.ToString("D3");
+        _label3D.Text = Unit.Length > 0 ? $"{text} {Unit}" : text;
+
+        // A reading wider than its own screen is a reading nobody can take, so
+        // this measures the text rather than estimating from its length -- an
+        // estimate of "five characters fit" was wrong by 44%: "720 g" renders
+        // 0.605m on a 0.42m bezel. Anything with a unit suffix has been
+        // overflowing since the display was built; grams only made it obvious.
+        _label3D.PixelSize = BasePixelSize;
+        float natural = RenderedWidth();
+        float budget = PanelWidth * FitMargin;
+        if (natural > budget && natural > 0.0f)
         {
-            string text = _isAnalog ? _value.ToString("0.0") : Value.ToString("D3");
-            _label3D.Text = Unit.Length > 0 ? $"{text} {Unit}" : text;
+            _label3D.PixelSize = BasePixelSize * budget / natural;
         }
     }
 }

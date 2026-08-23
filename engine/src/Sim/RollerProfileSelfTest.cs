@@ -96,6 +96,8 @@ public partial class RollerProfileSelfTest : Node
         GD.Print($"  outfeed={outfeed} sawMetal={_sawMetal} after {RunTicks} ticks");
 
         CheckRollersRoll();
+        CheckCheckweigherSpacing();
+        CheckReadoutFitsItsPanel();
         Finish();
     }
 
@@ -126,6 +128,68 @@ public partial class RollerProfileSelfTest : Node
         Expect(turned > 0.05f,
                $"a running roller actually turns about that axis (rim moved {Mathf.RadToDeg(turned):0.0} degrees)");
         GD.Print($"  roller axis drift={Mathf.RadToDeg(axisDrift):0.00} deg, rim turned={Mathf.RadToDeg(turned):0.0} deg");
+    }
+
+    /// <summary>
+    /// A checkweigher carrying two cartons at once reads their sum, which is
+    /// neither carton's weight -- so the line has to space them further apart
+    /// than the scale is long. Nothing at tag level shows this: scale.weight is
+    /// a perfectly good number the whole time, just not the number anyone
+    /// wanted.
+    /// </summary>
+    private void CheckCheckweigherSpacing()
+    {
+        var scale = FindScale(GetParent());
+        if (scale is null)
+        {
+            Expect(false, "roller line: a weighing conveyor was found to check");
+            return;
+        }
+
+        Expect(scale.PeakCartonsOnScale <= 1,
+               $"the checkweigher only ever carries one carton at a time "
+               + $"(peaked at {scale.PeakCartonsOnScale} -- it would be reading their sum)");
+        GD.Print($"  checkweigher peak occupancy={scale.PeakCartonsOnScale} carton(s)");
+    }
+
+    /// <summary>The scale reports grams, so a metal carton reads "12960 g" on a
+    /// bezel originally built for "000". Measured with real font metrics rather
+    /// than eyeballed, because a number that runs off its own panel looks fine
+    /// to every tag-level assertion there is.</summary>
+    private void CheckReadoutFitsItsPanel()
+    {
+        var display = FindDisplay(GetParent());
+        if (display is null)
+        {
+            Expect(false, "roller line: a digital display was found to check");
+            return;
+        }
+
+        float width = display.RenderedWidth();
+        Expect(width <= DigitalDisplay.PanelWidth,
+               $"the weight readout fits its own panel "
+               + $"({width:0.000}m of {DigitalDisplay.PanelWidth:0.000}m, showing \"{display.Value} g\")");
+        GD.Print($"  readout width={width:0.000}m of {DigitalDisplay.PanelWidth:0.000}m");
+    }
+
+    private static DigitalDisplay? FindDisplay(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is DigitalDisplay display) return display;
+            if (FindDisplay(child) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static WeighingConveyor? FindScale(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is WeighingConveyor scale) return scale;
+            if (FindScale(child) is { } found) return found;
+        }
+        return null;
     }
 
     private static RollerConveyor? FindDeck(Node node)

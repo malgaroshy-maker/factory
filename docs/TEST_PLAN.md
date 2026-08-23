@@ -66,7 +66,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C10 | `start-stop-station` profile: Start runs the belt, Stop and E-stop cut it, Start while tripped is refused, Reset clears the fault | `--self-test=startstop` |
 | C11 | `tank-level-control` profile: the controller settles within ±5% of setpoint | `--self-test=tank` |
 | C12 | `light-curtain-sorting` profile: both tall and short cartons are routed correctly, nothing lost | `--self-test=lightcurtain` |
-| C13 | `roller-line-weighing` profile: outfeed counts, the inductive sensor actually fires for a metal carton, and a running roller turns about its own axis rather than tumbling end over end | `--self-test=roller` |
+| C13 | `roller-line-weighing` profile: outfeed counts, the inductive sensor actually fires for a metal carton, a running roller turns about its own axis rather than tumbling end over end, the checkweigher never carries two cartons at once, and the weight readout fits inside its own bezel | `--self-test=roller` |
 | C14 | Demo's refusal on a scene with no profile reaches the UI (IdleHintUI), not just the console | `--self-test=refusal` |
 | C15 | The part property panel drives live I/O for every tag-type combination (bit/int/float × output/input) | `--self-test=proppanel` |
 | C16 | Run mode's click operates the part it lands on -- conveyor, pusher, emitter, stack light lamps and tank valves independently, not just the Control Panel | `--self-test=operate` |
