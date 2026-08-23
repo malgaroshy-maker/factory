@@ -236,6 +236,10 @@ public partial class Main : Node
         {
             AddChild(new TryThisSceneSelfTest { Name = "TryThisSceneSelfTest", Editor = _editor! });
         }
+        if (_selfTest == "scenes")
+        {
+            AddChild(new SceneTagSetSelfTest { Name = "SceneTagSetSelfTest", Editor = _editor!, Tags = tags });
+        }
     }
 
     private void BuildView(TagTable tags)

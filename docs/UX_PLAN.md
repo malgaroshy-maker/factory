@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
-(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), and all
-of Phase 5 (UX-34…UX-41). Only Phase 0 (ship a binary) and Phase 6 (hold the
-line) remain.
+(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), all of
+Phase 5 (UX-34…UX-41), and Phase 6's UX-42. Only Phase 0 (ship a binary) and
+the rest of Phase 6 (UX-43…UX-46) remain.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -1200,9 +1200,9 @@ over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
-### Phase 6 — Hold the line
+### Phase 6 — Hold the line — UX-42 done, UX-43…UX-46 not started
 
-**UX-42 — `--self-test=scenes`**
+**UX-42 — `--self-test=scenes` — done**
 *Files:* new `engine/src/Sim/SceneTagSetSelfTest.cs`, `engine/src/Main.cs`, a
 checked-in expectation file.
 *Done when:* every manifest entry loads and its tag set (ids, types, directions)
@@ -1210,6 +1210,25 @@ matches the expectation — catching a template edit that renames a tag out from
 under a mapping file.
 *Verify:* rename a tag in a template; the test fails naming it.
 *Size:* M. *Depends on:* UX-10, UX-13.
+
+Expectation file is `tests/fixtures/scene_tag_sets.json`, generated once from
+a live `--print-tags` run against each of the five scenes (the same JSON the
+tag bus actually sends, not a hand-typed copy that could drift), then
+re-sorted by id for a stable diff. Only `id`/`type`/`kind` are captured —
+`name` and `value` are not part of a scene's I/O *contract* the way a
+mapping file cares about it. The self-test loads each manifest entry in
+turn (`LoadDefaultSortingScene` for the built-in scene, `LoadTemplate` for
+the four with a path) with the same two-tick settle gap every other
+template-loading self-test this plan added already uses, and reports both
+directions of mismatch — a tag the fixture expects and the scene no longer
+has, and a tag the scene now has that the fixture never promised.
+
+Verified exactly as UX-42's own Verify step asks: renamed the tank
+template's `tank` part to `reservoir` (so every one of its tags moved from
+`tank.fill/.drain/.level` to `reservoir.fill/.drain/.level`) and watched six
+failures, each naming the specific missing or unexpected tag id and its
+type/kind, then restored the template file. `python -m pytest -q` (71
+passed) and `test_plan.py --only A,C,E` (27 passed) unaffected.
 
 **UX-43 — Wire the exercises into `tools/test_plan.py`**
 *Files:* `tools/test_plan.py`, `.github/workflows/test-plan.yml`.
@@ -1590,7 +1609,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-39 | Run mode explains itself | 5 | M | UX-37 | done |
 | UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — | done |
 | UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 | done |
-| UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 |  |
+| UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 | done |
 | UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 |  |
 | UX-44 | `--self-test=modes` | 6 | M | UX-37 |  |
 | UX-45 | Cover non-bit forcing | 6 | S | UX-35 |  |

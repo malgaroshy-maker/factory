@@ -1,0 +1,370 @@
+{
+  "_comment": "Expected tag set (id/type/kind) for every shipped scene, read by engine --self-test=scenes (engine/src/Sim/SceneTagSetSelfTest.cs). Catches a template edit that renames or retypes a tag out from under a mapping file, without needing a display (UX-42). Regenerate by running --print-tags against each scene and re-sorting by id -- value and name are deliberately not captured here, since they are not part of a scene's I/O contract the way id/type/kind are.",
+  "scenes": {
+    "sorting-by-height": [
+      {
+        "id": "conveyor.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "counter.short",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "counter.tall",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "pusher.extend",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "pusher.extended",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "pusher.retracted",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "sensor_high.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "sensor_low.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "stack_light.green",
+        "type": "bit",
+        "kind": "output"
+      }
+    ],
+    "start-stop-station": [
+      {
+        "id": "belt.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "counter.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "part_present.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "produced.value",
+        "type": "int",
+        "kind": "output"
+      },
+      {
+        "id": "tower.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.yellow",
+        "type": "bit",
+        "kind": "output"
+      }
+    ],
+    "tank-level-control": [
+      {
+        "id": "level_readout.value",
+        "type": "int",
+        "kind": "output"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "tank.drain",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "tank.fill",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "tank.level",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "tower.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.yellow",
+        "type": "bit",
+        "kind": "output"
+      }
+    ],
+    "light-curtain-sorting": [
+      {
+        "id": "belt.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "diverter.extend",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "diverter.extended",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "diverter.retracted",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "height_gauge.blocked",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "height_gauge.height",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "short_count.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "tall_count.count",
+        "type": "int",
+        "kind": "input"
+      }
+    ],
+    "roller-line-weighing": [
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "infeed.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "metal_check.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "outfeed.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "scale.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "scale.weight",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "weight_readout.value",
+        "type": "int",
+        "kind": "output"
+      }
+    ]
+  }
+}

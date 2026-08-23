@@ -272,6 +272,9 @@ def section_c() -> None:
     # "Try this scene" (UX-31) resolves the wrong template, or claims to run
     # one on a custom scene that has none.
     _self_test("C18", "\"Try this scene\" finds the right exercise, refuses honestly otherwise", "tryscene")
+    # Nothing else catches a template edit that quietly renames or retypes a
+    # tag out from under a mapping file.
+    _self_test("C19", "every shipped scene's tag set (id/type/kind) matches tests/fixtures/scene_tag_sets.json", "scenes")
 
 
 def section_d(enabled: bool) -> None:
