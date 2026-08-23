@@ -436,6 +436,15 @@ def section_g() -> None:
            code == 0 and "RESULT update received" in out,
            out.strip().splitlines()[-1] if out.strip() else "no output")
 
+    # G7: the Tag Inspector's Force button used to only handle bit tags
+    # (§2.8) — this checks the wire protocol itself, independent of any UI,
+    # the way G6 already does for bits (UX-45).
+    with EngineProcess("--duration=30", "--scene=res://templates/light_curtain_sorting.json"):
+        code, out = run([sys.executable, str(ROOT / "tools" / "check_force_types.py")], timeout=30)
+    record("G7", "forcing an int tag and a float tag both reach the bus",
+           code == 0 and "RESULT OK" in out,
+           out.strip().splitlines()[-1] if out.strip() else "no output")
+
 
 # --- H. The five scene exercises, driven end to end -------------------------
 

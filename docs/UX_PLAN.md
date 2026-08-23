@@ -2,8 +2,8 @@
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
 (UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), all of
-Phase 5 (UX-34…UX-41), and Phase 6's UX-42/UX-43/UX-44. Only Phase 0 (ship a
-binary) and UX-45/UX-46 remain.
+Phase 5 (UX-34…UX-41), and Phase 6's UX-42…UX-45. Only Phase 0 (ship a
+binary) and UX-46 (document all of it) remain.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -1200,7 +1200,7 @@ over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
-### Phase 6 — Hold the line — UX-42/43/44 done, UX-45/46 not started
+### Phase 6 — Hold the line — UX-42…UX-45 done, UX-46 not started
 
 **UX-42 — `--self-test=scenes` — done**
 *Files:* new `engine/src/Sim/SceneTagSetSelfTest.cs`, `engine/src/Main.cs`, a
@@ -1318,12 +1318,39 @@ confirming each is independently load-bearing, then restored both.
 `--self-test=click` (windowed) and `python -m pytest -q` (71 passed)
 unaffected; full `test_plan.py --only A,C,E` 28 passed.
 
-**UX-45 — Cover non-bit forcing**
+**UX-45 — Cover non-bit forcing — done**
 *Files:* new `tools/check_force_types.py`, `tools/test_plan.py`.
 *Done when:* forcing an `int` and a `float` is asserted to reach the bus, the
 way `check_force_while_paused.py` does for bits.
 *Verify:* run it against an engine; then break `Force` and watch it fail.
 *Size:* S. *Depends on:* UX-35.
+
+Same shape as `check_force_while_paused.py`: connect, force a tag, wait for
+the specific `update` message to arrive, compare the reported value. Wired
+into `test_plan.py` as **G7**, run against the light-curtain template
+(`--scene=res://templates/light_curtain_sorting.json`), the same
+`EngineProcess` pattern G6 already uses.
+
+**A real design fact found while picking which tag to force, not a bug:**
+the first draft targeted `level_readout.value` (an `int` **output**) and
+failed with "no update arrived" even though Force itself worked correctly.
+`TagBusServer.SendUpdates` only ever echoes `TagKind.Input` tags — by
+design, documented in its own comment ("the client already knows its own
+output values") — so forcing an output can never produce an `update`
+regardless of whether `Force` is broken. Retargeted to input tags
+specifically (`tall_count.count`/`short_count.count` int,
+`height_gauge.height` float — the light-curtain template is the one shipped
+scene with both), matching `check_force_while_paused.py`'s own
+`kind == "input"` filter, which was already quietly making the same
+correct choice.
+
+Verified: `python tools/check_force_types.py` against a live light-curtain
+engine — `RESULT OK (short_count.count=42, height_gauge.height=12.5)`.
+Deliberately broke `TagTable.Force` to silently refuse any non-bit tag (the
+exact §2.8 bug this whole plan opened with) and watched both forced values
+time out with `"no update arrived within 5s"`, then restored it. Full
+`test_plan.py --only A,C,E,G` — 35 passed; `python -m pytest -q` — 71
+passed.
 
 **UX-46 — Document all of it**
 *Files:* `docs/TEST_PLAN.md`, `README.md`, `docs/GETTING_STARTED.md`.
@@ -1683,7 +1710,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 | done |
 | UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 | done |
 | UX-44 | `--self-test=modes` | 6 | M | UX-37 | done |
-| UX-45 | Cover non-bit forcing | 6 | S | UX-35 |  |
+| UX-45 | Cover non-bit forcing | 6 | S | UX-35 | done |
 | UX-46 | Document all of it | 6 | S | — |  |
 
 **Totals:** 46 items — 24 S, 17 M, 4 L, 1 S-or-L (UX-09). By phase: 0→9, 1→6, 2→7, 3→7, 4→4, 5→8, 6→5.

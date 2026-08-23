@@ -103,6 +103,10 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | G1 | Corrupt scene JSON is refused without crashing | a hand-edited scene file is expected |
 | G2 | Unknown CLI arg does not prevent startup | |
 | G3 | Loading a scene saved by a *newer* build (unknown property keys) still opens | forward compatibility is claimed in `SceneData`'s docs |
+| G4 | A second engine instance reports its tag bus is dead rather than claiming ready | `--duration=6` against a held port |
+| G5 | The sidecar notices when the engine dies mid-run and starts retrying, rather than serving stale values forever | FF-03 |
+| G6 | Forcing an input tag while paused still reaches the bus | `check_force_while_paused.py`, FF-14 |
+| G7 | Forcing an int tag and a float tag both reach the bus, not just bits | `check_force_types.py`, UX-45 -- §2.8's Force-button bug at the wire-protocol level, independent of any UI |
 
 ### H. Scene exercises (`tools/try_scene.py`)
 
