@@ -438,7 +438,7 @@ public partial class DriverConnectionUI : Control
             _sidecarPid = 0;
         }
 
-        int pid = SpawnInTerminal(workingDir, arguments);
+        int pid = TerminalLauncher.Spawn(workingDir, TerminalLauncher.PythonCommand(arguments));
         if (pid <= 0)
         {
             Warn("Could not start python. The command is on your clipboard — run it yourself.");
@@ -454,50 +454,6 @@ public partial class DriverConnectionUI : Control
         string wiring = WillUseMappingFile() ? "using F4 wiring" : "no wiring file — driver defaults";
         _statusLabel.Text = $"Sidecar running (pid {pid}) — driver '{SelectedDriver}', {wiring}";
         Visible = false;
-    }
-
-    /// <summary>
-    /// Open a visible terminal running the sidecar command. The sidecar's live
-    /// status (is the PLC actually answering?) is the whole point of a console
-    /// here, not just a background process.
-    ///
-    /// Windows always has cmd.exe. Linux and macOS have no equivalent
-    /// guarantee — there is no single terminal binary every distro ships — so
-    /// this tries a short list of common ones and lets a failed
-    /// <see cref="OS.CreateProcess"/> (it returns -1, never throws) fall
-    /// through to the next. If every candidate fails, the caller's existing
-    /// clipboard-fallback message is the safety net — same as it always was
-    /// for a Windows machine with no python on PATH.
-    /// </summary>
-    private static int SpawnInTerminal(string workingDir, string arguments)
-    {
-        if (OS.GetName() == "Windows")
-        {
-            string[] argv = { "/d", "/s", "/c", $"cd /d \"{workingDir}\" && python {arguments}" };
-            return OS.CreateProcess("cmd.exe", argv, openConsole: true);
-        }
-
-        string shellCmd = $"cd \"{workingDir}\" && python3 {arguments}; exec $SHELL";
-
-        if (OS.GetName() == "macOS")
-        {
-            // Terminal.app has no "run this command" flag; osascript is the
-            // standard way to hand it one.
-            string script = $"tell application \"Terminal\" to do script " +
-                             $"\"cd '{workingDir}' && python3 {arguments}\"";
-            int macPid = OS.CreateProcess("osascript", new[] { "-e", script });
-            if (macPid > 0) return macPid;
-        }
-
-        foreach (string terminal in new[] { "x-terminal-emulator", "gnome-terminal", "xterm" })
-        {
-            string[] argv = terminal == "gnome-terminal"
-                ? new[] { "--", "bash", "-c", shellCmd }
-                : new[] { "-e", "bash", "-c", shellCmd };
-            int pid = OS.CreateProcess(terminal, argv);
-            if (pid > 0) return pid;
-        }
-        return -1;
     }
 
     private void Warn(string message)

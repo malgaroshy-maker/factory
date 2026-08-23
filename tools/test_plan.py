@@ -269,6 +269,9 @@ def section_c() -> None:
     # Run mode used to be silent about whether anything on screen would
     # respond to a click at all.
     _self_test("C17", "entering Run mode says what's clickable, or says plainly nothing is", "modehint")
+    # "Try this scene" (UX-31) resolves the wrong template, or claims to run
+    # one on a custom scene that has none.
+    _self_test("C18", "\"Try this scene\" finds the right exercise, refuses honestly otherwise", "tryscene")
 
 
 def section_d(enabled: bool) -> None:

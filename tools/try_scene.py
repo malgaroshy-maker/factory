@@ -152,7 +152,8 @@ async def press(bus: TagBusClient, tag_id: str, hold: float = 0.15) -> None:
 # --- per-scene drivers --------------------------------------------------
 # Each mirrors its engine-side profile under engine/src/Sim/DemoProfiles/.
 
-async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:
+async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: bool,
+                                   deterministic: bool) -> tuple[bool, str]:
     EMIT_HALF_PERIOD = 1.5
     PUSH_DELAY = 0.9
     PUSH_HOLD = 0.5
@@ -191,11 +192,19 @@ async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: b
 
     tall, short = int(num(bus, "counter.tall")), int(num(bus, "counter.short"))
     print(f"RESULT tall={tall} short={short}")
-    ok = tall == 5 and short == 5
-    return ok, "" if ok else f"expected tall=5 short=5 (deterministic), got tall={tall} short={short}"
+    if deterministic:
+        ok = tall == 5 and short == 5
+        return ok, "" if ok else f"expected tall=5 short=5 (deterministic), got tall={tall} short={short}"
+    # Attached to an engine already running non-deterministically (real Jolt
+    # physics) -- an exact count is not a promise this scene can make outside
+    # --deterministic, so this falls back to the same band-based check every
+    # other scene uses.
+    ok = tall > 0 and short > 0
+    return ok, "" if ok else f"expected both counters to advance, got tall={tall} short={short}"
 
 
-async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:
+async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: bool,
+                                  deterministic: bool) -> tuple[bool, str]:
     EMIT_HALF_PERIOD = 1.5
     state = {"running": False, "tripped": False, "produced": 0,
              "prev_start": False, "prev_stop": False, "prev_reset": False, "prev_present": False,
@@ -306,7 +315,8 @@ async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: 
     return not problems, "; ".join(problems)
 
 
-async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:
+async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: bool,
+                                  deterministic: bool) -> tuple[bool, str]:
     SETPOINT, GAIN, BAND_PERCENT = 55.0, 4.0, 5.0
 
     await bus.write("tank.fill", 0.0)
@@ -331,7 +341,8 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
     return ok, "" if ok else f"tank.level settled at {level:.1f}, outside ±{band:.1f} of {SETPOINT}"
 
 
-async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:
+async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbose: bool,
+                                     deterministic: bool) -> tuple[bool, str]:
     EMIT_HALF_PERIOD = 1.5
     TALL_THRESHOLD = 0.15
     PUSH_DELAY = 2.0
@@ -382,7 +393,8 @@ async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbos
     return ok, "" if ok else f"expected both counters to advance, got tall={tall} short={short}"
 
 
-async def drive_roller_line_weighing(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:
+async def drive_roller_line_weighing(bus: TagBusClient, duration: float, verbose: bool,
+                                    deterministic: bool) -> tuple[bool, str]:
     EMIT_HALF_PERIOD = 1.5
 
     await bus.write("infeed.rotate", True)
@@ -437,20 +449,38 @@ DEFAULT_DURATION = {
 
 async def run_scene(godot: str, entry: dict, duration: float | None, verbose: bool) -> int:
     scene_id = entry["id"]
-    deterministic = scene_id == "sorting-by-height"
     run_duration = duration if duration is not None else DEFAULT_DURATION[scene_id]
 
-    if port_listening():
-        print(f"RESULT port {PORT} is already in use -- close whatever else is running "
-              "(another FactoryForge instance?) and try again")
-        return 1
+    eng: Engine | None = None
+    deterministic = False
 
-    print(f"Starting engine for '{entry['title']}'{' (--deterministic)' if deterministic else ''}...")
-    eng = Engine(godot, entry, deterministic)
-    try:
+    if port_listening():
+        # Something is already on the port -- most likely the windowed engine
+        # a "Try this scene" button in the editor itself would be talking to
+        # (UX-31). Attach to it rather than refusing outright: a real PLC
+        # test tool that insists on starting its own engine could never be
+        # pressed from inside the one already open on screen.
+        try:
+            bus, runner = await connect(timeout=5)
+        except (asyncio.TimeoutError, RuntimeError) as exc:
+            print(f"RESULT port {PORT} is already in use, and connecting to it failed too: {exc}")
+            return 1
+
+        if bus.scene != scene_id:
+            print(f"RESULT an engine is already running scene {bus.scene!r}, not {scene_id!r} -- "
+                  f"load \"{entry['title']}\" there first, or close it and this will start its own")
+            runner.cancel()
+            return 1
+        print(f"Attached to the already-running engine (scene {bus.scene!r}, {len(bus.table)} tags)")
+    else:
+        deterministic = scene_id == "sorting-by-height"
+        print(f"Starting engine for '{entry['title']}'{' (--deterministic)' if deterministic else ''}...")
+        eng = Engine(godot, entry, deterministic)
+
         if not await wait_for_port(20.0):
             print("RESULT engine never opened the tag bus port")
             print(eng.tail())
+            eng.stop()
             return 1
 
         try:
@@ -458,24 +488,27 @@ async def run_scene(godot: str, entry: dict, duration: float | None, verbose: bo
         except (asyncio.TimeoutError, RuntimeError) as exc:
             print(f"RESULT could not connect: {exc}")
             print(eng.tail())
+            eng.stop()
             return 1
 
-        try:
-            if bus.scene != scene_id:
-                print(f"RESULT connected, but scene is {bus.scene!r}, expected {scene_id!r}")
-                return 1
-            print(f"connected to scene {bus.scene!r}, {len(bus.table)} tags")
-
-            ok, problem = await DRIVERS[scene_id](bus, run_duration, verbose)
-            if ok:
-                print(f"PASS — {entry['title']}")
-            else:
-                print(f"FAIL — {entry['title']}: {problem}")
-            return 0 if ok else 1
-        finally:
+        if bus.scene != scene_id:
+            print(f"RESULT connected, but scene is {bus.scene!r}, expected {scene_id!r}")
             runner.cancel()
+            eng.stop()
+            return 1
+        print(f"connected to scene {bus.scene!r}, {len(bus.table)} tags")
+
+    try:
+        ok, problem = await DRIVERS[scene_id](bus, run_duration, verbose, deterministic)
+        if ok:
+            print(f"PASS — {entry['title']}")
+        else:
+            print(f"FAIL — {entry['title']}: {problem}")
+        return 0 if ok else 1
     finally:
-        eng.stop()
+        runner.cancel()
+        if eng is not None:
+            eng.stop()
 
 
 def main(argv: list[str]) -> int:

@@ -1,8 +1,8 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
-(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 now
-unblocked by UX-21 but not yet started), and all of Phase 5 (UX-34…UX-41).
+(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4's UX-30/UX-31/UX-32 (UX-33
+now unblocked by UX-31 but not yet started), and all of Phase 5 (UX-34…UX-41).
 Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
@@ -769,7 +769,7 @@ stays opt-in via a flag.
 
 ---
 
-### Phase 4 — Tell the truth in the UI — UX-30/32 done, UX-31/33 not started (unblocked)
+### Phase 4 — Tell the truth in the UI — UX-30/31/32 done, UX-33 not started (unblocked)
 
 **UX-30 — The Demo button refuses honestly — done**
 *Files:* `engine/src/Sim/DemoDriver.cs`, `engine/src/Editor/SceneToolbarUI.cs`.
@@ -801,12 +801,58 @@ would try to run `SortingByHeightProfile` against an empty scene instead of
 refusing, reproducing the exact silent-no-op bug UX-30 exists to close. Fixed
 both call sites in `Main.cs`.
 
-**UX-31 — A "Try this scene" affordance — not started, unblocked**
+**UX-31 — A "Try this scene" affordance — done**
 *Files:* `engine/src/Editor/SceneToolbarUI.cs`.
 *Done when:* it runs the right exercise for whatever is loaded and copies the
 command — the same shape as F5's *Apply & Connect*.
 *Verify:* press it on each template; the exercise runs.
 *Size:* M. *Depends on:* UX-21.
+
+A new "🧪 Try" button beside Demo, matching F5's shape exactly: it copies
+`python tools/try_scene.py --scene <id>` to the clipboard, prints it, and
+opens a visible terminal running it (`TerminalLauncher.Spawn`, factored out
+of `DriverConnectionUI`'s own `SpawnInTerminal` into
+`engine/src/Editor/TerminalLauncher.cs` so the two buttons share one
+cross-platform terminal-launch implementation instead of two copies drifting
+apart). The scene id comes from matching `Editor.SceneName` against
+`TemplateManifest`; a scene with no match (a custom save) refuses honestly
+through the idle hint — *"No built-in exercise for scene '…' — try one of
+the five shipped templates instead"* — naming the actual scene rather than a
+generic message, the same FF-06/FF-23/UX-30 dishonesty class closed
+everywhere else in this plan.
+
+**A real design gap found and fixed while wiring this up, not a bug in
+already-written code:** `try_scene.py` (UX-21) always span its own headless
+engine and refused outright if port 7411 was already bound. A "Try this
+scene" button living *inside* the already-running windowed engine would
+always find that port taken — its own — so the very shape UX-31 asks for
+("press it on each template; the exercise runs") was impossible as UX-21
+originally shipped. Fixed in `try_scene.py` itself: when the port is already
+listening, it now attaches to whatever is already running instead of
+refusing, checks the attached scene matches the one requested, and drives it
+live if so (refusing by name if a different scene is loaded there). This
+also makes `sorting-by-height`'s assertion honest in that mode: an
+already-running engine is almost never started with `--deterministic`, so
+attaching falls back to the same band-based `tall>0 and short>0` check the
+other four scenes use, rather than demanding the exact `tall=5 short=5` only
+a scene *this script itself* spawned deterministically can promise.
+
+Verified end to end, not just headless: launched the real windowed engine,
+then ran `try_scene.py --scene sorting-by-height` from a second terminal
+while it was open — *"Attached to the already-running engine (scene
+'sorting-by-height', 16 tags)"*, `RESULT tall=1 short=2`, `PASS`, and no
+process left behind afterward. New self-test `--self-test=tryscene`
+(`tools/test_plan.py` C18) checks the manifest-matching logic directly (safe
+to call headless, no side effect) and drives the actual refusal path through
+`SceneToolbarUI.TryThisScene()` against a real custom-named scene, loaded
+and reloaded from a file the way a user's own save would be, checking the
+real on-screen label text — deliberately **not** exercising the matching
+path through the real button method, since that spawns a real terminal
+process, which a headless CI run must never trigger. Deliberately broke
+`FindManifestEntry` to fall back to the wrong entry on a miss and watched
+the self-test fail — and watched it actually attempt to spawn `try_scene.py
+--scene sorting-by-height` for an unrelated custom scene, confirming the
+test's own caution about that path was warranted — then restored it.
 
 **UX-32 — Keep "what this scene teaches" reachable — done**
 *Files:* `engine/src/Editor/StartScreenUI.cs`, a new panel or the property
@@ -845,7 +891,7 @@ Verified by screenshot: `--scene=tank_level_control.json` now shows "Tank
 level control" and its real blurb, scrolling correctly, not "Sorting by
 height" left over from the scene that was replaced.
 
-**UX-33 — F5's empty state offers the exercise — not started, blocked on UX-31**
+**UX-33 — F5's empty state offers the exercise — not started, unblocked**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
 *Done when:* with no driver connected the dialog reads *"No PLC yet? Run the
 built-in exercise for this scene first."* with a button.
@@ -1506,7 +1552,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-28 | Launcher must not auto-start a driver | 3 | S | — | done |
 | UX-29 | A Linux launcher | 3 | S | UX-23 | done |
 | UX-30 | The Demo button refuses honestly | 4 | S | UX-16 | done |
-| UX-31 | A "Try this scene" affordance | 4 | M | UX-21 |  |
+| UX-31 | A "Try this scene" affordance | 4 | M | UX-21 | done |
 | UX-32 | Keep "what this scene teaches" reachable | 4 | M | UX-13 | done |
 | UX-33 | F5's empty state offers the exercise | 4 | S | UX-31 |  |
 | UX-34 | Live I/O in the part property panel | 5 | L | UX-35 | done |

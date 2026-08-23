@@ -107,6 +107,12 @@ public partial class IdleHintUI : Control
               + $"click: {kinds}. Hover to see which.");
     }
 
+    /// <summary>Generic hook for anything else that needs to interrupt the
+    /// idle hint with a message for a few seconds — currently the toolbar's
+    /// "Try this scene" button (UX-31), for a scene with no matching exercise
+    /// or a python launch failure.</summary>
+    public void Announce(string text) => ShowInterrupt(text);
+
     /// <summary>Force the hint visible with specific text for a few seconds,
     /// even if the ambient idle nag was already dismissed — this is a direct
     /// response to something the user just did, not an ambient nag they

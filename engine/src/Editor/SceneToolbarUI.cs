@@ -24,6 +24,11 @@ public partial class SceneToolbarUI : Control
     /// and the cap warning. See FF-12.</summary>
     public SceneEditor? Editor { get; set; }
 
+    /// <summary>Set by Main so "Try this scene" (UX-31) can announce a
+    /// refusal the same way Demo's does (UX-30) — a click that visibly does
+    /// nothing is the dishonesty this whole plan keeps closing.</summary>
+    public IdleHintUI? IdleHint { get; set; }
+
     private Label _connectionChip = null!;
     private bool? _lastListening;
     private bool? _lastHasClient;
@@ -128,6 +133,50 @@ public partial class SceneToolbarUI : Control
 
         AddChild(dialog);
         dialog.PopupCentered();
+    }
+
+    /// <summary>
+    /// UX-31: run <c>tools/try_scene.py</c> for whatever scene is loaded,
+    /// the same shape as F5's <em>Apply &amp; Connect</em> — copy the command,
+    /// print it, and open a visible terminal running it. <c>try_scene.py</c>
+    /// itself attaches to this already-running engine rather than spawning a
+    /// second one on the same port, so the exercise plays out right here in
+    /// the window that is already open, not in an invisible headless copy.
+    /// </summary>
+    public void TryThisScene()
+    {
+        if (Editor is null) return;
+
+        var entry = FindManifestEntry(Editor.SceneName);
+        if (entry is null)
+        {
+            IdleHint?.Announce($"No built-in exercise for scene '{Editor.SceneName}' — "
+                + "try one of the five shipped templates instead.");
+            return;
+        }
+
+        string engineDir = ProjectSettings.GlobalizePath("res://").TrimEnd('/', '\\');
+        string repoRoot = Path.GetDirectoryName(engineDir) ?? engineDir;
+        string command = TerminalLauncher.PythonCommand($"tools/try_scene.py --scene {entry.Id}");
+        DisplayServer.ClipboardSet(command);
+        GD.Print($"try_scene.py command (copied to clipboard):\n  {command}");
+
+        if (TerminalLauncher.Spawn(repoRoot, command) <= 0)
+        {
+            IdleHint?.Announce("Could not start python. The command is on your clipboard — run it yourself.");
+        }
+    }
+
+    /// <summary>Public for the self-test (<c>--self-test=tryscene</c>): a pure
+    /// lookup, safe to exercise directly without risking the process-spawn
+    /// side effect <see cref="TryThisScene"/> has once a scene matches.</summary>
+    public static TemplateEntry? FindManifestEntry(string sceneName)
+    {
+        foreach (var entry in TemplateManifest.Load())
+        {
+            if (entry.Scene == sceneName) return entry;
+        }
+        return null;
     }
 
     /// <summary>Scenes go beside the project by default, where a person can
@@ -242,6 +291,16 @@ public partial class SceneToolbarUI : Control
         };
         _demoBtn.Pressed += () => EmitSignal(SignalName.DemoToggled);
         hbox.AddChild(_demoBtn);
+
+        var tryBtn = new Button
+        {
+            Text = "🧪 Try",
+            TooltipText = "Run this scene's built-in exercise the way a PLC would "
+                         + "(tools/try_scene.py) — the same shape as Apply & Connect",
+            CustomMinimumSize = new Vector2(72, 32),
+        };
+        tryBtn.Pressed += TryThisScene;
+        hbox.AddChild(tryBtn);
 
         var wiringBtn = new Button
         {

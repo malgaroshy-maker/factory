@@ -232,6 +232,10 @@ public partial class Main : Node
         {
             AddChild(new RunModeHintSelfTest { Name = "RunModeHintSelfTest", Editor = _editor! });
         }
+        if (_selfTest == "tryscene")
+        {
+            AddChild(new TryThisSceneSelfTest { Name = "TryThisSceneSelfTest", Editor = _editor! });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -349,6 +353,7 @@ public partial class Main : Node
         toolbarUI.Bus = _bus;
         toolbarUI.Demo = demo;
         toolbarUI.Editor = editor;
+        toolbarUI.IdleHint = idleHint;
         editor.Toolbar = toolbarUI;
         AddChild(toolbarUI);
 
