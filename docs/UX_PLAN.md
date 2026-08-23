@@ -3,7 +3,8 @@
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20
 (the C# side; UX-21/22, `tools/try_scene.py`, not started), Phase 3
 (UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and Phase
-5's UX-34/UX-35/UX-36. Everything else is still proposal.
+5's UX-34/UX-35/UX-36/UX-38/UX-40/UX-41 (UX-37 not started; UX-39 blocked on
+it). Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -809,7 +810,7 @@ built-in exercise for this scene first."* with a button.
 
 ---
 
-### Phase 5 — Operate any component by hand
+### Phase 5 — Operate any component by hand — UX-34/35/36/38/40/41 done, UX-37/39 not started
 
 **The phase that makes the app explorable.** Specification in §5. Today, turning
 a conveyor on means knowing it owns a `.rotate` tag, knowing the part name is
@@ -920,13 +921,20 @@ its valve. Each part declares what a click on it means.
 *Verify:* in Run mode, click each part type in turn and watch its tag move.
 *Size:* L.
 
-**UX-38 — End the "Run" collision in the toolbar**
+**UX-38 — End the "Run" collision in the toolbar — done**
 *Files:* `engine/src/Editor/SceneToolbarUI.cs:62`.
 *Done when:* the mode toggle no longer shares a word and a glyph with the pause
 button — `✎ Build` / `👆 Operate` reads unambiguously beside `⏸ Pause` / `▶ Run`.
 Drop the ▶ from the mode button whatever the wording.
 *Verify:* pause while in Run mode; the toolbar reads unambiguously.
 *Size:* S.
+
+`ShowMode` now renders `✎ Build` / `👆 Operate` — no shared word or glyph with
+`⏸ Pause` / `▶ Run` anywhere in either state. Paused in Run mode the toolbar
+now reads `👆 Operate … ▶ Run`, two buttons that no longer look like the same
+claim made twice. Verified by clean build and reading the two labels together
+in both mode/pause combinations; no dedicated self-test — this is a string
+change with no branching logic to regress.
 
 **UX-39 — Run mode explains itself**
 *Files:* `engine/src/Editor/SceneEditor.cs`,
@@ -937,14 +945,23 @@ highlight on hover.
 *Verify:* enter Run mode on an empty scene, then on a full one.
 *Size:* M. *Depends on:* UX-37.
 
-**UX-40 — `Ctrl+S` and `Ctrl+O` survive Run mode**
+**UX-40 — `Ctrl+S` and `Ctrl+O` survive Run mode — done**
 *Files:* `engine/src/Editor/SceneEditor.cs:195`.
 *Done when:* save and open work in both modes, or refuse out loud. Blocking the
 editing keys in Run mode is correct; silently swallowing save is not (§2.7).
 *Verify:* press Ctrl+S in Run mode; the save dialog opens.
 *Size:* S.
 
-**UX-41 — Show what is being held by hand, and release it in one click**
+Moved the Ctrl+S/Ctrl+O check in `_UnhandledInput` ahead of the
+`Mode == EditorMode.Run` early-return that used to swallow every key
+including these two, and removed the now-unreachable duplicate branches
+further down the Edit-mode chain. Undo/redo/move/rotate/delete stay
+Run-mode-blocked, unchanged — only save and open moved. Verified by clean
+build and by pressing Ctrl+S/Ctrl+O in Run mode in a windowed run; no
+dedicated self-test, the existing self-tests that exercise Run mode (e.g.
+`--self-test=proppanel`) don't touch the key-dispatch path this changed.
+
+**UX-41 — Show what is being held by hand, and release it in one click — done**
 *Files:* `engine/src/Editor/TagInspectorUI.cs`,
 `engine/src/Editor/SceneToolbarUI.cs`.
 *Done when:* a count of forced tags is visible outside the inspector, with a
@@ -952,6 +969,16 @@ editing keys in Run mode is correct; silently swallowing save is not (§2.7).
 later, and that is a genuinely confusing afternoon.
 *Verify:* force three tags, connect a driver, see the warning and clear it.
 *Size:* M. *Depends on:* UX-35.
+
+Added `TagTable.ForcedCount` and `ClearAllForces()`, and a toolbar chip
+(`🔓 N forced — release`) that appears only while `ForcedCount > 0` and clears
+every force in one click via `Tags.ClearAllForces()`. Sits beside the existing
+Demo/connection chips in `SceneToolbarUI`, polled the same way they are.
+Verified by forcing tags from both the Tag Inspector and the part property
+panel (UX-34) and watching the chip appear with the right count, then
+clicking it and watching the count drop to 0 and the chip hide; no dedicated
+self-test — `TagTable.ForcedCount`/`ClearAllForces` are one-line pass-throughs
+over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
@@ -1334,10 +1361,10 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-35 | Force any tag type, not just bits | 5 | M | — | done |
 | UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |
 | UX-37 | Click a component in Run mode to operate it | 5 | L | — |  |
-| UX-38 | End the "Run" collision in the toolbar | 5 | S | — |  |
+| UX-38 | End the "Run" collision in the toolbar | 5 | S | — | done |
 | UX-39 | Run mode explains itself | 5 | M | UX-37 |  |
-| UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — |  |
-| UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 |  |
+| UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — | done |
+| UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 | done |
 | UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 |  |
 | UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 |  |
 | UX-44 | `--self-test=modes` | 6 | M | UX-37 |  |
