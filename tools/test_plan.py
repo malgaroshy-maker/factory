@@ -19,7 +19,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -36,15 +35,15 @@ USER_DIR = Path(os.environ.get("APPDATA", Path.home())) / "Godot" / "app_userdat
 
 
 def find_godot() -> str | None:
-    """Locate a Godot .NET binary: $GODOT, then PATH."""
-    if (env := os.environ.get("GODOT")) and Path(env).exists():
-        return env
-    for name in ("godot", "godot-mono",
-                 "Godot_v4.7.2-stable_mono_win64_console",
-                 "Godot_v4.7.1-stable_mono_win64_console"):
-        if found := shutil.which(name):
-            return found
-    return None
+    """$GODOT, then PATH, then the usual download locations.
+
+    Shared with run.py rather than copied: the runner and the launcher have to
+    agree about which Godot a machine has, or the suite tests a different build
+    from the one a person just launched.
+    """
+    sys.path.insert(0, str(ROOT))
+    from run import find_godot as locate     # noqa: PLC0415 — avoids a cycle at import time
+    return locate()
 
 
 GODOT = find_godot()

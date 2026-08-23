@@ -37,13 +37,66 @@ GODOT_NAMES = ["godot", "godot-mono"] + [
 GODOT_DOWNLOAD = "https://godotengine.org/download/ (the .NET build for your OS, 4.7.2 or newer 4.7.x)"
 
 
+#: Where a Godot download actually ends up when nobody puts it on PATH. Godot
+#: ships as a zip with no installer, so "installed" usually means "extracted
+#: next to wherever the browser dropped it" — a drive root, Downloads, or
+#: Desktop. Searching these is the difference between the launcher working out
+#: of the box and printing instructions at someone who already did the download.
+def _search_roots() -> list[Path]:
+    home = Path.home()
+    roots = [home / "Downloads", home / "Desktop", home / "Applications"]
+    if platform.system() == "Windows":
+        roots += [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs",
+                  Path(os.environ.get("ProgramFiles", r"C:\Program Files"))]
+        try:
+            roots += [Path(drive) for drive in os.listdrives()]      # 3.12+
+        except AttributeError:
+            roots += [Path(f"{letter}:\\") for letter in "CDEFG"]
+    else:
+        roots += [Path("/opt"), Path("/usr/local"), home / ".local" / "share"]
+    return [root for root in roots if root.is_dir()]
+
+
+#: A Godot zip extracts to Godot_vX-stable_mono_<plat>/, and people often
+#: extract it into a folder of the same name again, so look one level deeper too.
+_GODOT_GLOBS = [
+    "Godot_v4.7*mono*console.exe", "Godot_v4.7*mono*/*console.exe",
+    "Godot_v4.7*mono*/*/*console.exe",
+    "Godot_v4.7*mono*.x86_64", "Godot_v4.7*mono*/*.x86_64",
+    "Godot_v4.7*mono*/*/*.x86_64",
+]
+
+
+def search_common_locations() -> str | None:
+    """Look where a downloaded-and-extracted Godot usually sits.
+
+    Bounded on purpose: a fixed list of directories, globbed at most three
+    levels deep. It must never turn into a filesystem walk — a launcher that
+    hangs looking for Godot is worse than one that says it cannot find it.
+    """
+    found: list[Path] = []
+    for root in _search_roots():
+        for pattern in _GODOT_GLOBS:
+            try:
+                found += [path for path in root.glob(pattern) if path.is_file()]
+            except OSError:
+                continue    # unreadable drive or permission-denied directory
+    if not found:
+        return None
+    # Newest version wins, and a console build beats the windowed one: the
+    # console exe is the one that prints the engine's own log to the terminal.
+    found.sort(key=lambda path: (path.name, "console" in path.name), reverse=True)
+    return str(found[0])
+
+
 def find_godot() -> str | None:
+    """$GODOT, then PATH, then the usual download locations."""
     if (env := os.environ.get("GODOT")) and Path(env).exists():
         return env
     for name in GODOT_NAMES:
         if found := shutil.which(name):
             return found
-    return None
+    return search_common_locations()
 
 
 def port_holder(port: int = 7411) -> str | None:

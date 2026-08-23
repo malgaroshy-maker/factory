@@ -30,7 +30,6 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -50,14 +49,15 @@ PORT = 7411
 
 
 def find_godot() -> str | None:
-    if (env := os.environ.get("GODOT")) and Path(env).exists():
-        return env
-    for name in ("godot", "godot-mono",
-                 "Godot_v4.7.2-stable_mono_win64_console",
-                 "Godot_v4.7.1-stable_mono_win64_console"):
-        if found := shutil.which(name):
-            return found
-    return None
+    """$GODOT, then PATH, then the usual download locations.
+
+    One implementation, in run.py, rather than a third copy drifting from the
+    launcher's: they all have to agree about which Godot a machine has, or
+    `run.py` opens one build while this script spawns another.
+    """
+    sys.path.insert(0, str(ROOT))
+    from run import find_godot as locate     # noqa: PLC0415 — avoids a cycle at import time
+    return locate()
 
 
 def load_manifest() -> list[dict]:

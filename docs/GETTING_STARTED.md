@@ -37,10 +37,16 @@ python -m pytest -q
 python run.py
 ```
 
-`run.py` locates a Godot 4.7 .NET build (checking the `GODOT` environment
-variable, then `PATH`; if neither has it, it prints exactly what to download and
-where to put it), builds the C# engine, and launches it. Works the same on
-Windows and Linux; Windows users can also double-click `run_factoryforge.bat`.
+`run.py` locates a Godot 4.7 .NET build, builds the C# engine, and launches it.
+Works the same on Windows and Linux; Windows users can also double-click
+`run_factoryforge.bat`.
+
+**You should not have to configure anything.** Godot ships as a zip with no
+installer, so it looks in the `GODOT` environment variable, then `PATH`, then
+the places an extracted download actually sits — your drive roots, Downloads,
+Desktop, and the usual program directories. Only if all of that misses does it
+print what to download. To point it at a specific build, set `GODOT` to that
+executable's full path.
 
 FactoryForge opens on a **start screen**: pick a template, open a scene you
 saved, or start empty. The key list is on that screen too, and the 🏠 button in
