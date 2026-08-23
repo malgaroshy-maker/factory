@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20
-(the C# side; UX-21/22, `tools/try_scene.py`, not started), Phase 3
-(UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and all of
-Phase 5 (UX-34…UX-41). Everything else is still proposal.
+**Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
+(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 now
+unblocked by UX-21 but not yet started), and all of Phase 5 (UX-34…UX-41).
+Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -548,7 +548,7 @@ line and the `--print-tags` `"scene"` field agree in every case.
 
 ---
 
-### Phase 2 — One runnable exercise per scene — UX-16…UX-20 done, UX-21/22 not started
+### Phase 2 — One runnable exercise per scene — done (UX-16…UX-22)
 
 The behaviour spec for all five is §4. **Both homes, C# first** — decided:
 
@@ -639,7 +639,7 @@ All four passed on the first real run once the `_PhysicsProcess` fix landed.
 `python -m pytest -q` unaffected (71 passed); full `test_plan.py --only A,C,E`
 21 passed in 165s.
 
-**UX-21 — `tools/try_scene.py` — not started**
+**UX-21 — `tools/try_scene.py` — done**
 *Files:* new `tools/try_scene.py`; fold `tools/drive_engine.py` in behind it.
 *Done when:* `--scene <id>`, `--duration`, `--verbose`, `--list`; one
 `RESULT ...` line; exit 0/1 — the convention `check_protocol.py` and
@@ -648,13 +648,58 @@ All four passed on the first real run once the `_PhysicsProcess` fix landed.
 `drive_engine.py`'s `tall=5 short=5` exactly.
 *Size:* M. *Depends on:* UX-10, UX-13.
 
-**UX-22 — Assertions for all five scenes in `try_scene.py`**
+Self-contained: it finds Godot the same way `run.py` does, spawns the engine
+headless itself (with `--scene=<template path>` for the four templates, or
+`--deterministic` for `sorting-by-height`, which has no template path and so
+no conflict with UX-12's `--deterministic --scene=` rejection), connects,
+drives, asserts, and tears the subprocess down — one command, matching the
+Verify step literally, not "start the engine yourself first" the way
+`drive_engine.py` still requires. Refuses outright with a clear message if
+port 7411 is already bound, rather than silently connecting to whatever else
+is listening. Verified against all five scenes, including the exact-count
+regression: `--scene sorting-by-height` gives `tall=5 short=5`, matching
+`drive_engine.py`'s own contract to the count.
+
+`tools/drive_engine.py` was not deleted or rewritten — `test_plan.py`'s E1/E2
+still spawn an engine externally and run it directly, a proven, working path
+that UX-43 (Phase 6) is the deliberate place to reconsider, not a side effect
+of this item. "Folded in behind it" instead means `drive_sorting_by_height`
+mirrors its logic line for line, and it is what `--list`/`--scene
+sorting-by-height` now point a new user at instead.
+
+**UX-22 — Assertions for all five scenes in `try_scene.py` — done, folded into UX-21**
 *Files:* `tools/try_scene.py`.
 *Done when:* each scene's §4 assertions run and fail loudly on a real
 regression.
 *Verify:* break one thing deliberately per scene and watch the right assertion
 fail.
 *Size:* M. *Depends on:* UX-21.
+
+Landed alongside UX-21 rather than after it: each of the five driver
+functions (`drive_sorting_by_height`, `drive_start_stop_station`,
+`drive_tank_level_control`, `drive_light_curtain_sorting`,
+`drive_roller_line_weighing`) mirrors its engine-side profile under
+`engine/src/Sim/DemoProfiles/` line for line — same constants, same edge
+detection, same handshakes — and returns pass/fail against the exact
+assertion §4 and the matching C# self-test (UX-17…UX-20) already use, so a
+regression in either language fails the same way. `start-stop-station` is the
+one scene with no PLC-driven outputs alone: nothing but a human normally
+presses `panel.start`/`.stop`/`.reset`, so the driver plays both roles at
+once — forcing the panel's input tags the way an operator would (`press()`,
+mirroring `ButtonPanel.Press`'s one-edge-per-press contract) while writing
+`belt.rotate`/`tower.*`/`produced.value` the way `StartStopStationProfile`
+does — and walks the same Start → E-stop → Start-while-tripped (refused) →
+release → Reset → Start sequence `StartStopProfileSelfTest` already proved
+correct on the engine side.
+
+Verified by deliberately breaking the tank scene's final check (comparing the
+settled level against `80.0` instead of the real `55.0` setpoint) and
+watching it report `FAIL — tank.level settled at 55.0, outside ±2.8 of 55.0`
+with exit code 1, then restoring it. All five scenes re-verified after: `tall=5
+short=5` (sorting, exact), the full 12-assertion start/stop sequence, `level=55.0`
+(tank, within band), `tall=2 short=3` (light curtain, both counters advanced),
+`outfeed=5 sawMetal=True` (roller). No orphaned Godot process left behind in
+any case, including the unknown-scene and port-already-in-use error paths.
 
 ---
 
@@ -724,7 +769,7 @@ stays opt-in via a flag.
 
 ---
 
-### Phase 4 — Tell the truth in the UI — UX-30/32 done, UX-31/33 blocked on UX-21
+### Phase 4 — Tell the truth in the UI — UX-30/32 done, UX-31/33 not started (unblocked)
 
 **UX-30 — The Demo button refuses honestly — done**
 *Files:* `engine/src/Sim/DemoDriver.cs`, `engine/src/Editor/SceneToolbarUI.cs`.
@@ -756,7 +801,7 @@ would try to run `SortingByHeightProfile` against an empty scene instead of
 refusing, reproducing the exact silent-no-op bug UX-30 exists to close. Fixed
 both call sites in `Main.cs`.
 
-**UX-31 — A "Try this scene" affordance — not started, blocked on UX-21**
+**UX-31 — A "Try this scene" affordance — not started, unblocked**
 *Files:* `engine/src/Editor/SceneToolbarUI.cs`.
 *Done when:* it runs the right exercise for whatever is loaded and copies the
 command — the same shape as F5's *Apply & Connect*.
@@ -1451,8 +1496,8 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-18 | `tank-level-control` profile | 2 | M | UX-16, UX-35 | done |
 | UX-19 | `light-curtain-sorting` profile | 2 | M | UX-16 | done |
 | UX-20 | `roller-line-weighing` profile | 2 | S | UX-16 | done |
-| UX-21 | `tools/try_scene.py` | 2 | M | UX-10, UX-13 |  |
-| UX-22 | Assertions for all five scenes | 2 | M | UX-21 |  |
+| UX-21 | `tools/try_scene.py` | 2 | M | UX-10, UX-13 | done |
+| UX-22 | Assertions for all five scenes | 2 | M | UX-21 | done |
 | UX-23 | One cross-platform launcher | 3 | M | — | done |
 | UX-24 | Purge the author's machine from the repo | 3 | S | — | done |
 | UX-25 | Fix `demo` → `connect` in shipped material | 3 | S | — | done |
