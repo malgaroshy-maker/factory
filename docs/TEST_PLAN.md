@@ -1,6 +1,6 @@
 # FactoryForge Test Plan
 
-*Last run: 2026-08-12. Results at the bottom.*
+*Last run: 2026-08-23. Results at the bottom.*
 
 A single command runs all of it:
 
@@ -184,7 +184,14 @@ Honest list of what this plan does **not** prove:
 
 ## Results
 
-**2026-08-12 — 20 passed, 0 failed, 227s** (`python tools/test_plan.py --gui`).
+**2026-08-23 — 47 passed, 0 failed, 417s** (`python tools/test_plan.py --gui`).
+
+Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
+`docs/UX_PLAN.md` landing in between: ten more headless self-tests (C10…C19,
+the per-scene demo profiles, Run-mode click and hover, "Try this scene", and
+the scene-tag-set fixture check), a pairwise Edit/Run self-test (C20), a
+second robustness check for non-bit forcing (G7), and a whole new section —
+H1…H5, all five shipped scenes driven end to end through `try_scene.py`.
 
 Notable: **F5 sorts 5 tall / 5 short on the rigid-body scene**, matching the
 deterministic contract. That is not guaranteed and is not asserted — Jolt makes

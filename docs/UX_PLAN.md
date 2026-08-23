@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
-(UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), all of
-Phase 5 (UX-34…UX-41), and Phase 6's UX-42…UX-45. Only Phase 0 (ship a
-binary) and UX-46 (document all of it) remain.
+**Status:** every phase done except Phase 0 (ship a binary): Phase 1
+(UX-10…UX-15), Phase 2 (UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4
+(UX-30…UX-33), Phase 5 (UX-34…UX-41), and Phase 6 (UX-42…UX-46) are all
+complete. Phase 0 is the only proposal left standing.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -1200,7 +1200,7 @@ over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
-### Phase 6 — Hold the line — UX-42…UX-45 done, UX-46 not started
+### Phase 6 — Hold the line — done (UX-42…UX-46)
 
 **UX-42 — `--self-test=scenes` — done**
 *Files:* new `engine/src/Sim/SceneTagSetSelfTest.cs`, `engine/src/Main.cs`, a
@@ -1352,7 +1352,7 @@ time out with `"no update arrived within 5s"`, then restored it. Full
 `test_plan.py --only A,C,E,G` — 35 passed; `python -m pytest -q` — 71
 passed.
 
-**UX-46 — Document all of it**
+**UX-46 — Document all of it — done**
 *Files:* `docs/TEST_PLAN.md`, `README.md`, `docs/GETTING_STARTED.md`.
 *Done when:* the new sections sit beside the existing `A`–`G` ones, and §5 of
 this document has been folded into the user-facing docs rather than left in a
@@ -1360,6 +1360,28 @@ planning file.
 *Verify:* a new user follows the docs and operates a component within five
 minutes of first launch.
 *Size:* S.
+
+`docs/TEST_PLAN.md` was kept current incrementally through this whole phase
+(every C, G and H item landed alongside its own commit, not batched here),
+so this item's own work was three things: a real, current `--gui` run rather
+than trusting the stale 2026-08-12 snapshot at the bottom of the file
+(**47 passed, 0 failed, 417s** — up from 20, with a note on what grew it);
+folding §5 into `docs/GETTING_STARTED.md` as a new **"Operating any
+component by hand"** section right after Edit/Run mode, covering all three
+routes in order of directness — click the part in Run mode (UX-37), the
+part's own property panel (UX-34), and the Tag Inspector's Force button
+(UX-35/41) — plus a pointer to `tools/try_scene.py` and the **🧪 Try**
+button (UX-21/31/33) exactly where the old `connect --driver mock` warning
+(§2.6) needed one; and refreshing `README.md`'s "Manual scene control"
+bullet, stale since UX-37 landed (it still said only the operator panel
+answered a click), plus a new bullet naming the per-scene exercises.
+
+Every specific claim in the new prose was checked against the running app
+or the self-tests that already prove it, not written from memory: the exact
+banner text (*"5 parts respond to a click: conveyor, pusher, stack light,
+panel, emitter. Hover to see which."*), the mode button's two labels, the
+forced-tags chip's exact text, and the toolbar/F5 button labels all match
+what UX-37…UX-41's own verification already captured by screenshot.
 ---
 
 ## 4. Per-scene exercise specification
@@ -1711,7 +1733,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 | done |
 | UX-44 | `--self-test=modes` | 6 | M | UX-37 | done |
 | UX-45 | Cover non-bit forcing | 6 | S | UX-35 | done |
-| UX-46 | Document all of it | 6 | S | — |  |
+| UX-46 | Document all of it | 6 | S | — | done |
 
 **Totals:** 46 items — 24 S, 17 M, 4 L, 1 S-or-L (UX-09). By phase: 0→9, 1→6, 2→7, 3→7, 4→4, 5→8, 6→5.
 **Critical path to a first release:** UX-24 → UX-26 → UX-35 → UX-34 → UX-13 →

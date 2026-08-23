@@ -80,12 +80,19 @@ the scene is paused.
 ### Edit mode and Run mode
 
 A click has to mean one thing at a time. In **Edit** mode it selects a part so
-you can move (`M`) or delete it; in **Run** mode the parts are furniture and the
-only things that answer a click are the controls an operator could reach. The
-toolbar shows which mode you are in, and the parts palette hides itself while
-the line is running.
+you can move (`M`) or delete it; in **Run** mode every operable part answers a
+click by doing whatever it does — a conveyor toggles on, a pusher strokes, a
+stack light lamp switches, a tank valve opens. The toolbar's mode button reads
+`✎ Build` / `👆 Operate` so the two are never mistaken for one another, and the
+parts palette hides itself while the line is running.
 
-Press `F1`, then click the buttons on the **control panel** beside the belt:
+Press `F1` to enter Run mode. A banner along the bottom names what's clickable
+— *"5 parts respond to a click: conveyor, pusher, stack light, panel,
+emitter. Hover to see which."* — or says plainly that nothing is, on a scene
+you have not built anything into yet. Hovering over an operable part outlines
+it, so you never have to click blind to find out what responds.
+
+Click the **control panel** beside the belt:
 
 | Control | Tag | Behaviour |
 |---|---|---|
@@ -107,6 +114,57 @@ catch. This is the cheapest place to learn that.
 If you need repeatable results — grading an exercise, or comparing two runs — add
 `-- --deterministic` for the fixed-timestep scene. Both expose the same tags, so
 your program does not change.
+
+---
+
+### Operating any component by hand
+
+Click a conveyor. Turn it on. Watch it move. That should need no PLC, no
+Python and no knowledge of tag ids — it is how you find out what a part *is*
+before you write a line of control code against it. Three ways in, from
+fastest to most precise:
+
+1. **Click the part itself, in Run mode (`F1`).** A conveyor or roller
+   toggles its `.rotate` bit; a pusher strokes out and back; a stack light
+   lamp switches independently of its neighbours (click the green dome, then
+   the yellow one — each answers on its own); a level tank's inlet or outlet
+   pipe opens or shuts that one valve fully. A box emitter pulses one carton
+   per click rather than streaming them, since holding the tag high would not
+   spawn a second one.
+2. **Select the part (Edit mode) and use its own property panel.** Every
+   part's panel shows its own I/O beneath its settings — a toggle for a bit
+   output, a slider for a float, a live readout with an **Override**
+   checkbox for an input. This is the one place a tank's fill and drain
+   valves each get a real slider, and the only way to drive a value the part
+   itself does not expose to a click (a digital display's number, for
+   instance).
+3. **The Tag Inspector**, top-right, lists every tag on the bus regardless of
+   which part owns it, each with a **Force** button — works on bit, int and
+   float tags alike. A tag left forced stays pinned (the button reads
+   **UNFORCE**) even after a real driver connects later, which is exactly
+   the point when you are overriding a stuck sensor to see how your program
+   reacts — and exactly the thing to remember to release again afterward.
+   The toolbar shows a **🔓 N forced — release** chip whenever anything is,
+   so a forced tag is never invisible for long.
+
+Forcing still works while the simulation is **paused** (`Space`) — freeze the
+line, force a sensor, and read your PLC's response at that exact instant.
+
+Not sure a scene is wired the way you expect before you write a real PLC
+program against it? Run its built-in exercise:
+
+```bash
+python tools/try_scene.py --scene tank-level-control
+```
+
+It spawns the engine, drives the scene the way a PLC would, and reports
+`PASS`/`FAIL` — or press the toolbar's **🧪 Try** button (or **🧪 Try this
+scene**, the same action offered inside the F5 dialog) to run it against the
+window already open, so you watch it happen rather than reading a log.
+`python tools/try_scene.py --list` shows every scene id. This is what to
+reach for instead of `connect --driver mock` — the mock driver only records
+what it is told, so connecting it to a scene you have not written a program
+for yet leaves the line more dead than doing nothing at all.
 
 ---
 
