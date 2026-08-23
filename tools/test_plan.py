@@ -262,6 +262,10 @@ def section_c() -> None:
     _self_test("C13", "roller-line-weighing profile: outfeed counts, metal detected", "roller")
     _self_test("C14", "Demo's refusal reaches the UI, not just the console", "refusal")
     _self_test("C15", "part property panel drives live I/O (bit/int/float x output/input)", "proppanel")
+    # Run mode's click only ever pressed a Control Panel cap; every other part
+    # was dead in Run mode however loud the toolbar's Operate label claimed
+    # otherwise.
+    _self_test("C16", "Run mode's click operates the part it lands on, not just the panel", "operate")
 
 
 def section_d(enabled: bool) -> None:

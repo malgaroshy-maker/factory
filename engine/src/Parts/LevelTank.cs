@@ -186,6 +186,33 @@ public partial class LevelTank : Node3D
         ApplyLevel();
     }
 
+    /// <summary>Local-space centres of the inlet pipe (top) and the outlet pipe
+    /// (side, near the foot), matching where <c>_Ready</c> places them.</summary>
+    private static readonly Vector3 InletCentre = new(0, TankHeight + 0.11f, 0);
+    private static readonly Vector3 OutletCentre = new(0, 0.02f, TankRadius + 0.08f);
+    private const float ValveHitRadius = 0.09f;
+
+    /// <summary>
+    /// Which valve, if any, a click hits -- "fill" for the inlet pipe, "drain"
+    /// for the outlet -- so the two can be operated independently instead of a
+    /// click on the tank meaning only one of them (UX-37). Tested as spheres
+    /// around each pipe rather than the tank's bounding box, the same
+    /// reasoning as <see cref="ButtonPanel.HitTest"/>.
+    /// </summary>
+    public string? HitTest(Vector3 worldOrigin, Vector3 worldDirection)
+    {
+        var toLocal = GlobalTransform.AffineInverse();
+        Vector3 origin = toLocal * worldOrigin;
+        Vector3 dir = (toLocal.Basis * worldDirection).Normalized();
+
+        float? fillT = RayHit.Sphere(origin, dir, InletCentre, ValveHitRadius);
+        float? drainT = RayHit.Sphere(origin, dir, OutletCentre, ValveHitRadius);
+
+        if (fillT is null) return drainT is null ? null : "drain";
+        if (drainT is null) return "fill";
+        return fillT <= drainT ? "fill" : "drain";
+    }
+
     /// <summary>Level the geometry was last built for, so an unchanged tank
     /// costs nothing.</summary>
     private float _drawnLevel = float.NaN;

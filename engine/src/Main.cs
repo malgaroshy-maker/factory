@@ -224,6 +224,10 @@ public partial class Main : Node
         {
             AddChild(new PartPropertyPanelSelfTest { Name = "PartPropertyPanelSelfTest", Tags = tags, Editor = _editor! });
         }
+        if (_selfTest == "operate")
+        {
+            AddChild(new ClickOperateSelfTest { Name = "ClickOperateSelfTest", Tags = tags, Editor = _editor! });
+        }
     }
 
     private void BuildView(TagTable tags)

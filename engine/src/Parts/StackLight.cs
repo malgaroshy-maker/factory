@@ -85,6 +85,41 @@ public partial class StackLight : Node3D
         column.AddChild(_redLampMesh);
     }
 
+    /// <summary>Local-space Y of each lamp's centre, matching the literals
+    /// <c>_Ready</c> builds them at (column is offset by -FloorDrop, lamps sit
+    /// at 0.45/0.55/0.65 within it) -- kept here rather than read back off the
+    /// mesh instances so a hit test never has to ask a lamp where it is.</summary>
+    private const float LampRadius = PartLayout.StackLightDiameter / 2 + 0.03f;
+
+    /// <summary>
+    /// Which lamp, if any, a click hits -- "green"/"yellow"/"red", matching
+    /// the tag suffix that lamp drives. Tested as three spheres rather than the
+    /// tower's bounding box, the same reasoning as <see cref="ButtonPanel.HitTest"/>:
+    /// the box covers the whole post, not just one dome (UX-37).
+    /// </summary>
+    public string? HitTest(Vector3 worldOrigin, Vector3 worldDirection)
+    {
+        var toLocal = GlobalTransform.AffineInverse();
+        Vector3 origin = toLocal * worldOrigin;
+        Vector3 dir = (toLocal.Basis * worldDirection).Normalized();
+
+        string? best = null;
+        float nearest = float.MaxValue;
+
+        foreach (var (name, y) in new (string Name, float Y)[]
+                 { ("green", 0.45f), ("yellow", 0.55f), ("red", 0.65f) })
+        {
+            var centre = new Vector3(0, y - PartLayout.FloorDrop, 0);
+            if (RayHit.Sphere(origin, dir, centre, LampRadius) is not { } t) continue;
+            if (t >= nearest) continue;
+
+            nearest = t;
+            best = name;
+        }
+
+        return best;
+    }
+
     private static StandardMaterial3D CreateLampMaterial(Color baseColor)
     {
         return new StandardMaterial3D

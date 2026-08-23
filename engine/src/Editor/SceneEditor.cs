@@ -509,44 +509,177 @@ public partial class SceneEditor : Node3D
         }
     }
 
+    /// <summary>Whole-body operable parts: no sub-regions of their own, so one
+    /// click anywhere on the part's bounding box drives the one tag named here
+    /// (UX-37). Parts with independently clickable sub-regions -- a panel's
+    /// caps, a stack light's lamps, a tank's valves -- are asked directly via
+    /// their own <c>HitTest</c> instead and do not appear here.</summary>
+    private static readonly Dictionary<string, string> WholeBodyOperableTag = new()
+    {
+        ["ConveyorBelt"] = "rotate",
+        ["RollerConveyor"] = "rotate",
+        ["WeighingConveyor"] = "rotate",
+        ["PusherMechanism"] = "extend",
+        ["Emitter"] = "emit",
+    };
+
     /// <summary>
-    /// Run mode's click: find the operator control under the cursor and press it.
-    ///
-    /// The ray is tested against the panel's <em>caps</em>, not its bounding box.
-    /// The box wraps the housing, the pedestal and both lamps, so picking the
-    /// part first and then a button would fire Start when you clicked the floor
-    /// under the pedestal. Panels are asked directly, and each decides whether
-    /// the ray actually hit one of its buttons.
+    /// Run mode's click: find the operator control under the cursor and press
+    /// it. Projects the screen position through the active camera, then hands
+    /// off to <see cref="PressControlAtRay"/> -- kept separate so a headless
+    /// self-test can drive the same dispatch with a synthetic ray and no
+    /// camera at all.
     /// </summary>
     public void PressControlAt(Vector2 screenPosition)
     {
         var camera = GetViewport().GetCamera3D();
         if (camera is null) return;
 
-        var from = camera.ProjectRayOrigin(screenPosition);
-        var dir = camera.ProjectRayNormal(screenPosition);
+        PressControlAtRay(camera.ProjectRayOrigin(screenPosition), camera.ProjectRayNormal(screenPosition));
+    }
+
+    /// <summary>
+    /// Every part decides for itself what a click on it means (UX-37). Two
+    /// tiers, both ray-tested and compared on the same nearest-wins footing:
+    ///
+    /// * <b>Precise</b> parts (<see cref="ButtonPanel"/>, <see cref="StackLight"/>,
+    ///   <see cref="LevelTank"/>) test the ray against their own sub-regions --
+    ///   a bounding box would cover the whole housing and fire the nearest
+    ///   control no matter where on the part you clicked.
+    /// * Everything else in <see cref="WholeBodyOperableTag"/> is tested
+    ///   against its whole bounding box, the same box selection uses, and
+    ///   toggles the one tag it owns.
+    /// </summary>
+    public void PressControlAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Tags is null) return;
 
         float nearest = float.MaxValue;
         ButtonPanel? hitPanel = null;
         PanelButton hitButton = default;
+        PlacedPart? hitPart = null;
+        string? hitRegion = null;
 
         foreach (var entry in _placedParts)
         {
-            if (entry.Node is not ButtonPanel panel) continue;
-            if (panel.HitTest(from, dir) is not { } which) continue;
+            float distance;
+            string? region;
 
-            // Two panels can overlap on screen; the nearer one wins, measured to
-            // the panel rather than to the cap, which is close enough when the
-            // caps sit within a hand's width of the housing.
-            float distance = from.DistanceTo(panel.GlobalPosition);
+            switch (entry.Node)
+            {
+                case ButtonPanel panel:
+                    if (panel.HitTest(from, dir) is not { } which) continue;
+                    // Measured along the ray, the same units the whole-body
+                    // parts below use -- distance-to-object-centre would mix
+                    // two different metrics in one "nearest wins" comparison,
+                    // which is exactly what let a wrong part shadow a stack
+                    // light's own lamp during UX-37's own verification.
+                    distance = MeasureDistance(entry.Node, from, dir);
+                    if (distance >= nearest) continue;
+                    nearest = distance;
+                    hitPanel = panel;
+                    hitButton = which;
+                    hitPart = null;
+                    continue;
+
+                case StackLight light:
+                    if (light.HitTest(from, dir) is not { } stage) continue;
+                    distance = MeasureDistance(entry.Node, from, dir);
+                    region = stage;
+                    break;
+
+                case LevelTank tank:
+                    if (tank.HitTest(from, dir) is not { } valve) continue;
+                    distance = MeasureDistance(entry.Node, from, dir);
+                    region = valve;
+                    break;
+
+                default:
+                    if (!WholeBodyOperableTag.ContainsKey(entry.PartType)) continue;
+                    if (PartBounds.RayDistance(entry.Node, from, dir) is not { } boxDistance) continue;
+                    distance = boxDistance;
+                    region = null;
+                    break;
+            }
+
             if (distance >= nearest) continue;
-
             nearest = distance;
-            hitPanel = panel;
-            hitButton = which;
+            hitPanel = null;
+            hitPart = entry;
+            hitRegion = region;
         }
 
-        hitPanel?.Press(hitButton);
+        if (hitPanel is not null) { hitPanel.Press(hitButton); return; }
+        if (hitPart is not null) OperatePart(hitPart, hitRegion);
+    }
+
+    /// <summary>Ray-parameter distance to a part, for comparing candidates of
+    /// every operable type on one footing. A precise part's sub-region test
+    /// (a cap, a lamp, a valve) already confirmed the ray is close enough to
+    /// count as a hit; this answers "how far along the ray", the same
+    /// question <see cref="PartBounds.RayDistance"/> answers for a whole-body
+    /// part, by measuring against the part's own bounding box. Falls back to
+    /// straight-line distance only if the box test itself somehow misses,
+    /// which should not happen for a part the sub-region test already hit.</summary>
+    private static float MeasureDistance(Node3D node, Vector3 from, Vector3 dir) =>
+        PartBounds.RayDistance(node, from, dir) ?? from.DistanceTo(node.GlobalPosition);
+
+    /// <summary>Apply a click's effect once <see cref="PressControlAtRay"/> has
+    /// picked a part and, for a precise part, which of its regions was hit.
+    /// Every write goes through <see cref="TagTable.Force"/>, the same call
+    /// the Tag Inspector and the property panel (UX-34) make, so a part
+    /// operated by hand stays sticky exactly like they do (§5.2).</summary>
+    private void OperatePart(PlacedPart entry, string? region)
+    {
+        var ids = entry.TagIds;
+
+        switch (entry.PartType)
+        {
+            case "StackLight" when region is not null:
+                ToggleBit(ids, region);
+                break;
+
+            case "LevelTank" when region is not null:
+                ToggleValve(ids, region);
+                break;
+
+            case "Emitter":
+                PulseBit(ids, WholeBodyOperableTag[entry.PartType]);
+                break;
+
+            default:
+                if (WholeBodyOperableTag.TryGetValue(entry.PartType, out var suffix))
+                    ToggleBit(ids, suffix);
+                break;
+        }
+    }
+
+    private void ToggleBit(Dictionary<string, string> ids, string suffix)
+    {
+        if (!ids.TryGetValue(suffix, out var id) || !Tags.TryGetVisible(id, out var current)) return;
+        Tags.Force(id, !(bool)current);
+    }
+
+    /// <summary>A rising edge, not a level -- holding a tag high spawns nothing
+    /// new (the Emitter case in <see cref="_PhysicsProcess"/> only fires on the
+    /// edge), so a click has to pulse and release rather than latch on.
+    /// Mirrors the property panel's own "Emit one" button (UX-34).</summary>
+    private void PulseBit(Dictionary<string, string> ids, string suffix)
+    {
+        if (!ids.TryGetValue(suffix, out var id)) return;
+        Tags.Force(id, true);
+        GetTree().CreateTimer(0.05).Timeout += () => { if (Tags.Contains(id)) Tags.ClearForce(id); };
+    }
+
+    /// <summary>A click toggles a valve fully open or fully shut -- the tag is
+    /// a percent, not a bit, but "open it and see the level move" needs no
+    /// finer control than that from a single click (a drag-to-set slider
+    /// already exists on the property panel, UX-34).</summary>
+    private void ToggleValve(Dictionary<string, string> ids, string suffix)
+    {
+        if (!ids.TryGetValue(suffix, out var id) || !Tags.TryGetVisible(id, out var current)) return;
+        double value = System.Convert.ToDouble(current);
+        Tags.Force(id, value > 0.5 ? 0.0 : 100.0);
     }
 
     /// <summary>

@@ -234,17 +234,8 @@ public partial class ButtonPanel : Node3D
         {
             // A finger is blunter than a pixel; give the cap a little margin so
             // clipping the rim still counts as a press.
-            float r = cap.Radius * 1.15f;
-            Vector3 toCentre = origin - cap.Centre;
-
-            float b = toCentre.Dot(dir);
-            float c = toCentre.LengthSquared() - r * r;
-            float disc = b * b - c;
-            if (disc < 0.0f) continue;
-
-            float t = -b - Mathf.Sqrt(disc);
-            if (t < 0.0f) t = -b + Mathf.Sqrt(disc);
-            if (t < 0.0f || t >= nearest) continue;
+            if (RayHit.Sphere(origin, dir, cap.Centre, cap.Radius * 1.15f) is not { } t) continue;
+            if (t >= nearest) continue;
 
             nearest = t;
             best = cap.Which;

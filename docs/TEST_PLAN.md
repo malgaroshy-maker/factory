@@ -66,6 +66,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C13 | `roller-line-weighing` profile: outfeed counts, and the inductive sensor actually fires for a metal carton | `--self-test=roller` |
 | C14 | Demo's refusal on a scene with no profile reaches the UI (IdleHintUI), not just the console | `--self-test=refusal` |
 | C15 | The part property panel drives live I/O for every tag-type combination (bit/int/float × output/input) | `--self-test=proppanel` |
+| C16 | Run mode's click operates the part it lands on -- conveyor, pusher, emitter, stack light lamps and tank valves independently, not just the Control Panel | `--self-test=operate` |
 
 ### D. Engine self-tests (need a display)
 

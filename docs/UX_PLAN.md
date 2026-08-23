@@ -2,9 +2,9 @@
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2's UX-16…UX-20
 (the C# side; UX-21/22, `tools/try_scene.py`, not started), Phase 3
-(UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and Phase
-5's UX-34/UX-35/UX-36/UX-38/UX-40/UX-41 (UX-37 not started; UX-39 blocked on
-it). Everything else is still proposal.
+(UX-23…UX-29), Phase 4's UX-30/UX-32 (UX-31/33 blocked on UX-21), and all of
+Phase 5 except UX-39 (blocked on nothing now that UX-37 has landed, but not
+yet started). Everything else is still proposal.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -810,7 +810,7 @@ built-in exercise for this scene first."* with a button.
 
 ---
 
-### Phase 5 — Operate any component by hand — UX-34/35/36/38/40/41 done, UX-37/39 not started
+### Phase 5 — Operate any component by hand — UX-34/35/36/37/38/40/41 done, UX-39 not started
 
 **The phase that makes the app explorable.** Specification in §5. Today, turning
 a conveyor on means knowing it owns a `.rotate` tag, knowing the part name is
@@ -912,7 +912,7 @@ Landed alongside UX-35 rather than as a stopgap ahead of it: an unparseable
 value flashes the input field red for a second instead of silently doing
 nothing. Covered by the same C6 self-test (`CheckInvalid`).
 
-**UX-37 — Click a component in Run mode to operate it**
+**UX-37 — Click a component in Run mode to operate it — done**
 *Files:* `engine/src/Editor/SceneEditor.cs` (`PressControlAt`, `:515`), the part
 classes.
 *Done when:* Run mode is not `ButtonPanel`-only (§2.7): clicking a conveyor
@@ -920,6 +920,66 @@ toggles `.rotate`, a pusher strokes, a stack light stage toggles, a tank opens
 its valve. Each part declares what a click on it means.
 *Verify:* in Run mode, click each part type in turn and watch its tag move.
 *Size:* L.
+
+`PressControlAt` now splits into a camera-projecting entry point and
+`PressControlAtRay(Vector3 from, Vector3 dir)`, so a headless self-test can
+drive the exact same dispatch with a synthetic ray and no camera. Two tiers,
+both compared on one footing: **precise** parts (`ButtonPanel`, `StackLight`,
+`LevelTank`) test the ray against their own sub-regions — a bounding box
+would cover the whole housing and fire whichever control is nearest the
+part's centre no matter where on it you clicked — everything else
+(`ConveyorBelt`/`RollerConveyor`/`WeighingConveyor`, `PusherMechanism`,
+`Emitter`) is tested against its whole bounding box, the same box selection
+already uses, and toggles the one tag it owns. Every write goes through
+`TagTable.Force`, so a part operated by a click stays sticky exactly like the
+Tag Inspector and the property panel (UX-34) already are (§5.2). `Emitter`
+pulses rather than latches (force true, clear ~50ms later), mirroring the
+property panel's own "Emit one" button, since holding `.emit` high spawns
+nothing new.
+
+New sub-region hit tests, both following `ButtonPanel.HitTest`'s existing
+sphere-per-region pattern (now factored out into a shared `RayHit.Sphere`
+helper in `engine/src/Parts/RayHit.cs`, used by all three rather than three
+copies of the same algebra): `StackLight.HitTest` returns which lamp
+(`green`/`yellow`/`red`) a click landed on, and `LevelTank.HitTest` returns
+which pipe (`fill`'s inlet at the top, `drain`'s outlet at the foot) — a click
+toggles that one valve fully open or fully shut, since a single click needs
+no finer control than that (the drag-to-set slider from UX-34 still exists
+for anything finer).
+
+**A real bug found and fixed while building the first version of the self-test,
+worth recording because it was not the bug it first looked like:** the
+`PressControlAtRay` dispatch originally measured "nearest" inconsistently — a
+box-hit distance (a ray parameter) for whole-body parts against a straight-line
+distance-to-object-centre for precise parts, mixing two units in one
+comparison. That looked at first like the cause of a failing assertion
+("a click on the yellow lamp toggles it independently"), and was worth fixing
+regardless — a real scene could plausibly hit the same class of bug where an
+unrelated part's box happens to sit nearer by the wrong metric. Fixed by
+adding `MeasureDistance`, which measures every candidate the same way (a
+`PartBounds.RayDistance` box hit, falling back to centre-distance only if that
+somehow misses). But reverting the fix and rerunning the self-test still
+passed — the actual cause was that the default scene's built-in stack light
+registers only the one tag (`.green`) the deterministic scene drives, not the
+full `green`/`yellow`/`red` set a placed `StackLight` gets from
+`PartTagManager`, so `stack_light.yellow` did not exist at all. The self-test
+was rewritten to check lamp independence against `start_stop_station`'s
+"tower" (a `StackLight` placed the normal way, with all three tags) instead.
+The distance-metric fix stayed in, verified separately by breaking
+`StackLight.HitTest`'s yellow/green Y coordinates so they collided (both
+`0.45f`) and watching the self-test fail, then restoring it — a fix that is
+real and defensible even though it turned out not to be the fix the original
+failure needed.
+
+Covered by a new self-test, `--self-test=operate`
+(`tools/test_plan.py` C16), across three scenes since no one scene has every
+part this covers: the default scene's conveyor, pusher, emitter and the
+single-tag stack light; `start_stop_station`'s "tower" for independent lamp
+toggling; `tank_level_control` for the two independent valves. Deliberately
+broke `ToggleValve` (`value > 0.5 ? 100.0 : 100.0`, so an open valve could
+never close again) and watched the "clicking the open fill valve shuts it
+again" assertion fail, then restored it. `python -m pytest -q` unaffected (71
+passed); full `test_plan.py --only C` 16 passed.
 
 **UX-38 — End the "Run" collision in the toolbar — done**
 *Files:* `engine/src/Editor/SceneToolbarUI.cs:62`.
@@ -1144,7 +1204,7 @@ controlled separately by `Space`, `Ctrl+R` and the 0.25×–4× rate selector.
 
 | | Edit mode | Run mode |
 |---|---|---|
-| Left click | select a part, or place the palette part | operate the part *(today: Control Panel only)* |
+| Left click | select a part, or place the palette part | operate the part — every operable type, not just the Control Panel (UX-37) |
 | `M` / `R` / `Del` / `Ctrl+D` | move / rotate / delete / duplicate | — |
 | `Ctrl+Z` / `Ctrl+Y` | undo / redo | — |
 | `Ctrl+S` / `Ctrl+O` | save / open | **— silently, §2.7 → UX-40** |
@@ -1161,7 +1221,13 @@ started rather than being lost.
 ### 5.4 Component by component
 
 What operating each part should do. **Today** is what works right now: ✓ works,
-◐ works but only through the Tag Inspector by tag id, ✗ impossible.
+◐ works but only through the Tag Inspector by tag id, ✗ impossible. Written
+before UX-34 and UX-37 landed and left as the historical record of the gap
+they closed — every row still marked ◐ for "only through the Tag Inspector"
+now also has a real toggle/slider on the part's own property panel (UX-34)
+and, for the actuator rows specifically, a working click in Run mode (UX-37,
+§5.3). The ✗ rows (a live readout on the part itself, and the two tags UX-35
+already unblocked) are the gap still open.
 
 Place the part, name it in the properties panel — the name is the tag prefix, so
 a pusher named `reject` gives `reject.extend` — then:
@@ -1360,7 +1426,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-34 | Live I/O in the part property panel | 5 | L | UX-35 | done |
 | UX-35 | Force any tag type, not just bits | 5 | M | — | done |
 | UX-36 | Until UX-35 lands, refuse audibly | 5 | S | — | done |
-| UX-37 | Click a component in Run mode to operate it | 5 | L | — |  |
+| UX-37 | Click a component in Run mode to operate it | 5 | L | — | done |
 | UX-38 | End the "Run" collision in the toolbar | 5 | S | — | done |
 | UX-39 | Run mode explains itself | 5 | M | UX-37 |  |
 | UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — | done |
