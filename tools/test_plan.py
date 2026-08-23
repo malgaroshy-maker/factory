@@ -3,6 +3,7 @@
     python tools/test_plan.py              # everything that needs no display
     python tools/test_plan.py --gui        # add the checks that need one
     python tools/test_plan.py --only C,E   # just those sections
+    python tools/test_plan.py --only H     # all five scene exercises, headless
 
 Exits non-zero if anything failed. See docs/TEST_PLAN.md for what each check is
 for; the short reasons here are so a failure explains itself without the doc.
@@ -432,9 +433,39 @@ def section_g() -> None:
            out.strip().splitlines()[-1] if out.strip() else "no output")
 
 
+# --- H. The five scene exercises, driven end to end -------------------------
+
+def section_h() -> None:
+    print("\nH. Scene exercises (tools/try_scene.py)")
+
+    # The spike behind UX-10 proved templates simulate headless with no
+    # renderer, so this needs no display -- unlike D, which is gated behind
+    # --gui.
+    manifest = json.loads((ENGINE / "templates" / "manifest.json").read_text(encoding="utf-8"))
+    for i, entry in enumerate(manifest, start=1):
+        scene_id = entry["id"]
+        # try_scene.py tears its own engine down before exiting, but the OS can
+        # take a moment to release the port after that -- the same gap
+        # EngineProcess.__enter__ waits out between checks.
+        if not wait_for_port_free():
+            record(f"H{i}", f"{scene_id}: try_scene.py drives it to a real PASS", False,
+                   "port 7411 still held from a previous check")
+            continue
+        code, out = run([sys.executable, str(ROOT / "tools" / "try_scene.py"),
+                         "--scene", scene_id], timeout=90)
+        # try_scene.py's own PASS/FAIL line carries an em dash, which a
+        # subprocess piped on Windows can mangle in transit -- exit code
+        # alone is the authoritative pass/fail signal (that convention is
+        # the whole point of UX-21's "exit 0/1" contract), and the RESULT
+        # line this pulls for detail is plain ASCII.
+        match = re.search(r"^RESULT .+$", out, re.M)
+        detail = match.group(0)[len("RESULT "):] if match else (out.strip().splitlines()[-1] if out.strip() else "no output")
+        record(f"H{i}", f"{scene_id}: try_scene.py drives it to a real PASS", code == 0, detail)
+
+
 SECTIONS = {
     "A": section_a, "B": section_b, "C": section_c,
-    "E": section_e, "F": section_f, "G": section_g,
+    "E": section_e, "F": section_f, "G": section_g, "H": section_h,
 }
 
 

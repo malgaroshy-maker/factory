@@ -337,8 +337,12 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
 
     band = SETPOINT * BAND_PERCENT / 100.0
     ok = SETPOINT - band <= level <= SETPOINT + band
-    print(f"RESULT level={level:.1f} setpoint={SETPOINT} band=±{band:.1f}")
-    return ok, "" if ok else f"tank.level settled at {level:.1f}, outside ±{band:.1f} of {SETPOINT}"
+    # Plain ASCII, not "±": a piped Python child's stdout encoding on Windows
+    # is not reliably UTF-8, and a non-ASCII RESULT line can come out the
+    # other end as a replacement character instead of the real one -- exactly
+    # the failure this line exists to report clearly, not obscure.
+    print(f"RESULT level={level:.1f} setpoint={SETPOINT} band=+/-{band:.1f}")
+    return ok, "" if ok else f"tank.level settled at {level:.1f}, outside +/-{band:.1f} of {SETPOINT}"
 
 
 async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbose: bool,

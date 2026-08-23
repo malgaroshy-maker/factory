@@ -103,7 +103,25 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | G2 | Unknown CLI arg does not prevent startup | |
 | G3 | Loading a scene saved by a *newer* build (unknown property keys) still opens | forward compatibility is claimed in `SceneData`'s docs |
 
-### H. With a PLC — manual, verified 2026-08-12
+### H. Scene exercises (`tools/try_scene.py`)
+
+| # | Check | Why |
+|---|---|---|
+| H1 | `sorting-by-height`: `try_scene.py` drives it to `tall=5 short=5` | the exact `drive_engine.py` contract, run through the newer self-contained script |
+| H2 | `start-stop-station`: the full Start → E-stop → Start-while-tripped (refused) → Reset → Start sequence, driven over the wire | mirrors `StartStopStationProfile` and its C# self-test (C10), from the outside |
+| H3 | `tank-level-control`: the controller settles within the band | mirrors `TankLevelControlProfile` / C11 |
+| H4 | `light-curtain-sorting`: both counters advance | mirrors `LightCurtainSortingProfile` / C12 |
+| H5 | `roller-line-weighing`: outfeed counts and the inductive sensor fires for metal | mirrors `RollerLineWeighingProfile` / C13 |
+
+Needs no display — the spike behind UX-10 proved templates simulate headless
+— so this runs in the same job as A/C/E, not behind `--gui`. Each check
+spawns its own engine, drives it exactly the way a PLC would (writing
+outputs, forcing the panel inputs a human operator would for
+`start-stop-station`), and tears it down: the seam UX-42's tag-set check
+does not reach, since that one only checks the tags exist, not that the
+scene actually does anything when driven.
+
+### I. With a PLC — manual, verified 2026-08-12
 
 Not in the runner: it needs S7-PLCSIM Advanced, which CI does not have. Run by
 hand, and **passing**:
@@ -141,11 +159,11 @@ Two setup traps that cost time here:
   nor snap7 can reach it however the TIA project is configured. The native API
   driver does not care.
 
-### I. Not automated
+### J. Not automated
 
 Honest list of what this plan does **not** prove:
 
-- **Physical hardware.** Everything in section H ran against a *virtual* S7-1500
+- **Physical hardware.** Everything in section I ran against a *virtual* S7-1500
   in PLCSIM Advanced. That exercises the real protocols and the real firmware
   behaviour the drivers were written for, but it is not a physical CPU on a
   real network, and it says nothing about PROFINET timing or cable-level faults.

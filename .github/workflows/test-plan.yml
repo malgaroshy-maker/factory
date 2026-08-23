@@ -1,16 +1,18 @@
 name: test-plan
 
 # Runs the checks tools/test_plan.py already sequences: the C# build, the
-# Python suite, the four headless engine self-tests, and the determinism
-# contract. See docs/FIX_PLAN.md FF-28.
+# Python suite, the engine self-tests, the determinism contract, and the five
+# scene exercises. See docs/FIX_PLAN.md FF-28.
 #
-# Deliberately --only A,B,C,E: those are the checks this workflow was written
-# for. F (the sidecar-seam checks) and G (robustness, including the new
-# engine-kill and pause-force regression tests from Phase 6) exercise process
-# lifecycle and port timing in ways only ever run and tuned on Windows so far
-# -- FF-08 (cross-platform sidecar launch) is still open. Widen this to the
-# full suite once F/G have been run and fixed up on Linux for real, not
-# assumed to work here.
+# Deliberately --only A,B,C,E,H: those are the checks this workflow was
+# written for. H (tools/try_scene.py against all five shipped scenes) needs no
+# display -- the spike behind UX-10 proved templates simulate headless -- so
+# it belongs beside A/C/E rather than behind --gui. F (the sidecar-seam
+# checks) and G (robustness, including the engine-kill and pause-force
+# regression tests) exercise process lifecycle and port timing in ways only
+# ever run and tuned on Windows so far -- FF-08 (cross-platform sidecar
+# launch) is still open. Widen this to the full suite once F/G have been run
+# and fixed up on Linux for real, not assumed to work here.
 #
 # NOTE: the Godot download step below has not been exercised on an actual
 # runner yet -- written from the documented release-asset naming convention,
@@ -71,5 +73,5 @@ jobs:
       - name: Install the sidecar (with test extras)
         run: pip install -e "sidecar[dev]"
 
-      - name: Run the test plan (A, B, C, E)
-        run: python tools/test_plan.py --only A,B,C,E
+      - name: Run the test plan (A, B, C, E, H)
+        run: python tools/test_plan.py --only A,B,C,E,H

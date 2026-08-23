@@ -2,8 +2,8 @@
 
 **Status:** in progress. Done: Phase 1 (UX-10…UX-15), Phase 2 in full
 (UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4 in full (UX-30…UX-33), all of
-Phase 5 (UX-34…UX-41), and Phase 6's UX-42. Only Phase 0 (ship a binary) and
-the rest of Phase 6 (UX-43…UX-46) remain.
+Phase 5 (UX-34…UX-41), and Phase 6's UX-42/UX-43. Only Phase 0 (ship a
+binary) and UX-44…UX-46 remain.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Work items:** UX-01 … UX-46, indexed in [Appendix A](#appendix-a--work-item-index).
 
@@ -1200,7 +1200,7 @@ over the `_forced` dictionary already exercised by the UX-35 self-test.
 
 ---
 
-### Phase 6 — Hold the line — UX-42 done, UX-43…UX-46 not started
+### Phase 6 — Hold the line — UX-42/43 done, UX-44…UX-46 not started
 
 **UX-42 — `--self-test=scenes` — done**
 *Files:* new `engine/src/Sim/SceneTagSetSelfTest.cs`, `engine/src/Main.cs`, a
@@ -1230,13 +1230,46 @@ failures, each naming the specific missing or unexpected tag id and its
 type/kind, then restored the template file. `python -m pytest -q` (71
 passed) and `test_plan.py --only A,C,E` (27 passed) unaffected.
 
-**UX-43 — Wire the exercises into `tools/test_plan.py`**
+**UX-43 — Wire the exercises into `tools/test_plan.py` — done**
 *Files:* `tools/test_plan.py`, `.github/workflows/test-plan.yml`.
 *Done when:* all five scenes run headless in the same job that already covers
 the sorting line. The spike proved templates simulate headless, so this needs no
 display.
 *Verify:* `python tools/test_plan.py --only H` passes locally and in CI.
 *Size:* M. *Depends on:* UX-22.
+
+New Section H (`section_h`), added beside A/C/E in `SECTIONS` rather than
+behind `--gui`, since it needs no display. Runs `tools/try_scene.py --scene
+<id>` for each manifest entry as a real subprocess and records H1…H5,
+waiting for port 7411 to be free between checks the same way
+`EngineProcess.__enter__` already does elsewhere in this file. CI's `--only
+A,B,C,E` widened to `A,B,C,E,H`; `docs/TEST_PLAN.md`'s pre-existing manual
+"Section H" (the PLCSIM Advanced walkthrough) renumbered to I, and the
+"Not automated" section after it to J, to make room without two different
+things both being called "Section H".
+
+**A real portability bug found and fixed while wiring this up:** `try_scene.py`'s
+tank driver printed its RESULT line with a "±" character. A **piped** Python
+child's stdout encoding on Windows is not reliably UTF-8 — this machine's
+default piped-stdout codepage encoded "±" as a single cp1252 byte, and
+`test_plan.py`'s UTF-8 decode of that byte (correct for output that genuinely
+is UTF-8, which is what fixed a real mangled-em-dash bug earlier in this same
+file) turned it into U+FFFD, which then crashed `record()`'s own `print()`
+trying to write a replacement character through *this* machine's own cp1252
+console. Fixed by using plain ASCII (`+/-`) in the RESULT line instead —
+matching the ASCII-only convention `check_force_while_paused.py` and
+`check_protocol.py` already established for exactly this reason. `section_h`
+itself was also written to trust `try_scene.py`'s exit code alone (the
+authoritative pass/fail signal UX-21's own "exit 0/1" contract promises)
+rather than string-matching the PASS/FAIL line's em dash, so a future
+non-ASCII character anywhere else in that line cannot break the runner again.
+
+Verified: `python tools/test_plan.py --only H` — 5 passed. Deliberately
+broke the tank driver's controller gain to 0 (so `tank.level` never leaves
+0.0) and watched H3 fail with the real numbers
+(`level=0.0 setpoint=55.0 band=+/-2.8`) and nothing else affected, then
+restored it. Full run `--only A,C,E,H` — 32 passed; `python -m pytest -q` —
+71 passed; no orphaned Godot process after any of it.
 
 **UX-44 — `--self-test=modes`**
 *Files:* new `engine/src/Sim/ModeSelfTest.cs`, `engine/src/Main.cs`.
@@ -1610,7 +1643,7 @@ tests non-bit forcing (UX-45), and nothing covers four of the five scenes
 | UX-40 | `Ctrl+S` and `Ctrl+O` survive Run mode | 5 | S | — | done |
 | UX-41 | Show what is held by hand; release in one click | 5 | M | UX-35 | done |
 | UX-42 | `--self-test=scenes` | 6 | M | UX-10, UX-13 | done |
-| UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 |  |
+| UX-43 | Wire the exercises into `tools/test_plan.py` | 6 | M | UX-22 | done |
 | UX-44 | `--self-test=modes` | 6 | M | UX-37 |  |
 | UX-45 | Cover non-bit forcing | 6 | S | UX-35 |  |
 | UX-46 | Document all of it | 6 | S | — |  |
