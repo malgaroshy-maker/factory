@@ -21,7 +21,7 @@
       "type": "ButtonPanel",
       "position": [0.5, 0.5, 1.0],
       "rotation": [0.0, 0.0, 0.0],
-      "properties": {}
+      "properties": { "setpoint_min": "0", "setpoint_max": "100", "setpoint_unit": "%", "setpoint": "70" }
     },
     {
       "id": "tower",

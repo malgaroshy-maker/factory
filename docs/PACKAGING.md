@@ -1,7 +1,7 @@
 # Packaging a FactoryForge release
 
 *Verified end to end on 2026-08-23 locally, and on 2026-08-24 in CI: both
-platforms build from scratch on clean runners and pass 21 headless self-tests
+platforms build from scratch on clean runners and pass 23 headless self-tests
 against the exported binary. Windows 109 MB + 17 MB sidecar; Linux 74 MB + 31 MB
 sidecar.*
 
@@ -160,7 +160,7 @@ them being headless:
 ./dist/windows/FactoryForge.exe --headless -- --self-test=scenes
 ```
 
-All 22 pass against the packaged Windows build, including the two that read
+All 24 pass against the packaged Windows build, including the two that read
 checked-in fixtures. Those two used to fail in an export for two separate
 reasons, both now fixed: the fixtures lived outside `res://` at a path that does
 not exist beside a binary, and even once moved in, `System.IO.File` cannot read
@@ -188,7 +188,7 @@ blocks installation outright rather than just alarming.
 ## Known gaps
 
 - ~~The Linux binary is built but not run here.~~ **Checked on 2026-08-24**:
-  the release workflow builds it on `ubuntu-latest` and runs 21 self-tests
+  the release workflow builds it on `ubuntu-latest` and runs 23 self-tests
   against the exported binary. Both platforms passed on the first run.
 - **macOS is not packaged.** No preset exists and it cannot be tested from here.
   `TerminalLauncher` already handles macOS terminals when someone picks it up.

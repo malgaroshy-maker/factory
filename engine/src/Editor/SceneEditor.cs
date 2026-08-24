@@ -23,6 +23,10 @@ public partial class SceneEditor : Node3D
     public SortingScene? Scene { get; set; }
     public PartPropertyInspectorUI PropertyInspector { get; set; } = null!;
 
+    /// <summary>The dismissible hint bar, used to say what a freshly selected
+    /// part can do (OP-09). Optional: headless runs have no UI at all.</summary>
+    public IdleHintUI? IdleHint { get; set; }
+
     /// <summary>Set by Main so Ctrl+S / Ctrl+O can open the same dialogs the
     /// toolbar buttons do — one dialog implementation, two ways to reach it.
     /// See FF-21.</summary>
@@ -75,7 +79,7 @@ public partial class SceneEditor : Node3D
             ["RetroreflectiveSensor"] = new[] { "detect" },
             ["InductiveSensor"] = new[] { "detect" },
             ["Emitter"] = new[] { "emit" },
-            ["ButtonPanel"] = new[] { "green", "red", "estop" },
+            ["ButtonPanel"] = new[] { "green", "red", "estop", "setpoint" },
             ["StackLight"] = new[] { "green", "yellow", "red" },
             ["DigitalDisplay"] = new[] { "value" },
             ["LightArray"] = new[] { "height", "blocked" },
@@ -220,18 +224,23 @@ public partial class SceneEditor : Node3D
 
         if (Mode == EditorMode.Run)
         {
-            if (@event is InputEventMouseButton runClick && runClick.Pressed
-                && runClick.ButtonIndex == MouseButton.Left)
+            if (@event is InputEventMouseButton runClick && runClick.ButtonIndex == MouseButton.Left)
             {
                 // The event's own position, not the live cursor: they agree for a
                 // real click but only the event knows where the click happened,
                 // which is the difference between a testable path and one that
                 // can only be checked by hand.
-                PressControlAt(runClick.Position);
+                if (!runClick.Pressed) EndDialDrag();
+                else if (!BeginDialDragAt(runClick.Position)) PressControlAt(runClick.Position);
             }
             else if (@event is InputEventMouseMotion runMotion)
             {
-                UpdateHoverHighlight(runMotion.Position);
+                // A pot is turned, not pressed, so the drag owns the mouse
+                // until the button comes back up -- including the hover
+                // highlight, which would otherwise chase whatever the cursor
+                // wandered over mid-turn.
+                if (IsDraggingDial) DragDial(-runMotion.Relative.Y);
+                else UpdateHoverHighlight(runMotion.Position);
             }
             return;
         }
@@ -251,9 +260,28 @@ public partial class SceneEditor : Node3D
                 ClearPreview();
             }
         }
-        else if (_previewNode is null && @event is InputEventMouseButton clickBtn && clickBtn.Pressed && clickBtn.ButtonIndex == MouseButton.Left)
+        else if (_previewNode is null && @event is InputEventMouseButton clickBtn
+                 && clickBtn.ButtonIndex == MouseButton.Left)
         {
-            SelectPartAtMouse();
+            // Press selects and *arms* a move; release commits it. Everyone
+            // tries dragging a part first, and until this landed the only way
+            // to move one was the M key, which nothing on screen mentioned
+            // (OP-08). A press that never travels is still a plain click, so
+            // selecting did not have to change to make dragging work.
+            if (clickBtn.Pressed)
+            {
+                SelectPartAtMouse();
+                ArmPartDrag(clickBtn.Position);
+            }
+            else
+            {
+                EndPartDrag();
+            }
+        }
+        else if (_previewNode is null && _partDrag is not null
+                 && @event is InputEventMouseMotion dragMotion)
+        {
+            UpdatePartDrag(dragMotion.Position);
         }
         else if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
         {
@@ -480,6 +508,106 @@ public partial class SceneEditor : Node3D
         DeselectPart();
     }
 
+    /// <summary>The part under a held mouse button, and where it started.
+    /// Armed on press rather than on the first motion, so the undo step knows
+    /// the position the drag began from and not wherever the part had already
+    /// slid to.</summary>
+    private PlacedPart? _partDrag;
+    private Vector2 _partDragFrom;
+    private Vector3 _partDragOrigin;
+    private bool _partDragMoved;
+
+    /// <summary>Screen pixels a press has to travel before it counts as a drag
+    /// rather than a click. Without a threshold, a click with a shaky hand
+    /// would nudge the part it was only meant to select — and a two-pixel move
+    /// is invisible until the scene is saved.</summary>
+    private const float DragThresholdPixels = 6.0f;
+
+    private void ArmPartDrag(Vector2 screenPosition)
+    {
+        if (Mode != EditorMode.Edit || _selectedPart is not { } selected) return;
+        _partDrag = selected;
+        _partDragFrom = screenPosition;
+        _partDragOrigin = selected.Node.Position;
+        _partDragMoved = false;
+    }
+
+    private void UpdatePartDrag(Vector2 screenPosition)
+    {
+        if (_partDrag is null) return;
+        if (!_partDragMoved && _partDragFrom.DistanceTo(screenPosition) < DragThresholdPixels)
+            return;
+
+        var camera = GetViewport().GetCamera3D();
+        if (camera is null) return;
+
+        _partDragMoved = true;
+        DragPartToRay(camera.ProjectRayOrigin(screenPosition),
+                      camera.ProjectRayNormal(screenPosition));
+    }
+
+    /// <summary>Move the part being dragged to wherever this ray meets the work
+    /// plane. Split from the screen entry point so a headless self-test can
+    /// drive a real drag with a synthetic ray and no camera (OP-08).</summary>
+    public void DragPartToRay(Vector3 from, Vector3 dir)
+    {
+        if (_partDrag is null) return;
+        if (WorkPlanePoint(from, dir) is not { } point) return;
+        _partDrag.Node.Position = point;
+    }
+
+    /// <summary>Begin a drag on whatever part the ray hits, selecting it the
+    /// same way a click would. The headless counterpart of a mouse press.</summary>
+    public bool BeginPartDragAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Edit) return false;
+        SelectPartAtRay(from, dir);
+        if (_selectedPart is not { } selected) return false;
+
+        _partDrag = selected;
+        _partDragFrom = Vector2.Zero;
+        _partDragOrigin = selected.Node.Position;
+        _partDragMoved = true;      // no screen travel to threshold against
+        return true;
+    }
+
+    public bool IsDraggingPart => _partDrag is not null;
+
+    /// <summary>Commit the drag as one undoable step. A drag that never moved
+    /// the part pushes nothing: Ctrl+Z after a click should undo whatever you
+    /// did before the click, not a move that did not happen.</summary>
+    public void EndPartDrag()
+    {
+        if (_partDrag is { } dragged && _partDragMoved
+            && dragged.Node.Position != _partDragOrigin)
+        {
+            _history.ExecuteCommand(new MoveCommand(dragged.Node, _partDragOrigin,
+                                                    dragged.Node.Position));
+            MarkDirty();
+            GD.Print($"Moved {dragged.InstanceId} (Ctrl+Z to put it back)");
+        }
+
+        _partDrag = null;
+        _partDragMoved = false;
+    }
+
+    private sealed class MoveCommand : IEditorCommand
+    {
+        private readonly Node3D _node;
+        private readonly Vector3 _from;
+        private readonly Vector3 _to;
+
+        public MoveCommand(Node3D node, Vector3 from, Vector3 to)
+        {
+            _node = node;
+            _from = from;
+            _to = to;
+        }
+
+        public void Execute() => _node.Position = _to;
+        public void Undo() => _node.Position = _from;
+    }
+
     /// <summary>The part being relocated, still in the scene until the move lands.</summary>
     private PlacedPart? _movingPart;
 
@@ -530,9 +658,16 @@ public partial class SceneEditor : Node3D
 
         if (hitPart is not null)
         {
+            // Only when the selection actually changes: re-clicking the part
+            // you already have selected is not a moment that needs teaching,
+            // and a hint that reappears on every click is a nag (OP-09).
+            bool isNew = _selectedPart != hitPart;
             _selectedPart = hitPart;
             _gizmo.AttachToNode(hitPart.Node);
             PropertyInspector?.InspectNode(hitPart.Node, hitPart.InstanceId, hitPart.PartType);
+            if (isNew)
+                IdleHint?.Announce($"Selected {hitPart.InstanceId}. Drag it to move it, " +
+                                   "R to rotate, Ctrl+D to duplicate, Del to delete.");
         }
         else
         {
@@ -568,6 +703,52 @@ public partial class SceneEditor : Node3D
 
         PressControlAtRay(camera.ProjectRayOrigin(screenPosition), camera.ProjectRayNormal(screenPosition));
     }
+
+    /// <summary>The pot currently being turned, if any. A drag owns the mouse
+    /// until release, so nothing else in Run mode acts on the motion.</summary>
+    private ButtonPanel? _dialDrag;
+
+    public bool IsDraggingDial => _dialDrag is not null;
+
+    private bool BeginDialDragAt(Vector2 screenPosition)
+    {
+        var camera = GetViewport().GetCamera3D();
+        if (camera is null) return false;
+        return BeginDialDragAtRay(camera.ProjectRayOrigin(screenPosition),
+                                  camera.ProjectRayNormal(screenPosition));
+    }
+
+    /// <summary>Grab the setpoint knob the ray lands on. Split from the screen
+    /// entry point so a headless self-test can turn a real pot with a
+    /// synthetic ray and no camera (OP-02).</summary>
+    public bool BeginDialDragAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Run) return false;
+
+        foreach (var entry in _placedParts)
+        {
+            if (entry.Node is not ButtonPanel panel) continue;
+            if (!panel.HitTestDial(from, dir)) continue;
+
+            _dialDrag = panel;
+            // Turning the knob takes the tag back from whoever forced it. A
+            // force is sticky everywhere else in the editor and deliberately
+            // is not here: the pot on the panel *is* the operator, and an
+            // operator who turns a knob that then snaps back has been lied to.
+            if (Tags is not null && entry.TagIds.TryGetValue("setpoint", out var id)
+                && Tags.Contains(id))
+                Tags.ClearForce(id);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Screen pixels of travel since the last motion event, positive
+    /// upward.</summary>
+    public void DragDial(float pixelsUp) => _dialDrag?.DragSetpoint(pixelsUp);
+
+    public void EndDialDrag() => _dialDrag = null;
 
     /// <summary>What a ray landed on: either a panel cap (<paramref name="Panel"/>
     /// set), or a part and, for a precise part, which of its regions
@@ -930,6 +1111,14 @@ public partial class SceneEditor : Node3D
         return ids;
     }
 
+    /// <summary>A placed part's position, for tests and tooling — verifying a
+    /// drag-to-move (OP-08) without a mouse.</summary>
+    public Vector3? PositionOf(string instanceId)
+    {
+        int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
+        return index < 0 ? null : _placedParts[index].Node.Position;
+    }
+
     /// <summary>A placed part's Y rotation in radians, for tests and tooling
     /// — verifying FF-20's rotate-in-place without a mouse.</summary>
     public float? RotationYOf(string instanceId)
@@ -1065,6 +1254,11 @@ public partial class SceneEditor : Node3D
         {
             Position = new Vector3(lane, y, 2.0f * lane),
         };
+        // This line sorts on two beams, so its one analog knob is the timing
+        // pot every real diverter has: how long after the tall beam breaks
+        // the pusher fires. Turn it wrong and cartons are struck on the nose
+        // or missed entirely, which is exactly what the pot is for (OP-03).
+        panelNode.ConfigureSetpoint(0.30f, 1.80f, "s", 0.90f);
         GetParent()?.AddChild(panelNode);
         if (Tags is not null)
         {
@@ -1407,32 +1601,45 @@ public partial class SceneEditor : Node3D
         if (camera is null) return;
 
         var mousePos = GetViewport().GetMousePosition();
-        var from = camera.ProjectRayOrigin(mousePos);
-        var dir = camera.ProjectRayNormal(mousePos);
+        if (WorkPlanePoint(camera.ProjectRayOrigin(mousePos),
+                           camera.ProjectRayNormal(mousePos)) is { } point)
+            _previewNode.Position = point;
+    }
 
-        // Raycast plane intersection with floor at Y=0.5
-        if (Mathf.Abs(dir.Y) > 0.001f)
+    /// <summary>
+    /// Where a ray meets the work plane, snapped to the grid and clamped to
+    /// the build volume — the one answer to "the cursor is here, so the part
+    /// goes there". Placement and drag-to-move (OP-08) both come through here
+    /// rather than each doing their own projection, because a part that
+    /// snapped differently depending on how it got somewhere is a part whose
+    /// saved position depends on how you moved it.
+    ///
+    /// Null when the ray runs parallel to the plane or points away from it.
+    /// </summary>
+    private Vector3? WorkPlanePoint(Vector3 from, Vector3 dir)
+    {
+        if (Mathf.Abs(dir.Y) <= 0.001f) return null;
+
+        float t = (PartLayout.WorkPlaneY - from.Y) / dir.Y;
+        if (t <= 0) return null;
+
+        var hitPoint = from + dir * t;
+        var snapped = Grid?.SnapToGrid(hitPoint) ?? hitPoint;
+
+        // Clamp to the build volume the grid displays (FF-24) — the floor and
+        // its collision extend well past it so a carton that outruns a line
+        // still lands somewhere, but nothing should be *placed* out past the
+        // visible grid where the student building it can no longer see where
+        // its edges are.
+        if (Grid is not null)
         {
-            float t = (0.5f - from.Y) / dir.Y;
-            if (t > 0)
-            {
-                var hitPoint = from + dir * t;
-                var snappedPoint = Grid?.SnapToGrid(hitPoint) ?? hitPoint;
-                // Clamp to the build volume the grid displays (FF-24) — the
-                // floor and its collision extend well past it so a carton
-                // that outruns a line still lands somewhere, but nothing
-                // should be *placed* out past the visible grid where the
-                // student building it can no longer see where its edges are.
-                if (Grid is not null)
-                {
-                    float maxX = Grid.GridExtentX * Grid.CellSize;
-                    float maxZ = Grid.GridExtentZ * Grid.CellSize;
-                    snappedPoint.X = Mathf.Clamp(snappedPoint.X, -maxX, maxX);
-                    snappedPoint.Z = Mathf.Clamp(snappedPoint.Z, -maxZ, maxZ);
-                }
-                _previewNode.Position = new Vector3(snappedPoint.X, 0.5f, snappedPoint.Z);
-            }
+            float maxX = Grid.GridExtentX * Grid.CellSize;
+            float maxZ = Grid.GridExtentZ * Grid.CellSize;
+            snapped.X = Mathf.Clamp(snapped.X, -maxX, maxX);
+            snapped.Z = Mathf.Clamp(snapped.Z, -maxZ, maxZ);
         }
+
+        return new Vector3(snapped.X, PartLayout.WorkPlaneY, snapped.Z);
     }
 
     private void PlaceCurrentPart()
@@ -1741,6 +1948,20 @@ public partial class SceneEditor : Node3D
 
         if (part.TagIds.TryGetValue("estop", out var estopId))
             Tags.TrySet(estopId, !panel.EmergencyStopEngaged);
+
+        // The pot goes both ways (OP-02). Normally the knob is the authority
+        // and the tag reports it. While the tag is *forced* -- by the Tag
+        // Inspector, or by tools/try_scene.py driving the scene headless --
+        // the force is the authority and the knob turns to match, so a
+        // setpoint changed over the wire is visible on the panel instead of
+        // leaving the pointer lying about where the line is aimed.
+        if (part.TagIds.TryGetValue("setpoint", out var setpointId) && Tags.Contains(setpointId))
+        {
+            if (Tags.IsForced(setpointId))
+                panel.SetSetpoint((float)System.Convert.ToDouble(Tags.Visible(setpointId)));
+            else
+                Tags.Set(setpointId, (double)panel.Setpoint);
+        }
     }
 
     /// <summary>Forget a panel's pending pulse, so a tag it raised is not

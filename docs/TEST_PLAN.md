@@ -76,13 +76,15 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C20 | The Edit/Run contract as a pair: a click selects in Edit and does not in Run, a control operates in Run and does not in Edit, and entering Run clears both the placement preview and the selection | `--self-test=modes` |
 | C21 | Every **settings** control in the part property panel reaches the simulation — a named observable per control (top beam, raycast reach, physics-material friction, belt surface velocity, ramp deck transform); no row is wider than the panel's own scroll bound; and a row the test does not know how to drive is a failure | `--self-test=partsettings` |
 | C22 | The engine can find a sidecar to launch and knows how to start it — a frozen build runs itself, a checkout goes through an interpreter | `--self-test=sidecar` |
+| C23 | The panel's setpoint pot turns, publishes, clamps to its scale plate, and follows a forced tag — and taking hold of the knob clears that force. Hit-tested at two panel headings, and refused outright in Build mode | `--self-test=setpoint` |
+| C24 | A placed part can be dragged to a new cell: it lands on the same grid placement snaps to and stays on the work plane, one whole drag is one `Ctrl+Z`, a press that never travels pushes nothing onto the history, and Run mode refuses to drag at all | `--self-test=drag` |
 
 ### C-release. The same self-tests, against a built binary
 
 `tools/packaging/check_release.py --target windows|linux` runs 21 of the C
 checks against `dist/<target>/FactoryForge*` instead of a source checkout, and
 is the gate on `.github/workflows/release.yml`. Green on both platforms on
-2026-08-24: Windows 109 MB, Linux 74 MB, 21 self-tests each.
+2026-08-24: Windows 109 MB, Linux 74 MB, 23 self-tests each.
 
 The distinction is the point: a checkout can pass every C check while the
 exported binary fails. Two of them read checked-in fixtures, which used to sit

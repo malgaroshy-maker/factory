@@ -89,6 +89,17 @@ public static class PartProperties
             case DigitalDisplay display:
                 p["unit"] = display.Unit;
                 break;
+
+            // The scale plate the pot is graduated against, plus where the
+            // pointer was left. Saving the live value rather than a separate
+            // "default" is deliberate: a real pot does not spring back, and a
+            // scene reloaded mid-tuning should reopen where you left it.
+            case ButtonPanel panel:
+                p["setpoint_min"] = N(panel.SetpointMin);
+                p["setpoint_max"] = N(panel.SetpointMax);
+                p["setpoint_unit"] = panel.SetpointUnit;
+                p["setpoint"] = N(panel.Setpoint);
+                break;
         }
 
         return p;
@@ -161,6 +172,15 @@ public static class PartProperties
 
             case DigitalDisplay display:
                 if (props.TryGetValue("unit", out var unit)) display.Unit = unit;
+                break;
+
+            case ButtonPanel panel:
+                if (Num(props, "setpoint_min") is { } spMin) panel.SetpointMin = spMin;
+                if (Num(props, "setpoint_max") is { } spMax) panel.SetpointMax = spMax;
+                if (props.TryGetValue("setpoint_unit", out var spUnit)) panel.SetpointUnit = spUnit;
+                // Last, so the clamp sees the range this template asked for
+                // rather than the default 0-100 one.
+                if (Num(props, "setpoint") is { } sp) panel.SetSetpoint(sp);
                 break;
         }
     }

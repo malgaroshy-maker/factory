@@ -294,7 +294,7 @@ def section_c() -> None:
     match = re.search(r'\{"t":"describe".*\}', out)
     payload = json.loads(match.group(0)) if match else {}
     record("C7", "--scene= loads a template headless and --print-tags dumps its I/O",
-           code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 13,
+           code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 14,   # 13, plus the panel's setpoint pot (OP-01)
            f"scene={payload.get('scene')!r} tags={len(payload.get('tags', []))}" if payload else "no describe line")
 
     # A fixed 10-tag hybrid of two scenes is worse than refusing outright.
@@ -338,6 +338,16 @@ def section_c() -> None:
     # feature rather than a failure. In a packaged build that fallback used to
     # be the only path (UX-04).
     _self_test("C22", "the engine can find a sidecar to launch, and knows how to start it", "sidecar")
+    # The panel's pot is the first control a mouse drags rather than clicks,
+    # and the first tag written in both directions -- the knob drives it, a
+    # forced tag drives the knob. Either half can be missing while the panel
+    # still looks right in a screenshot (OP-01, OP-02).
+    _self_test("C23", "the panel's setpoint pot turns, publishes, and follows a forced tag", "setpoint")
+    # Dragging a placed part is what everyone tries first and what the editor
+    # did not have: moving one needed the M key, which nothing on screen
+    # mentioned (OP-08). One drag has to be one undoable step, and a press
+    # that never travels has to stay a plain click.
+    _self_test("C24", "a placed part can be dragged to a new cell, as one undoable step", "drag")
 
 
 def section_d(enabled: bool) -> None:

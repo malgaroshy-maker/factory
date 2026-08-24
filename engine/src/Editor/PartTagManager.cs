@@ -189,6 +189,9 @@ public static class PartTagManager
                 // Normally closed, so a healthy circuit reads true and the scene
                 // starts in the state a real panel powers up in.
                 tags.Set($"{instanceId}.estop", true);
+                // The setpoint pot, in the scene's own engineering units --
+                // the template owns the range, not the controller (OP-01).
+                tags.Add(new Tag($"{instanceId}.setpoint", $"Panel {index} Setpoint", TagType.Float, TagKind.Input));
                 break;
 
             case "StackLight":

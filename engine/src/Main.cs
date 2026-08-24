@@ -168,6 +168,14 @@ public partial class Main : Node
         {
             AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
         }
+        if (_selfTest == "drag")
+        {
+            AddChild(new DragMoveSelfTest { Name = "DragMoveSelfTest", Tags = tags, Editor = _editor! });
+        }
+        if (_selfTest == "setpoint")
+        {
+            AddChild(new SetpointDialSelfTest { Name = "SetpointDialSelfTest", Tags = tags, Editor = _editor! });
+        }
         if (_selfTest == "templates")
         {
             AddChild(new TemplateSelfTest { Name = "TemplateSelfTest", Tags = tags, Editor = _editor });
@@ -373,6 +381,7 @@ public partial class Main : Node
         driverConnectionUI.Editor = editor;
         driverConnectionUI.IdleHint = idleHint;
         editor.Toolbar = toolbarUI;
+        editor.IdleHint = idleHint;
         AddChild(toolbarUI);
 
         // The start screen goes on last so it draws over everything, and it is

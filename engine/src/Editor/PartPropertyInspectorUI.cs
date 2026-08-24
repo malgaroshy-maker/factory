@@ -104,6 +104,21 @@ public partial class PartPropertyInspectorUI : Control
         header.AddThemeFontSizeOverride("font_size", 13);
         _contentContainer.AddChild(header);
 
+        // What you can do with the thing you just selected, where you are
+        // already looking. Every one of these worked before OP-09 and none of
+        // them was written down anywhere in the app: the first thing everybody
+        // tries is dragging the part, which did nothing, and the key that did
+        // work (M) was mentioned nowhere on screen.
+        var affordances = new Label
+        {
+            Text = "Drag to move  ·  R rotate  ·  Ctrl+D duplicate  ·  Del delete",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(240, 0),
+        };
+        affordances.AddThemeFontSizeOverride("font_size", 10);
+        affordances.AddThemeColorOverride("font_color", new Color(0.60f, 0.65f, 0.72f));
+        _contentContainer.AddChild(affordances);
+
         AddNameRow(instanceId);
 
         // Every property here must actually reach the simulation. Anything whose

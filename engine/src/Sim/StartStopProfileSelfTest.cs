@@ -74,45 +74,62 @@ public partial class StartStopProfileSelfTest : Node
             // physics ticks is not reliably enough real time for a frame to
             // land in between. 60 ticks (~1s at the default 60Hz) is.
             case 6:
-                Expect(!Bit("belt.rotate"), "initial: belt is off");
+                // The demo starts the line running (OP-02): "Watch it run" that
+                // produces a still factory reads as broken. What matters is that
+                // the panel is authoritative from here on -- Stop really stops it.
+                Expect(Bit("belt.rotate"), "the demo starts the line running");
+                Expect(Bit("tower.green") && !Bit("tower.yellow") && !Bit("tower.red"),
+                       "running: green only");
+                _panel!.Press(PanelButton.Stop);
+                break;
+
+            // DemoDriver.Tick runs on the frame clock (_Process), not the
+            // physics clock (_PhysicsProcess) this test steps on -- headless
+            // has no vsync to lock the two together, so a gap of a handful of
+            // physics ticks is not reliably enough real time for a frame to
+            // land in between. 60 ticks (~1s at the default 60Hz) is.
+            case 66:
+                Expect(!Bit("belt.rotate"), "after Stop: belt off");
                 Expect(Bit("tower.yellow") && !Bit("tower.green") && !Bit("tower.red"),
-                       "initial: stopped-healthy shows yellow only");
+                       "after Stop: stopped-healthy shows yellow only");
                 _panel!.Press(PanelButton.Start);
                 break;
 
-            case 66:
+            case 126:
                 Expect(Bit("belt.rotate"), "after Start: belt runs");
                 Expect(Bit("tower.green") && !Bit("tower.yellow") && !Bit("tower.red"),
                        "after Start: green only");
                 _panel!.Press(PanelButton.EmergencyStop);
                 break;
 
-            case 126:
+            case 186:
                 Expect(!Bit("belt.rotate"), "after E-stop: belt off");
                 Expect(Bit("tower.red") && !Bit("tower.green") && !Bit("tower.yellow"),
                        "after E-stop: red only");
                 _panel!.Press(PanelButton.Start);
                 break;
 
-            case 186:
+            case 246:
                 Expect(!Bit("belt.rotate"),
                        "Start while tripped: does NOT restart the belt (§4.2's whole point)");
                 Expect(Bit("tower.red"), "Start while tripped: still shows red, not green");
                 _panel!.Press(PanelButton.EmergencyStop);   // release the mushroom
                 break;
 
-            case 246:
+            case 306:
+                Expect(!Bit("belt.rotate"),
+                       "releasing the mushroom alone does not restart the belt");
                 _panel!.Press(PanelButton.Reset);
                 break;
 
-            case 306:
+            case 366:
                 Expect(!Bit("tower.red"), "after Reset: fault cleared");
                 Expect(Bit("tower.yellow") && !Bit("belt.rotate"),
                        "after Reset: stopped-healthy again, belt still off until Start");
                 _panel!.Press(PanelButton.Start);
                 break;
 
-            case 366:
+            case 426:
                 Expect(Bit("belt.rotate"), "Start after Reset: belt runs again");
                 Expect(Bit("tower.green"), "Start after Reset: green");
                 Finish();

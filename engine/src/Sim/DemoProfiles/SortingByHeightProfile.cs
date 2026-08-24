@@ -3,15 +3,26 @@ using FactoryForge.TagBus;
 namespace FactoryForge.Sim.DemoProfiles;
 
 /// <summary>
-/// The reference line (§4.1). Unchanged from what <see cref="DemoDriver"/> used
-/// to hardcode directly -- moved here rather than rewritten, so this is the one
-/// profile with nothing to verify empirically: it is the same program.
+/// The reference line (§4.1), now answering to its own control panel (OP-03).
+///
+/// The program is the one <see cref="DemoDriver"/> used to hardcode, with two
+/// things added that the scene always had hardware for and never used: the
+/// operator station gates the line, and the push delay comes off the panel's
+/// pot instead of a constant here. That pot is the timing adjustment every
+/// real diverter has — fire too early and the plate hits the carton on the
+/// nose, too late and it sails past — so it belongs on the panel where an
+/// operator can reach it, not in this file where only a programmer can.
 /// </summary>
 public sealed class SortingByHeightProfile : IDemoProfile
 {
     private const double EmitHalfPeriod = 1.5;
-    private const double PushDelay = 0.9;
     private const double PushHold = 0.5;
+
+    /// <summary>Used only on a line built without a panel; the shipped scene
+    /// always has one, and its pot ships set to this same value.</summary>
+    private const double DefaultPushDelay = 0.9;
+
+    private readonly OperatorStation _station = new();
 
     private double _elapsed;
     private bool _emitFlag;
@@ -28,42 +39,66 @@ public sealed class SortingByHeightProfile : IDemoProfile
         _highSeen = false;
         _extendAt = null;
         _retractAt = null;
-        SetIfPresent(tags, "conveyor.rotate", true);
-        SetIfPresent(tags, "stack_light.green", true);
+        _station.Begin();
+        Apply(tags, extend: false);
     }
 
     public void Tick(double delta, TagTable tags)
     {
+        _station.Scan(tags);
         _elapsed += delta;
-        if (_elapsed >= _nextToggle)
+
+        if (_station.Running)
         {
-            _emitFlag = !_emitFlag;
+            if (_elapsed >= _nextToggle)
+            {
+                _emitFlag = !_emitFlag;
+                _nextToggle = _elapsed + EmitHalfPeriod;
+            }
+        }
+        else
+        {
+            _emitFlag = false;
             _nextToggle = _elapsed + EmitHalfPeriod;
-            SetIfPresent(tags, "emitter.emit", _emitFlag);
         }
 
-        bool high = GetBitIfPresent(tags, "sensor_high.detect");
-        if (high && !_highSeen) _extendAt = _elapsed + PushDelay;
+        bool high = OperatorStation.Bit(tags, "sensor_high.detect");
+        if (high && !_highSeen && _station.Running)
+        {
+            // Read fresh at the moment the beam breaks, not latched at
+            // startup: turning the knob has to change the next carton, not
+            // the next run.
+            _extendAt = _elapsed + _station.Setpoint(tags, DefaultPushDelay);
+        }
         _highSeen = high;
 
-        if (_extendAt is { } extendAt && _elapsed >= extendAt)
+        bool extend = OperatorStation.Bit(tags, "pusher.extend");
+        if (_extendAt is { } extendAt && _elapsed >= extendAt && _station.Running)
         {
-            SetIfPresent(tags, "pusher.extend", true);
-            _retractAt = extendAt + PushHold;
+            extend = true;
+            _retractAt = _elapsed + PushHold;
             _extendAt = null;
         }
         if (_retractAt is { } retractAt && _elapsed >= retractAt)
         {
-            SetIfPresent(tags, "pusher.extend", false);
+            extend = false;
             _retractAt = null;
         }
+        if (!_station.Running)
+        {
+            // A stopped line leaves nothing held out across the lane.
+            extend = false;
+            _extendAt = null;
+        }
+
+        Apply(tags, extend);
     }
 
-    private static void SetIfPresent(TagTable tags, string tagId, object value)
+    private void Apply(TagTable tags, bool extend)
     {
-        if (tags.Contains(tagId)) tags.Set(tagId, value);
+        OperatorStation.Set(tags, "conveyor.rotate", _station.Running);
+        OperatorStation.Set(tags, "emitter.emit", _emitFlag);
+        OperatorStation.Set(tags, "pusher.extend", extend);
+        _station.Lamps(tags);
     }
-
-    private static bool GetBitIfPresent(TagTable tags, string tagId) =>
-        tags.Contains(tagId) && tags.Visible(tagId) is true;
 }

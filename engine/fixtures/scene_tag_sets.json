@@ -43,6 +43,11 @@
         "kind": "input"
       },
       {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
         "id": "panel.start",
         "type": "bit",
         "kind": "input"
@@ -120,6 +125,11 @@
         "kind": "input"
       },
       {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
         "id": "panel.start",
         "type": "bit",
         "kind": "input"
@@ -179,6 +189,11 @@
       {
         "id": "panel.reset",
         "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.setpoint",
+        "type": "float",
         "kind": "input"
       },
       {
@@ -279,6 +294,11 @@
         "kind": "input"
       },
       {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
         "id": "panel.start",
         "type": "bit",
         "kind": "input"
@@ -338,6 +358,11 @@
       {
         "id": "panel.reset",
         "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.setpoint",
+        "type": "float",
         "kind": "input"
       },
       {

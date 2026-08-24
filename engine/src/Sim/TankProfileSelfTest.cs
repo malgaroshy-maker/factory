@@ -18,7 +18,12 @@ public partial class TankProfileSelfTest : Node
     public SceneEditor Editor { get; set; } = null!;
     public TagTable Tags { get; set; } = null!;
 
-    private const float Setpoint = 55.0f;
+    /// <summary>What the template's own setpoint pot ships set to (OP-05).
+    /// The controller no longer carries a setpoint of its own — it reads the
+    /// panel — so this is the number on the plate, written out here rather
+    /// than read off the panel under test, which would pass whatever the panel
+    /// said.</summary>
+    private const float Setpoint = 70.0f;
     private const float BandPercent = 5.0f;
 
     /// <summary>~13s of simulated time at the default 60Hz physics rate --
