@@ -242,6 +242,32 @@ public partial class FaultInjectionSelfTest : Node
         Expect(Editor.ToggleFaultAtRay(from, dir) == "belt", "a second click targets it again");
         Expect(!Bit("belt.fault"), "and clears the fault");
 
+        // The outline has to promise what the click will actually do. Armed, it
+        // lands on drives; disarmed, on operable parts. An outline over a part
+        // the armed click is about to break -- shown in the colour that means
+        // "this operates it" -- is the same class of lie as an outline over a
+        // part a click would miss.
+        Editor.SetFaultToolArmed(true);
+        Expect(Editor.HoverTargetAtRay(from, dir) == "belt",
+               $"armed: hovering the belt outlines the belt "
+               + $"(got '{Editor.HoverTargetAtRay(from, dir)}')");
+
+        // An emitter is the useful case: operable, but with no drive to fail.
+        // Armed, the outline must not land on it — outlining a part the click
+        // is about to *not* break is the lie being prevented here.
+        var emitter = Find<Emitter>();
+        if (emitter is not null)
+        {
+            var (ef, ed) = Over(emitter);
+            Expect(Editor.HoverTargetAtRay(ef, ed) is not "emitter",
+                   "armed: an emitter is not a fault target — it has no drive");
+            Editor.SetFaultToolArmed(false);
+            Expect(Editor.HoverTargetAtRay(ef, ed) == "emitter",
+                   $"disarmed: the same emitter is an operable target "
+                   + $"(got '{Editor.HoverTargetAtRay(ef, ed)}')");
+            Editor.SetFaultToolArmed(true);
+        }
+
         Editor.SetFaultToolArmed(false);
         Expect(!Editor.FaultToolArmed, "and it disarms");
     }

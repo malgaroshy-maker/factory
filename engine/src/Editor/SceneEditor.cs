@@ -739,6 +739,30 @@ public partial class SceneEditor : Node3D
     {
         FaultToolArmed = armed && Mode == EditorMode.Run;
         Toolbar?.ShowFaultTool(FaultToolArmed);
+        // Forget what is currently outlined: arming changes both which parts
+        // the outline can land on and what colour it means, and SetHoverTarget
+        // short-circuits when the node has not changed.
+        ClearHoverHighlight();
+    }
+
+    /// <summary>Which part the hover outline would land on for this ray, as an
+    /// instance id — the same answer a click would act on, which is the whole
+    /// contract the outline exists to keep. Null when a click there would do
+    /// nothing.</summary>
+    public string? HoverTargetAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Run) return null;
+        if (FaultToolArmed) return FindFaultTarget(from, dir)?.InstanceId;
+
+        var hit = FindOperableTarget(from, dir);
+        if (hit is not { } found) return null;
+        if (found.Part is { } part) return part.InstanceId;
+
+        foreach (var entry in _placedParts)
+        {
+            if (ReferenceEquals(entry.Node, found.Panel)) return entry.InstanceId;
+        }
+        return null;
     }
 
     /// <summary>Part types that have a drive that can fail. Derived from the
@@ -754,14 +778,12 @@ public partial class SceneEditor : Node3D
         return false;
     }
 
-    /// <summary>Toggle the fault on whatever drive the ray lands on. Returns
-    /// the instance id if one was toggled, so the hint bar can name it — a
-    /// fault the user cannot see is a fault they will debug for an hour.
-    /// </summary>
-    public string? ToggleFaultAtRay(Vector3 from, Vector3 dir)
+    /// <summary>The nearest drive the ray lands on that could be failed.
+    /// Shared by the click and the hover, for the same reason
+    /// <see cref="FindOperableTarget"/> is: an outline that promises one thing
+    /// while the click does another is worse than no outline.</summary>
+    private PlacedPart? FindFaultTarget(Vector3 from, Vector3 dir)
     {
-        if (Mode != EditorMode.Run || Tags is null) return null;
-
         float nearest = float.MaxValue;
         PlacedPart? hit = null;
 
@@ -774,7 +796,18 @@ public partial class SceneEditor : Node3D
             hit = entry;
         }
 
-        if (hit is null) return null;
+        return hit;
+    }
+
+    /// <summary>Toggle the fault on whatever drive the ray lands on. Returns
+    /// the instance id if one was toggled, so the hint bar can name it — a
+    /// fault the user cannot see is a fault they will debug for an hour.
+    /// </summary>
+    public string? ToggleFaultAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Run || Tags is null) return null;
+
+        if (FindFaultTarget(from, dir) is not { } hit) return null;
         if (!hit.TagIds.TryGetValue("fault", out var id) || !Tags.Contains(id)) return null;
 
         // Forced, not Set: the fault is an Input, so a plain write would be
@@ -1000,6 +1033,20 @@ public partial class SceneEditor : Node3D
 
         var from = camera.ProjectRayOrigin(screenPosition);
         var dir = camera.ProjectRayNormal(screenPosition);
+
+        // With the fault tool armed, a click fails a drive rather than
+        // operating anything — so the outline has to promise *that*, and in a
+        // different colour. Highlighting the operable part under the cursor
+        // while the click is going to break it is the same class of lie as an
+        // outline over a part a click would miss (UX-39).
+        if (FaultToolArmed)
+        {
+            var target = FindFaultTarget(from, dir);
+            SetHoverTarget(target?.Node);
+            SetDialCursor(false);
+            return;
+        }
+
         var hit = FindOperableTarget(from, dir);
         SetHoverTarget(hit?.Node);
 
@@ -1029,6 +1076,13 @@ public partial class SceneEditor : Node3D
 
         _hoverOutline ??= BuildHoverOutline();
         if (_hoverOutline.GetParent() is null) AddChild(_hoverOutline);
+
+        if (_hoverOutline.MaterialOverride is StandardMaterial3D hoverMat)
+        {
+            hoverMat.AlbedoColor = FaultToolArmed
+                ? new Color(1.0f, 0.25f, 0.20f, 0.38f)    // this click breaks it
+                : new Color(1.0f, 0.85f, 0.20f, 0.35f);   // this click operates it
+        }
 
         var box = PartBounds.Measure(node);
         _hoverOutline.Mesh = new BoxMesh { Size = box.Size * 1.08f };
