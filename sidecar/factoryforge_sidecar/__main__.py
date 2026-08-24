@@ -270,6 +270,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("drivers", help="list the protocol drivers this build can actually run")
+
     p_browse = sub.add_parser("browse", help="dump an OPC UA server's address space")
     p_browse.add_argument("url", help="e.g. opc.tcp://192.168.0.1:4840")
     p_browse.add_argument("--depth", type=int, default=4)
@@ -307,6 +309,23 @@ def main(argv: list[str] | None = None) -> int:
                         help="driver option, e.g. -o url opc.tcp://...")
 
     args = parser.parse_args(argv)
+
+    if args.command == "drivers":
+        # Registered is not the same as usable: each protocol driver guards its
+        # own third-party import and registers either way, so it can explain
+        # itself at connect time. A frozen release makes the difference matter --
+        # it bundles what was importable when it was built.
+        from . import drivers as driver_registry
+
+        report = driver_registry.usable()
+        for name, ok in sorted(report.items()):
+            print(f"{'OK     ' if ok else 'MISSING'} {name}")
+        missing = [name for name, ok in report.items() if not ok]
+        if missing:
+            print()
+            print(f"{len(missing)} driver(s) present but not usable: " + ", ".join(sorted(missing)))
+            print("Install the matching extra: pip install -e \"sidecar[opcua,siemens,plcsim]\"")
+        return 0
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)-7s %(name)s: %(message)s",

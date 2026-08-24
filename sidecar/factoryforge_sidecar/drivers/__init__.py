@@ -36,6 +36,30 @@ def available() -> list[str]:
     return sorted(_REGISTRY)
 
 
+def usable() -> dict[str, bool]:
+    """Every registered driver, and whether it can actually run here.
+
+    Registration is not the same question. Each protocol driver guards its own
+    third-party import and registers regardless, so it can explain itself at
+    connect time rather than vanishing from the CLI -- which means
+    `available()` lists drivers that will fail the moment they are used.
+
+    A frozen release makes that distinction expensive: PyInstaller bundles what
+    was importable at build time, so a release built without an extra ships a
+    driver that is present, listed, and dead. `tools/packaging/check_release.py`
+    asks this before letting a release out.
+    """
+    from . import plcsim_advanced, s7_snap7
+
+    needs = {
+        "s7-snap7": s7_snap7.HAS_SNAP7,
+        "plcsim-advanced": plcsim_advanced.HAS_PYTHONNET,
+        "opcua-client": "opcua-client" in _REGISTRY,
+        "opcua-server": "opcua-server" in _REGISTRY,
+    }
+    return {name: needs.get(name, True) for name in available()}
+
+
 def create(name: str, bus: TagBusClient, **config) -> "Driver":
     try:
         cls = _REGISTRY[name]

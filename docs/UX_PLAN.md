@@ -418,9 +418,8 @@ exist and each launches to the start screen with a template loadable.
 Both produced. The template download was 1.2 GB and installs headlessly
 (`tools/packaging/install_godot.py`, written for CI and useful here); the
 "first-run fiddling" turned out to be the missing `.sln` described above. The
-Windows binary was run and self-tested here; the Linux one exports cleanly from
-Windows but is exercised on a real runner by UX-07's job, which is the honest
-place for that claim.
+Windows binary was run and self-tested here, and **the Linux one on an
+`ubuntu-latest` runner on 2026-08-24** — 74 MB, 21 self-tests, first try.
 
 **UX-02 — Correct `PACKAGING.md` with what actually happened**
 *Files:* `docs/PACKAGING.md`.
@@ -444,12 +443,16 @@ reading anything.
 sidecar to a running engine.
 *Size:* L. *Depends on:* UX-01.
 
-PyInstaller, one 20 MB executable per platform, as `PACKAGING.md` recommended.
-Verified the important half here — the frozen binary drove the exported engine
-over the tag bus — though on a machine that does have Python; a genuinely
-Python-free box is what UX-07's CI runner provides. The frozen build carries
-whichever optional drivers were installed when it was built, which is now
-stated rather than left to be discovered.
+PyInstaller, one executable per platform (17–31 MB depending on which drivers
+are bundled), as `PACKAGING.md` recommended. Verified here by having the frozen
+binary drive the exported engine over the tag bus, and in CI on both platforms.
+
+**The "whichever drivers were installed" caveat turned out to be a live bug, not
+a footnote.** CI's first release shipped without S7 or PLCSIM because the
+workflow asked for `sidecar[opcua]` alone — and nothing caught it, because a
+driver whose dependency is missing still registers and still appears in
+`--help`. See UX-07 for the fix and the `drivers` command that now makes the
+difference visible.
 
 **UX-04 — Make the engine find a bundled sidecar**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
@@ -522,10 +525,17 @@ exported binary**, plus the two structural checks that catch a build which
 looks fine — the assemblies folder exists, and the frozen sidecar is where the
 engine will look for it.
 
-Both helper scripts are real and compile; the workflow itself has not run,
-because that needs a tag push, which is the user's call and not something to do
-on their behalf. That is the one part of this phase verified by reading rather
-than by running.
+**Run on 2026-08-24** via its `workflow_dispatch` dry run — green on both
+platforms first time: Windows 109 MB + 17 MB sidecar, Linux 74 MB + 31 MB, 21
+self-tests each against the exported binary, `publish` correctly skipped.
+
+It found one thing worth the exercise. The workflow installed `sidecar[opcua]`,
+so both archives shipped **without S7 or PLCSIM** — two of the three Siemens
+paths the README headlines — and nothing noticed, because every protocol driver
+guards its own import and registers regardless. The driver was present, listed
+in `--help`, and dead. Fixed by installing every extra, and by giving the
+sidecar a `drivers` command that reports what a build can genuinely run, which
+`check_release.py` now asks before letting a release out.
 
 **UX-08 — Fix the fixture path that breaks self-tests in an export**
 *Files:* `engine/src/Sim/TagParitySelfTest.cs`, `.github/workflows/release.yml`.
@@ -1786,7 +1796,7 @@ that existed when this was written.
 | Command | Checks |
 |---|---|
 | `python tools/test_plan.py` | Everything below plus determinism and robustness; `--gui` adds the display-dependent click path |
-| `python -m pytest -q` | The 71-test Python suite: tag model, protocol, Modbus, OPC UA, Siemens |
+| `python -m pytest -q` | The 73-test Python suite: tag model, protocol, Modbus, OPC UA, Siemens |
 | `python tools/try_scene.py --scene <id>` | Drives one shipped scene the way a PLC would and asserts the result; `--list` names all five *(UX-21/22)* |
 
 **Engine self-tests** — `godot --headless --path engine -- --self-test=<name>`:

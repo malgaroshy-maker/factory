@@ -1,6 +1,6 @@
 # FactoryForge Test Plan
 
-*Last run: 2026-08-23. Results at the bottom.*
+*Last run: 2026-08-24. Results at the bottom.*
 
 A single command runs all of it:
 
@@ -48,7 +48,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 
 | # | Check |
 |---|---|
-| B1 | Full pytest suite (71 tests): tag model, bus protocol, Modbus, OPC UA client/server, Siemens, sorting scene |
+| B1 | Full pytest suite (73 tests): tag model, bus protocol, Modbus, OPC UA client/server, Siemens, sorting scene |
 
 ### C. Engine self-tests (headless)
 
@@ -81,7 +81,8 @@ themselves worked fine. So end-to-end coverage is not optional here.
 
 `tools/packaging/check_release.py --target windows|linux` runs 21 of the C
 checks against `dist/<target>/FactoryForge*` instead of a source checkout, and
-is the gate on `.github/workflows/release.yml`.
+is the gate on `.github/workflows/release.yml`. Green on both platforms on
+2026-08-24: Windows 109 MB, Linux 74 MB, 21 self-tests each.
 
 The distinction is the point: a checkout can pass every C check while the
 exported binary fails. Two of them read checked-in fixtures, which used to sit
@@ -91,6 +92,13 @@ inside the `.pck`. It also checks two structural things no self-test can see
 from the inside: that the .NET assemblies were exported (without them the binary
 still builds, exits 0, and fails every script at runtime) and that the frozen
 sidecar is where `SidecarLocator` will look.
+
+It also asks the frozen sidecar which drivers it can genuinely run
+(`factoryforge-sidecar drivers`). CI's first release shipped without S7 or
+PLCSIM and nothing noticed: a driver whose third-party import failed still
+registers, so it stays listed in `--help` and fails only when someone connects.
+Neither the help text nor the registry can answer this — only the `HAS_*` flag
+each driver module sets.
 
 ### D. Engine self-tests (need a display)
 

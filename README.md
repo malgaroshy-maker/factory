@@ -3,7 +3,7 @@
 [![Godot 4.7](https://img.shields.io/badge/Godot-v4.7.2--mono-blue?logo=godotengine)](https://godotengine.org/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12+-green?logo=python)](https://www.python.org/)
 ![.NET 8.0](https://img.shields.io/badge/.NET-8.0-purple?logo=dotnet)
-[![Tests](https://img.shields.io/badge/Tests-71%20Passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-73%20Passed-brightgreen)](tests/)
 [![Siemens S7-1500](https://img.shields.io/badge/Siemens-S7--1500%20Verified-009999?logo=siemens)](examples/tia/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -107,7 +107,7 @@ cd factory
 pip install -e "sidecar[dev,opcua]"
 ```
 
-### 2. Run Test Suite (71 Tests)
+### 2. Run Test Suite (73 Tests)
 
 ```bash
 python -m pytest -q

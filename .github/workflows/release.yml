@@ -68,11 +68,16 @@ jobs:
         shell: bash
         run: echo "GODOT=$(python tools/packaging/install_godot.py --print-path --version "$GODOT_VERSION")" >> "$GITHUB_ENV"
 
-      - name: Install the sidecar and its drivers
+      # Every extra, not just opcua: PyInstaller freezes whatever is importable
+      # at build time, so a driver missing here is a driver missing from the
+      # release. `sidecar[opcua]` alone shipped a binary with no S7 and no
+      # PLCSIM -- two of the three Siemens paths the README headlines. The
+      # pythonnet marker is Windows-only, so pip simply skips it on Linux.
+      - name: Install the sidecar and every protocol driver
         shell: bash
         run: |
           python -m pip install --upgrade pip pyinstaller
-          python -m pip install -e "sidecar[opcua]"
+          python -m pip install -e "sidecar[opcua,siemens,plcsim]"
 
       # dotnet build never writes a .sln, and Godot refuses to export the .NET
       # assemblies without one -- while still writing a binary and exiting 0.

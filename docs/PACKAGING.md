@@ -1,8 +1,9 @@
 # Packaging a FactoryForge release
 
-*Verified end to end on 2026-08-23: Godot 4.7.2-mono on Windows, producing a
-92.8 MB archive whose engine passes all 22 headless self-tests and whose frozen
-sidecar drives it with no Python installed.*
+*Verified end to end on 2026-08-23 locally, and on 2026-08-24 in CI: both
+platforms build from scratch on clean runners and pass 21 headless self-tests
+against the exported binary. Windows 109 MB + 17 MB sidecar; Linux 74 MB + 31 MB
+sidecar.*
 
 Running FactoryForge from a checkout means installing Godot, the .NET 8 SDK and
 Python first — a real barrier for someone who wanted to learn ladder logic, not
@@ -118,10 +119,24 @@ Two things about the freeze are worth knowing:
   `ImportError: attempted relative import with no known parent package` — but
   only once a command does real work. `--help` still prints, which makes the
   break easy to ship.
-* The frozen binary carries whichever optional drivers were installed when it
-  was built. `websockets` is the only hard dependency; `asyncua`, `python-snap7`
-  and `pythonnet` are extras. Build on a machine with `pip install -e
-  "sidecar[opcua,s7,plcsim]"` if the release should support all of them.
+* **The frozen binary carries whichever optional drivers were importable when
+  it was built**, and this is easy to get wrong quietly. Each protocol driver
+  guards its own third-party import and registers *regardless*, so it can
+  explain itself at connect time rather than vanishing from the CLI. A release
+  built without an extra therefore ships a driver that is present, listed in
+  `--help`, and dead.
+
+  The first CI run did exactly this: the workflow installed `sidecar[opcua]`,
+  so both archives had a working OPC UA path and no S7 or PLCSIM — two of the
+  three Siemens routes the README headlines. Build with
+  `pip install -e "sidecar[opcua,siemens,plcsim]"`, which is what the workflow
+  now does.
+
+  `factoryforge-sidecar drivers` reports what a build can genuinely run, and
+  `check_release.py` asks it before letting a release out. Note that neither
+  `connect --help` nor the driver registry answers this — the first is a
+  hardcoded string, the second lists registered drivers whether or not their
+  dependency arrived.
 
 ### How the engine finds it
 
@@ -172,10 +187,9 @@ blocks installation outright rather than just alarming.
 
 ## Known gaps
 
-- **The Linux binary is built but not run here.** It exports cleanly from
-  Windows; the release CI job (`.github/workflows/release.yml`) runs the
-  self-tests against it on a real Linux runner, which is where that claim gets
-  checked.
+- ~~The Linux binary is built but not run here.~~ **Checked on 2026-08-24**:
+  the release workflow builds it on `ubuntu-latest` and runs 21 self-tests
+  against the exported binary. Both platforms passed on the first run.
 - **macOS is not packaged.** No preset exists and it cannot be tested from here.
   `TerminalLauncher` already handles macOS terminals when someone picks it up.
 - **The frozen sidecar is per-platform.** A Windows release cannot ship the
