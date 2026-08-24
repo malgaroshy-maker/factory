@@ -88,6 +88,8 @@ public partial class PusherMechanism : Node3D
         });
         AddChild(_pusherHead);
 
+        BuildFaultLamp();
+
         ApplyExtension();
     }
 
@@ -100,7 +102,58 @@ public partial class PusherMechanism : Node3D
     /// </summary>
     public bool IsFaulted { get; private set; }
 
-    public void SetFaulted(bool faulted) => IsFaulted = faulted;
+    private StandardMaterial3D? _faultLampMat;
+
+    /// <summary>The same beacon a conveyor carries, for the same reason: a
+    /// cylinder parked at rest and a cylinder seized at rest look identical,
+    /// and the difference is the whole diagnosis. A jam mid-stroke is even
+    /// easier to misread as "still travelling".</summary>
+    private void BuildFaultLamp()
+    {
+        _faultLampMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.30f, 0.06f, 0.06f),
+            Metallic = 0.10f,
+            Roughness = 0.35f,
+        };
+
+        // On top of the barrel housing, where nothing strokes past it.
+        var mount = new Vector3(0, AxisY + BarrelHeight / 2.0f, 0);
+        const float stalk = 0.07f;
+
+        AddChild(new MeshInstance3D
+        {
+            Name = "DriveFaultStalk",
+            Mesh = new CylinderMesh { TopRadius = 0.008f, BottomRadius = 0.010f, Height = stalk },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.22f, 0.23f, 0.25f),
+                Metallic = 0.40f,
+                Roughness = 0.50f,
+            },
+            Position = mount + new Vector3(0, stalk / 2, 0),
+        });
+
+        AddChild(new MeshInstance3D
+        {
+            Name = "DriveFaultLamp",
+            Mesh = new SphereMesh { Radius = 0.042f, Height = 0.084f },
+            MaterialOverride = _faultLampMat,
+            Position = mount + new Vector3(0, stalk + 0.028f, 0),
+        });
+    }
+
+    public void SetFaulted(bool faulted)
+    {
+        if (faulted == IsFaulted && _faultLampMat is not null) return;
+        IsFaulted = faulted;
+
+        if (_faultLampMat is null) return;
+        _faultLampMat.AlbedoColor = faulted ? new Color(1.0f, 0.15f, 0.12f) : new Color(0.30f, 0.06f, 0.06f);
+        _faultLampMat.EmissionEnabled = faulted;
+        _faultLampMat.Emission = faulted ? new Color(1.0f, 0.15f, 0.12f) : Colors.Black;
+        _faultLampMat.EmissionEnergyMultiplier = faulted ? 2.4f : 0.0f;
+    }
 
     public void UpdateExtension(bool extend, float delta)
     {

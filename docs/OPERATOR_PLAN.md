@@ -290,3 +290,45 @@ found it stationary, and reported exactly what it saw.
 The fix names the rollers and asks for one by name. Worth recording because the
 test was not wrong to fail: it was wrong to have been able to pass for the
 wrong reason.
+
+### The analog failure, and a test that passed for the wrong reason
+
+Conveyors and pushers were the obvious drives. The tank was the interesting
+one, and it nearly shipped with a check that proved nothing.
+
+A **seized valve holds its opening** — not "fails closed", which would be a
+*safe* failure and a dull one. The controller trips, writes 0% to both valves,
+and the tank goes on filling anyway. That is a strictly nastier failure than a
+stopped drive: the process keeps moving, and the controller's own output cannot
+tell you a thing.
+
+Which is exactly what made the first version of the check worthless. The tank
+reused the shared fault exercise, whose observable is *the commanded tag*, and
+it passed:
+
+```
+ok  a faulted drive stops the fill valve
+```
+
+The valve had not stopped. The *command* had. The assertion would have gone on
+passing while the tank overflowed — the precise mistake the scene exists to
+teach a student not to make, made by its own test.
+
+The tank has its own exercise now, and the observable is the level:
+
+```
+ok  the controller commands the valve shut (writing 0%)
+ok  and the tank keeps filling regardless -- level rose 42.0% while the fill
+    command read zero. The valve is not obeying, and the controller's own
+    output cannot tell you that
+```
+
+One knock-on worth recording: filling the tank during the fault leg left it at
+67%, so the setpoint experiment afterwards reported `reached=0.0s` for a 70%
+target it was already sitting at — collapsing the scene's whole lesson. The run
+now drains to a known low mark first, which also makes the two settling times
+mean the same thing from one run to the next, as they did not before:
+
+```
+9.7s to reach 70% but 20.1s to reach 20%
+```

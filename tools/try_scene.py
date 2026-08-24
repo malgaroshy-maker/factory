@@ -739,6 +739,7 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
     BAND_PERCENT = 5.0
     HOLD = 6.0                # stay inside the band this long to count as settled
     HIGH, LOW = 70.0, 20.0
+    START_LEVEL = 8.0         # where the setpoint experiment starts from
 
     check = Checks(verbose)
     state = {"fill": 0.0, "drain": 0.0}
@@ -793,9 +794,9 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
         held = time.perf_counter() - entered if entered is not None else 0.0
         return reached, held, level
 
-    station = Station(bus)
+    station = Station(bus, faults=("tank.fault",))
     stop_event, task = controller(tick)
-    estop_ms = -1.0
+    estop_ms = fault_ms = -1.0
     high_reach = low_reach = -1.0
     high_held = low_held = high_level = low_level = 0.0
 
@@ -808,6 +809,20 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
         estop_ms = await exercise_interlocks(bus, station, check,
                                              lambda: num(bus, "tank.fill") > 0.5,
                                              "the fill valve")
+
+        fault_ms = await exercise_valve_fault(bus, check)
+
+        # Both the interlock and the fault legs leave the tank part full, and
+        # "how long to reach 70%" means nothing measured from an unknown
+        # starting level -- the run that prompted this reported `reached=0.0s`
+        # because the tank was already there. Drain to a known low mark first,
+        # so the two settling times below are a fair comparison of the same
+        # controller against the same process at two ends of its range, and so
+        # they mean the same thing from one run to the next.
+        await settle(START_LEVEL, 25.0)
+        check(num(bus, "tank.level") <= START_LEVEL + 5.0,
+              f"drained to a known starting level before the experiment "
+              f"(at {num(bus, 'tank.level'):.1f}%, wanted {START_LEVEL:.0f}%)")
 
         budget = max(duration, 40.0)
         high_reach, high_held, high_level = await settle(HIGH, budget * 0.4)
@@ -844,12 +859,76 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
 
     print(f"RESULT high sp={HIGH:.0f} reached={high_reach:.1f}s held={high_held:.1f}s "
           f"level={high_level:.1f} | low sp={LOW:.0f} reached={low_reach:.1f}s "
-          f"held={low_held:.1f}s level={low_level:.1f} | estop={estop_ms:.0f}ms")
+          f"held={low_held:.1f}s level={low_level:.1f} | estop={estop_ms:.0f}ms "
+          f"fault={fault_ms:.0f}ms")
     if high_reach >= 0 and low_reach >= 0:
         print(f"       same controller, same gain, one knob: {high_reach:.1f}s to reach "
               f"{HIGH:.0f}% but {low_reach:.1f}s to reach {LOW:.0f}% -- outflow follows "
               f"Torricelli, so process gain falls with level. One PID tuning is not enough.")
     return not check.problems, "; ".join(check.problems)
+
+
+async def exercise_valve_fault(bus: TagBusClient, check: Checks) -> float:
+    """Seize the fill valve under a running controller (FI-01).
+
+    The tank does not get the shared `exercise_fault`, and the reason is the
+    whole lesson. A stopped drive is obviously stopped. A modulating valve
+    stuck open keeps the process moving while the controller's own output
+    reads zero -- so the command and the plant disagree *and the command looks
+    fine*. Asserting "the commanded tag went to 0" would pass here while the
+    tank overflowed, which is exactly the mistake this scene should teach a
+    student not to make.
+
+    So the observable is the level, not the valve command. Returns how long the
+    controller took to trip.
+    """
+    check(num(bus, "tank.fill") > 5.0,
+          f"before the fault: the fill valve is open (at {num(bus, 'tank.fill'):.0f}%)")
+
+    before = num(bus, "tank.level")
+    raised = time.perf_counter()
+    await bus.force({"tank.fault": True})
+    while time.perf_counter() - raised < 1.0:
+        if bit(bus, "panel.red"):
+            break
+        await asyncio.sleep(0.005)
+    trip_ms = (time.perf_counter() - raised) * 1000.0
+
+    check(bit(bus, "panel.red"), "a seized valve trips the controller")
+    check(trip_ms <= ESTOP_LIMIT * 1000.0,
+          f"the controller trips within {ESTOP_LIMIT * 1000:.0f}ms of the fault "
+          f"(took {trip_ms:.0f}ms)")
+
+    await asyncio.sleep(0.3)
+    check(num(bus, "tank.fill") < 0.5,
+          f"the controller commands the valve shut (writing {num(bus, 'tank.fill'):.0f}%)")
+
+    # The point. The command says shut and the tank keeps filling anyway.
+    await asyncio.sleep(2.0)
+    climbed = num(bus, "tank.level") - before
+    check(climbed > 1.0,
+          f"and the tank keeps filling regardless -- level rose {climbed:.1f}% while "
+          f"the fill command read zero. The valve is not obeying, and the "
+          f"controller's own output cannot tell you that")
+
+    await press(bus, "panel.reset")
+    await asyncio.sleep(0.3)
+    check(bit(bus, "panel.red"), "Reset while the valve is still seized does not clear it")
+
+    await bus.force(clear=["tank.fault"])
+    await asyncio.sleep(0.4)
+    held = num(bus, "tank.level")
+    await asyncio.sleep(1.5)
+    check(abs(num(bus, "tank.level") - held) < 0.5,
+          f"freeing the valve lets the standing shut command take effect "
+          f"(level {held:.1f} -> {num(bus, 'tank.level'):.1f})")
+
+    await press(bus, "panel.reset")
+    await press(bus, "panel.start")
+    await asyncio.sleep(0.4)
+    check(not bit(bus, "panel.red"), "Reset then clears the fault")
+
+    return trip_ms
 
 
 async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbose: bool) -> tuple[bool, str]:

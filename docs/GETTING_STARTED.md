@@ -143,6 +143,13 @@ mid-stroke rather than returning home, so `pusher.extended` and
 `pusher.retracted` are both false and the limit switches are the only honest
 thing to read.
 
+The tank's valves can seize too, and that one is nastier. A modulating valve
+stuck at 60% keeps filling while your controller's own output reads zero, so
+nothing *looks* broken — the level just will not do what you asked. A PID
+chasing a valve that no longer answers is one of the first real diagnoses an
+instrument technician learns, and it is the one failure here you cannot spot
+from the command side at all.
+
 Click the same part again to clear it. The fault is held as a *force*, so the
 Tag Inspector shows it held and the `🔓 N forced` chip releases it too.
 
@@ -385,6 +392,7 @@ I/O list automatically, so the driver sees the new tags without a reconnect.
 * **`Delete` / `Backspace`**: Delete selected component.
 * **`Ctrl+Z` / `Ctrl+Y`**: Undo / Redo placement or deletion.
 * **`F1`**: Switch between **Edit** and **Run** mode.
+* **`Esc`** (Operate mode): Disarm the `⚠ Fault` tool.
 * **`F4`**: **I/O Wiring** — map PLC addresses to tags, and export `io_mapping.json` / `io_tags.csv`.
 * **`F5`**: **Driver** — pick a protocol and start the sidecar against this engine.
 * **Save / Load**: choose a file, so you can keep more than one line and share it. The filename becomes the scene name reported on the tag bus.

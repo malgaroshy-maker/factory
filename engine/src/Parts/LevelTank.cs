@@ -42,6 +42,30 @@ public partial class LevelTank : Node3D
 
     /// <summary>True when the tank has run dry or brimmed over — the states an
     /// interlock is supposed to prevent.</summary>
+    /// <summary>True while the valves are seized. Nothing here computes it —
+    /// it is an Input, raised by whoever is playing maintenance.</summary>
+    public bool IsFaulted { get; private set; }
+
+    private float _heldFill;
+    private float _heldDrain;
+    private StandardMaterial3D? _faultLampMat;
+
+    /// <summary>Freeze or release the valves. Freezing keeps whatever opening
+    /// they had on the last step, rather than slamming them shut: a valve that
+    /// failed closed would be a *safe* failure, and the instructive one is the
+    /// valve that fails where it stands.</summary>
+    public void SetFaulted(bool faulted)
+    {
+        if (faulted == IsFaulted && _faultLampMat is not null) return;
+        IsFaulted = faulted;
+
+        if (_faultLampMat is null) return;
+        _faultLampMat.AlbedoColor = faulted ? new Color(1.0f, 0.15f, 0.12f) : new Color(0.30f, 0.06f, 0.06f);
+        _faultLampMat.EmissionEnabled = faulted;
+        _faultLampMat.Emission = faulted ? new Color(1.0f, 0.15f, 0.12f) : Colors.Black;
+        _faultLampMat.EmissionEnergyMultiplier = faulted ? 2.4f : 0.0f;
+    }
+
     public bool IsEmpty => Level <= 0.01f;
     public bool IsFull => Level >= 99.99f;
 
@@ -160,7 +184,45 @@ public partial class LevelTank : Node3D
         };
         AddChild(_readout);
 
+        BuildFaultLamp();
         ApplyLevel();
+    }
+
+    /// <summary>The same beacon the drives carry. Placed on the shell beside
+    /// the outlet, where an instrument panel would be.</summary>
+    private void BuildFaultLamp()
+    {
+        _faultLampMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.30f, 0.06f, 0.06f),
+            Metallic = 0.10f,
+            Roughness = 0.35f,
+        };
+
+        var mount = new Vector3(0, TankHeight * 0.72f, TankRadius);
+        const float stalk = 0.06f;
+
+        AddChild(new MeshInstance3D
+        {
+            Name = "ValveFaultStalk",
+            Mesh = new CylinderMesh { TopRadius = 0.008f, BottomRadius = 0.010f, Height = stalk },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.22f, 0.23f, 0.25f),
+                Metallic = 0.40f,
+                Roughness = 0.50f,
+            },
+            Position = mount + new Vector3(0, 0, stalk / 2),
+            Rotation = new Vector3(Mathf.Pi / 2, 0, 0),
+        });
+
+        AddChild(new MeshInstance3D
+        {
+            Name = "ValveFaultLamp",
+            Mesh = new SphereMesh { Radius = 0.040f, Height = 0.080f },
+            MaterialOverride = _faultLampMat,
+            Position = mount + new Vector3(0, 0, stalk + 0.026f),
+        });
     }
 
     /// <summary>
@@ -170,8 +232,23 @@ public partial class LevelTank : Node3D
     /// </summary>
     public void Step(float fill, float drain, float delta)
     {
+        // A seized valve holds the opening it had, whatever the controller
+        // now writes (FI-01). This is the analog version of a jammed cylinder
+        // and it is nastier: a digital actuator that stops is at least
+        // obviously stopped, while a modulating valve stuck at 40% keeps the
+        // process moving and looks like a controller that will not settle.
+        // A PID chasing a valve that no longer answers is one of the first
+        // real diagnoses an instrument technician learns.
+        if (IsFaulted)
+        {
+            fill = _heldFill;
+            drain = _heldDrain;
+        }
+
         fill = Mathf.Clamp(fill, 0.0f, 100.0f);
         drain = Mathf.Clamp(drain, 0.0f, 100.0f);
+        _heldFill = fill;
+        _heldDrain = drain;
 
         float inflow = FillRate * (fill / 100.0f);
         float outflow = DrainRate * (drain / 100.0f) * Mathf.Sqrt(Mathf.Max(Level, 0.0f) / 100.0f);

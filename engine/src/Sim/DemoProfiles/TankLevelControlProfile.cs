@@ -32,7 +32,7 @@ public sealed class TankLevelControlProfile : IDemoProfile
     /// 10-second settling window.</summary>
     private const float Gain = 4.0f;
 
-    private readonly OperatorStation _station = new();
+    private readonly OperatorStation _station = new OperatorStation("panel", "tank.fault");
 
     public void Start(TagTable tags)
     {

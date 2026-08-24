@@ -227,6 +227,11 @@
         "kind": "output"
       },
       {
+        "id": "tank.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
         "id": "tank.fill",
         "type": "float",
         "kind": "output"

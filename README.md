@@ -38,7 +38,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 ## ✨ Key Features
 
 * 🧲 **Material-aware sensing**: items carry a material, so an inductive sensor sorts metal from cardboard instead of being a second presence sensor.
-* ⚠️ **Break the machine on purpose (`⚠ Fault`)**: arm the fault tool and click a conveyor or a pusher. The drive stops **while its command is still on** — the belt disobeys, its fault beacon lights, and `<part>.fault` goes true for the PLC to read. A jammed cylinder freezes mid-stroke rather than returning home, so the limit switches are the only honest thing to read. Until this existed every actuator did exactly what it was told, which made half of real PLC work unteachable: an interlock exists precisely because the plant does not always obey.
+* ⚠️ **Break the machine on purpose (`⚠ Fault`)**: arm the fault tool and click a conveyor or a pusher. The drive stops **while its command is still on** — the belt disobeys, its fault beacon lights, and `<part>.fault` goes true for the PLC to read. A jammed cylinder freezes mid-stroke rather than returning home, so the limit switches are the only honest thing to read, and a seized tank valve holds its opening — the nastier failure, because the process keeps moving and the controller's own output cannot tell you. Until this existed every actuator did exactly what it was told, which made half of real PLC work unteachable: an interlock exists precisely because the plant does not always obey.
 * 🎚️ **Analog I/O**: Float tags end to end — a modulating valve and a level transmitter, so you can write a real PID against a nonlinear process rather than only on/off logic.
 * ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
@@ -77,7 +77,7 @@ rule, and it is what makes a scene you build addressable from a PLC.
 | **Box Emitter** | Spawner emitting tall & short rigid cartons, optionally every Nth in metal | `emitter.emit` (Bit, Output) |
 | **Box Remover** | Area3D zone despawning items & incrementing a counter; the counted tag is pickable, so two removers can feed one total | `remover.count` (Int, Input) |
 | **Control Panel** | Operator station you can actually press. Start/Stop/Reset are momentary — one clean scan per click, however long you hold the mouse — and the mushroom is a maintained E-stop wired **normally closed**, so its tag is true while the circuit is healthy. The setpoint pot is **dragged**, reads out in the scene's own units on its scale plate, and turns itself to match a tag driven from a PLC | `panel.start`, `.stop`, `.reset`, `.estop` (Bit, Input) · `panel.setpoint` (Float, Input) · `panel.green`, `.red` (Bit, Output) |
-| **Level Tank** | Analog process tank; outflow follows Torricelli, so process gain varies with level and a PID tuned full overshoots when empty | `tank.fill`, `tank.drain` (Float, Output), `tank.level` (Float, Input) |
+| **Level Tank** | Analog process tank; outflow follows Torricelli, so process gain varies with level and a PID tuned full overshoots when empty. A seized valve holds its opening — the process keeps moving while the command reads zero | `tank.fill`, `tank.drain` (Float, Output), `tank.level`, `tank.fault` (Input) |
 
 ---
 

@@ -294,7 +294,8 @@ def section_c() -> None:
     match = re.search(r'\{"t":"describe".*\}', out)
     payload = json.loads(match.group(0)) if match else {}
     record("C7", "--scene= loads a template headless and --print-tags dumps its I/O",
-           code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 14,   # 13, plus the panel's setpoint pot (OP-01)
+           code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 15,   # 13, plus the setpoint pot (OP-01)
+                                                 # and the tank's valve-fault contact (FI-01)
            f"scene={payload.get('scene')!r} tags={len(payload.get('tags', []))}" if payload else "no describe line")
 
     # A hybrid of the fixed regression scene and a template is worse than

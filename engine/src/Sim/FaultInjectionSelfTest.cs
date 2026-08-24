@@ -32,7 +32,9 @@ public partial class FaultInjectionSelfTest : Node
     private int _step;
     private ConveyorBelt _belt = null!;
     private PusherMechanism _pusher = null!;
+    private LevelTank _tank = null!;
     private float _extensionWhenFaulted;
+    private float _levelWhenSeized;
 
     private void Expect(bool condition, string what)
     {
@@ -157,6 +159,47 @@ public partial class FaultInjectionSelfTest : Node
                 Expect(_pusher.IsRetracted,
                        $"clearing the jam lets it finish the move (at {_pusher.Extension:0.###})");
                 CheckToolTargets();
+                Editor.SetMode(EditorMode.Edit);
+                Editor.LoadTemplate("res://templates/tank_level_control.json");
+                return;
+
+            // --- the analog failure -------------------------------------
+            case 92:
+            {
+                var tank = Find<LevelTank>();
+                if (tank is null) { Expect(false, "tank-level-control: no tank"); Finish(); return; }
+                _tank = tank;
+                Expect(Tags.Contains("tank.fault"), "tag tank.fault exists");
+                Expect(Editor.CanFault("LevelTank"), "a tank's valves can be seized");
+                Tags.Set("tank.fill", 60.0);
+                return;
+            }
+
+            case 120:
+                Expect(_tank.Level > 1.0f, $"the tank is filling ({_tank.Level:0.#}%)");
+                _levelWhenSeized = _tank.Level;
+                Tags.Force("tank.fault", true);
+                Tags.Set("tank.fill", 0.0);
+                return;
+
+            case 150:
+                // A seized valve holds its opening, so the tank keeps filling
+                // while the command reads zero. That is the whole difference
+                // between this and a stopped drive: the process keeps moving
+                // and the controller's own output cannot tell you.
+                Expect(_tank.Level > _levelWhenSeized + 1.0f,
+                       $"a seized valve keeps filling while commanded shut "
+                       + $"({_levelWhenSeized:0.#}% -> {_tank.Level:0.#}%)");
+                Expect(System.Convert.ToDouble(Tags.Visible("tank.fill")) < 0.5,
+                       "and the command really does read zero — the two disagree");
+                _levelWhenSeized = _tank.Level;
+                Tags.ClearForce("tank.fault");
+                return;
+
+            case 180:
+                Expect(Mathf.Abs(_tank.Level - _levelWhenSeized) < 0.5f,
+                       $"freeing the valve lets the standing shut command take effect "
+                       + $"({_levelWhenSeized:0.#}% -> {_tank.Level:0.#}%)");
                 Finish();
                 return;
         }
@@ -172,6 +215,7 @@ public partial class FaultInjectionSelfTest : Node
         Expect(Editor.CanFault("RollerConveyor"), "a roller deck can be faulted");
         Expect(Editor.CanFault("WeighingConveyor"), "a weigh deck can be faulted");
         Expect(Editor.CanFault("PusherMechanism"), "a pusher can be faulted");
+        Expect(Editor.CanFault("LevelTank"), "a tank's valves can be seized");
         Expect(!Editor.CanFault("StackLight"), "a stack light has no drive to fail");
         Expect(!Editor.CanFault("ButtonPanel"), "a control panel has no drive to fail");
         Expect(!Editor.CanFault("PhotoelectricSensor"), "a sensor has no drive to fail");

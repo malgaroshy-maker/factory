@@ -227,6 +227,9 @@ public static class PartTagManager
                 // transmitter, all in percent, all Float.
                 tags.Add(new Tag($"{instanceId}.fill", $"Tank {index} Fill Valve (%)", TagType.Float, TagKind.Output));
                 tags.Add(new Tag($"{instanceId}.drain", $"Tank {index} Drain Valve (%)", TagType.Float, TagKind.Output));
+                // A seized valve holds its opening (FI-01) -- the analog
+                // failure, and a nastier one to diagnose than a stopped drive.
+                tags.Add(new Tag($"{instanceId}.fault", $"Tank {index} Valve Fault", TagType.Bit, TagKind.Input));
                 tags.Add(new Tag($"{instanceId}.level", $"Tank {index} Level (%)", TagType.Float, TagKind.Input));
                 break;
 

@@ -83,7 +83,7 @@ public partial class SceneEditor : Node3D
             ["StackLight"] = new[] { "green", "yellow", "red" },
             ["DigitalDisplay"] = new[] { "value" },
             ["LightArray"] = new[] { "height", "blocked" },
-            ["LevelTank"] = new[] { "level", "fill", "drain" },
+            ["LevelTank"] = new[] { "level", "fill", "drain", "fault" },
         };
 
         /// <summary>Which tag suffixes a part type owns — the one place that
@@ -2012,6 +2012,10 @@ public partial class SceneEditor : Node3D
                         && Tags.TryGetVisible(ids["fill"], out var fillVal)
                         && Tags.TryGetVisible(ids["drain"], out var drainVal))
                     {
+                        if (ids.TryGetValue("fault", out var tankFaultId)
+                            && Tags.TryGetVisible(tankFaultId, out var tankFaultVal))
+                            tank.SetFaulted((bool)tankFaultVal);
+
                         // dt is scaled simulation time, so the tank obeys pause
                         // and the time-scale control like everything else.
                         tank.Step((float)System.Convert.ToDouble(fillVal),
