@@ -210,4 +210,72 @@ rising edge of unpredictable width.
 Finally: **the input path needs its own test.** Take the click position from the
 `InputEventMouseButton`, never from `GetViewport().GetMousePosition()`, and
 verify with `--self-test=click`. The logic can be entirely correct while
-clicking does nothing.
+clicking does nothing. That is not hypothetical twice over: Run mode's dispatch
+had exactly this bug, and so did Edit mode's selection, found only when a drag
+needed to grab the part under the *press* rather than under wherever the cursor
+had wandered.
+
+---
+
+## Step 8: Controls that are dragged, not clicked (optional)
+
+The setpoint pot on `ButtonPanel` is the worked example, and it needed three
+things a button does not.
+
+**Its own hit test, separate from the buttons'.** A cap is pressed and a pot is
+turned; a click that begins a drag must not also fire a button. Give the drag
+target its own `HitTestDial`-style method and return early for it in the click
+dispatch, or the enum's default value gets pressed every time somebody grabs the
+knob.
+
+**Join the shared hit test, not a private one.** `SceneEditor.FindOperableTarget`
+is what both the click dispatch and the hover highlight ask, precisely so the two
+can never disagree about what the cursor is over. A control reachable only
+through its own second ray cast is a control the hover cannot know about — and
+one nobody will find, because nothing on screen reacts as the mouse passes over
+it. The cursor shape is the affordance for a drag; the outline is the affordance
+for a click.
+
+**Say so when the mode is entered.** Run mode's banner reads *"N parts respond to
+a click"*, which is exactly the sentence that leaves a drag-only control
+undiscovered. If your part has one, the banner has to mention it.
+
+---
+
+## Step 9: Parts that can fail (optional)
+
+Anything with a drive should be able to break. Until every actuator could, a
+command and reality could never disagree in this library — and an interlock
+exists precisely because the plant does not always obey.
+
+**Register a `.fault` tag as `TagKind.Input`.** Nothing in the simulation
+computes it; it is raised by the toolbar's fault tool, a forced tag or a test,
+and read by the controller exactly like a sensor. `SceneEditor.CanFault` derives
+"can this break?" from the tag set rather than a second list, so registering the
+tag is the whole opt-in.
+
+**The fault must win over the command, in one place.** Resolve it at the top of
+whatever applies the command:
+
+```csharp
+public void SetRunning(bool running)
+{
+    if (IsFaulted) running = false;   // one place the two can disagree
+    // ...
+}
+```
+
+**Fail where it stands, not where it is safe.** A jammed cylinder stops
+mid-stroke and stays there; a seized valve holds its opening. "Returns home" and
+"fails closed" are *safe* failures, and safe failures teach nothing — the whole
+point is that the limit switches, or the process variable, become the only
+honest thing to read.
+
+**Show it.** A stopped machine and a faulted machine look identical, and the
+difference is the whole diagnosis. Every faultable part carries a beacon on a
+short stalk, dark until it lights.
+
+**Watch what you name.** `--self-test=roller` took *"the first child whose mesh
+is a `CylinderMesh`"* to mean "a roller", so a fault beacon mounted on a
+cylindrical stalk became the first cylinder and the test started measuring a lamp
+post for rotation. Name the meshes that matter, and look them up by name.
