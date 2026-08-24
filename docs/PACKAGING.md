@@ -1,14 +1,21 @@
-# Packaging FactoryForge
+# Packaging a FactoryForge release
 
-*Status: presets written, **export not yet verified on this machine** — the
-Godot export templates are not installed here, so nobody has produced a binary
-from these presets yet. Treat the steps below as the intended recipe, not as a
-tested one. If you run it, please correct this file with what actually happened.*
+*Verified end to end on 2026-08-23: Godot 4.7.2-mono on Windows, producing a
+92.8 MB archive whose engine passes all 22 headless self-tests and whose frozen
+sidecar drives it with no Python installed.*
 
-Until a release is published, running FactoryForge means building from source:
-Godot 4.7-mono **and** the .NET 8 SDK. That is a real barrier for the audience
-this project is for — a student learning PLC programming should not have to
-install a game engine and a compiler first.
+Running FactoryForge from a checkout means installing Godot, the .NET 8 SDK and
+Python first — a real barrier for someone who wanted to learn ladder logic, not
+to install a game engine and a compiler. A release exists so that stops being
+true.
+
+```bash
+python tools/build_release.py
+```
+
+That is the whole recipe. It exports the engine, freezes the sidecar, copies the
+payload, and writes `dist/FactoryForge-<platform>.zip`. The rest of this file is
+what it does and why, for when it breaks.
 
 ---
 
@@ -17,62 +24,160 @@ install a game engine and a compiler first.
 | | |
 |---|---|
 | **Godot 4.7.2 .NET (mono)** | the version the project is built and tested with; `project.godot` asks only for 4.7, so any 4.7.x works |
-| **Export templates** | Editor → Editor menu → *Manage Export Templates* → Download |
+| **Export templates** | a ~1.2 GB download, once — see below |
 | **.NET 8 SDK** | on the machine doing the export, not on the user's |
+| **PyInstaller** | `pip install pyinstaller`, to freeze the sidecar |
 
-The export templates are a separate ~1 GB download from the editor itself, and
-a .NET project cannot be exported without them.
+### Installing the export templates
 
----
-
-## Building
-
-`engine/export_presets.cfg` defines two targets. From the project root:
+The editor's *Editor → Manage Export Templates → Download* does this, but it
+needs a GUI. Headless, fetch the `.tpz` for your exact Godot version and unpack
+it flat into Godot's template directory:
 
 ```bash
-# Windows
-godot --headless --path engine/ --export-release "Windows Desktop" ../dist/windows/FactoryForge.exe
-
-# Linux
-godot --headless --path engine/ --export-release "Linux" ../dist/linux/FactoryForge.x86_64
+curl -L -o templates.tpz https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_mono_export_templates.tpz
 ```
 
-`--export-debug` instead of `--export-release` keeps the stack traces, which is
-what you want while the packaging itself is still being proven.
+The archive holds a `templates/` folder with a `version.txt` in it — that file's
+contents (`4.7.2.stable.mono`) is the directory name Godot looks for. Unpack the
+files, without their `templates/` prefix, into:
+
+* Windows — `%APPDATA%\Godot\export_templates\4.7.2.stable.mono\`
+* Linux — `~/.local/share/godot/export_templates/4.7.2.stable.mono/`
+
+`tools/build_release.py` does not do this for you: a 1.2 GB download is not
+something a build script should start on its own.
 
 ---
 
-## What ships alongside the binary
+## The one that will bite you: the solution file
 
-The engine on its own speaks the tag bus and nothing else. **Every PLC protocol
-lives in the Python sidecar**, so a binary with no sidecar can render a factory
-and talk to nothing.
+**A .NET export needs `engine/FactoryForge.sln`.** Without it Godot prints
 
-A release therefore needs:
+```
+ERROR: Export .NET Project: This project contains C# files but no solution file
+```
 
-- the exported engine
-- the `sidecar/` package, and a Python to run it
-- `examples/` — the TIA project, the Node-RED flow, a sample mapping
+…and then **writes the binary anyway and exits 0**. You get a `FactoryForge.exe`
+of the right size, with no `data_FactoryForge_*` folder beside it, whose every
+C# script fails at runtime. It looks like a successful build.
 
-The open question is how to ship Python. Options, none of them tried yet:
+`dotnet build` never creates a `.sln` — it only needs the `.csproj` — so a
+checkout that has only ever been built from the command line will not have one.
+Create it once:
 
-1. **Require Python** and document `pip install -e sidecar`. Simplest, and
-   pushes an install step onto exactly the audience least likely to enjoy it.
-2. **PyInstaller the sidecar** into a single executable per platform, and have
-   the engine's driver dialog launch that instead of `python`. Best experience,
-   most build machinery. `DriverConnectionUI.LaunchSidecar` is the one place
-   that would need to change.
-3. **Ship a bundled interpreter** next to the binary. Fewest moving parts at
-   runtime, largest download.
+```bash
+dotnet new sln -n FactoryForge --format sln
+```
 
-Option 2 is the one worth trying first: it is the only one where a person can
-download one archive and connect to a PLC without reading anything.
+`--format sln` matters on .NET 9+: without it you get a `.slnx`, the newer XML
+format, which Godot 4.7 does not look for. `tools/build_release.py` refuses to
+run if the `.sln` is missing rather than producing the silently-broken binary.
+
+---
+
+## What a release contains
+
+```
+FactoryForge-windows/
+  FactoryForge.exe                     the engine, with the .pck embedded
+  data_FactoryForge_windows_x86_64/    the .NET assemblies — required
+  factoryforge-sidecar.exe             every PLC protocol, frozen
+  examples/                            TIA project, Node-RED flow, mappings
+  docs/                                GETTING_STARTED, tag-bus, authoring guides
+  README.md, LICENSE
+```
+
+The five scene templates are `res://` resources and travel **inside** the
+binary; they are deliberately not in that list.
+
+### One file, or one folder — one folder
+
+`binary_format/embed_pck=true` on both presets, so the `.pck` is inside the
+executable. That is as far as "one file" goes: a .NET export always needs its
+assemblies folder beside the binary, so a single self-contained executable is
+not available. Two items instead of three is the improvement that was actually
+on the table, and it removes the `.pck` a user could lose.
+
+### How Python ships
+
+**Frozen with PyInstaller, one executable per platform.** The engine speaks the
+tag bus and nothing else — every PLC protocol lives in the Python sidecar — so a
+release without one can render a factory and talk to nothing.
+
+The alternative was documenting `pip install -e sidecar`, which pushes an
+install step onto exactly the audience least likely to enjoy it. Freezing costs
+~20 MB and a few minutes of build time, and is the only option where a person
+downloads one archive and connects to a PLC without reading anything.
+
+Two things about the freeze are worth knowing:
+
+* The entry point is `tools/packaging/sidecar_entry.py`, **not**
+  `factoryforge_sidecar/__main__.py`. Freezing the module directly strips its
+  package context, and its relative imports then raise
+  `ImportError: attempted relative import with no known parent package` — but
+  only once a command does real work. `--help` still prints, which makes the
+  break easy to ship.
+* The frozen binary carries whichever optional drivers were installed when it
+  was built. `websockets` is the only hard dependency; `asyncua`, `python-snap7`
+  and `pythonnet` are extras. Build on a machine with `pip install -e
+  "sidecar[opcua,s7,plcsim]"` if the release should support all of them.
+
+### How the engine finds it
+
+`SidecarLocator` looks in order: the `FACTORYFORGE_SIDECAR` environment
+variable, then beside the binary, then beside `engine/` (a checkout), then the
+executable's directory. A frozen `factoryforge-sidecar[.exe]` wins over a source
+`sidecar/` package in the same directory, because the one that needs no Python
+is the one to run.
+
+`--self-test=sidecar` reports which it found and how it would start it. Run it
+against a release and it should say `Bundled`; against a checkout, `Source`.
+
+---
+
+## Verifying a release
+
+Every engine self-test runs against the exported binary — that is the point of
+them being headless:
+
+```bash
+./dist/windows/FactoryForge.exe --headless -- --self-test=scenes
+```
+
+All 22 pass against the packaged Windows build, including the two that read
+checked-in fixtures. Those two used to fail in an export for two separate
+reasons, both now fixed: the fixtures lived outside `res://` at a path that does
+not exist beside a binary, and even once moved in, `System.IO.File` cannot read
+inside a `.pck` — only Godot's `FileAccess` can (see `engine/src/Sim/FixtureFile.cs`).
+
+---
+
+## Code signing — not signed, and the download page says so
+
+Releases are **not** signed. Windows SmartScreen will warn on first run, and the
+user has to click *More info → Run anyway*.
+
+That is a deliberate choice, not an oversight. An OV code-signing certificate
+runs a few hundred dollars a year and requires an identity that an
+individual-authored open project may not want to maintain; an EV one needs
+hardware. The honest alternative to paying for it is saying plainly that the
+warning is expected and why — which the README does — rather than leaving a
+first-time user to guess whether the download is safe.
+
+Revisit if the project ever distributes through a channel where the warning
+blocks installation outright rather than just alarming.
 
 ---
 
 ## Known gaps
 
-- Nothing here is verified. See the status note at the top.
-- No code signing, so Windows SmartScreen will warn on first run.
-- No CI job builds a release; the self-tests
-  (`--self-test=buttons`, `--self-test=io`) run headless and could gate one.
+- **The Linux binary is built but not run here.** It exports cleanly from
+  Windows; the release CI job (`.github/workflows/release.yml`) runs the
+  self-tests against it on a real Linux runner, which is where that claim gets
+  checked.
+- **macOS is not packaged.** No preset exists and it cannot be tested from here.
+  `TerminalLauncher` already handles macOS terminals when someone picks it up.
+- **The frozen sidecar is per-platform.** A Windows release cannot ship the
+  Linux one; each platform's archive has to be built on that platform, which is
+  what the CI matrix is for.

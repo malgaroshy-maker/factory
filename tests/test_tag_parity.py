@@ -1,4 +1,4 @@
-"""Runs tests/fixtures/tag_cases.json against the Python tag model.
+"""Runs engine/fixtures/tag_cases.json against the Python tag model.
 
 The C# engine mirrors sidecar/factoryforge_sidecar/tags.py by hand (see the
 comment on engine/src/TagBus/Tag.cs). Nothing enforced that agreement before
@@ -18,7 +18,8 @@ import pytest
 from factoryforge_sidecar.tags import Tag, TagError
 
 FIXTURE = json.loads(
-    (Path(__file__).resolve().parent / "fixtures" / "tag_cases.json").read_text(encoding="utf-8")
+    (Path(__file__).resolve().parent.parent / "engine" / "fixtures" / "tag_cases.json")
+    .read_text(encoding="utf-8")
 )
 
 

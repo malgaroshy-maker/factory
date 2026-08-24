@@ -1,0 +1,128 @@
+# Build a downloadable release on a tag, and gate it on the self-tests running
+# against the exported binary -- not against a source checkout.
+#
+# That distinction is the whole point of this job. The headless self-tests pass
+# in a checkout and can still fail in an export: two of them read checked-in
+# fixtures, which used to sit outside res:// entirely, and even in the right
+# place cannot be read with System.IO inside a .pck. A release that has not run
+# its own tests against the artifact it is about to publish has not been tested.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the artifacts without creating a release"
+        type: boolean
+        default: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            binary: FactoryForge.x86_64
+          - os: windows-latest
+            target: windows
+            binary: FactoryForge.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The editor and the export templates are separate ~100 MB and ~1.2 GB
+      # downloads. Cached together because a release build needs both and
+      # neither changes between runs of the same Godot version.
+      - name: Cache Godot and export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+            ~/AppData/Roaming/Godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-mono-${{ matrix.target }}-templates
+
+      - name: Install Godot and export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        shell: bash
+        run: python tools/packaging/install_godot.py --version "$GODOT_VERSION"
+
+      - name: Locate Godot
+        shell: bash
+        run: echo "GODOT=$(python tools/packaging/install_godot.py --print-path --version "$GODOT_VERSION")" >> "$GITHUB_ENV"
+
+      - name: Install the sidecar and its drivers
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          python -m pip install -e "sidecar[opcua]"
+
+      # dotnet build never writes a .sln, and Godot refuses to export the .NET
+      # assemblies without one -- while still writing a binary and exiting 0.
+      # Create it before the export rather than shipping a silently dead build.
+      - name: Ensure the solution file exists
+        shell: bash
+        working-directory: engine
+        run: |
+          if [ ! -f FactoryForge.sln ]; then
+            dotnet new sln -n FactoryForge --format sln
+            dotnet sln FactoryForge.sln add FactoryForge.csproj
+          fi
+          dotnet build -v q --nologo
+
+      - name: Build the release
+        shell: bash
+        run: python tools/build_release.py --target ${{ matrix.target }}
+
+      # The gate. Every headless self-test, against the artifact itself.
+      - name: Self-test the exported binary
+        shell: bash
+        run: python tools/packaging/check_release.py --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FactoryForge-${{ matrix.target }}
+          path: dist/FactoryForge-${{ matrix.target }}.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FactoryForge-*
+          merge-multiple: true
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
+          body: |
+            Download the archive for your platform, extract it, and run
+            `FactoryForge`. No Godot, no .NET SDK and no Python needed.
+
+            **Windows SmartScreen will warn on first run.** These builds are not
+            code-signed — see [PACKAGING.md](docs/PACKAGING.md#code-signing--not-signed-and-the-download-page-says-so)
+            for why, and click *More info → Run anyway*.

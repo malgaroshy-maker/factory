@@ -431,23 +431,37 @@ public partial class DriverConnectionUI : Control
         if (int.TryParse(_dbInput.Text, out int db)) DbNumber = db;
         SaveLastSettings();
 
-        string sidecarDir = ProjectSettings.GlobalizePath("res://").TrimEnd('/', '\\');
-        // res:// is engine/; the sidecar package sits beside it in the checkout.
-        sidecarDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(sidecarDir) ?? "", "sidecar");
-
+        // Resolution order lives in SidecarLocator: an explicit
+        // FACTORYFORGE_SIDECAR override, then beside the binary (a release),
+        // then beside engine/ (a checkout). The old single guess was correct
+        // only in a checkout, so in a packaged build F5's "command copied, run
+        // it yourself" was the normal path rather than the exception (UX-04).
+        SidecarLocation? found = SidecarLocator.Find();
         string arguments = BuildSidecarArguments();
-        string display = $"cd \"{sidecarDir}\" && python {arguments}";
+
+        if (found is not { } sidecar)
+        {
+            // Name every place that was tried: "not found" without a list is a
+            // dead end for anyone whose layout is unusual.
+            string looked = string.Join(", ", SidecarLocator.SearchDirs());
+            string fallback = $"python {arguments}";
+            _commandLabel.Text = fallback;
+            DisplayServer.ClipboardSet(fallback);
+            Warn($"Command copied, but no sidecar was found. Looked in: {looked}. "
+                 + $"Set {SidecarLocator.OverrideVar} to its directory.");
+            return;
+        }
+
+        // A frozen sidecar runs itself; a checkout needs an interpreter in
+        // front. What lands on the clipboard is the command that will actually
+        // run, so the two never disagree.
+        string command = sidecar.CommandFor(arguments);
+        string display = $"cd \"{sidecar.WorkingDir}\" && {command}";
         _commandLabel.Text = display;
         DisplayServer.ClipboardSet(display);
         GD.Print($"Sidecar command (copied to clipboard):\n  {display}");
 
-        if (!System.IO.Directory.Exists(sidecarDir))
-        {
-            Warn($"Command copied, but {sidecarDir} does not exist — run the sidecar from your checkout.");
-            return;
-        }
-
-        LaunchSidecar(sidecarDir, arguments);
+        LaunchSidecar(sidecar, command);
     }
 
     /// <summary>
@@ -458,7 +472,7 @@ public partial class DriverConnectionUI : Control
     /// is not on PATH this says so and falls back to the copied command, rather
     /// than the previous behaviour of printing a line and pretending.
     /// </summary>
-    private void LaunchSidecar(string workingDir, string arguments)
+    private void LaunchSidecar(SidecarLocation sidecar, string command)
     {
         if (_sidecarPid > 0 && OS.IsProcessRunning(_sidecarPid))
         {
@@ -466,7 +480,7 @@ public partial class DriverConnectionUI : Control
             _sidecarPid = 0;
         }
 
-        int pid = TerminalLauncher.Spawn(workingDir, TerminalLauncher.PythonCommand(arguments));
+        int pid = TerminalLauncher.Spawn(sidecar.WorkingDir, command);
         if (pid <= 0)
         {
             Warn("Could not start python. The command is on your clipboard — run it yourself.");

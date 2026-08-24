@@ -41,3 +41,6 @@ scratch/
 
 # test_plan.py engine output
 .test_plan_engine.log
+
+# Godot rewrites the csproj SDK version on first open and leaves a backup.
+*.csproj.old

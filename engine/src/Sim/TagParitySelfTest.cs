@@ -8,7 +8,7 @@ using Godot;
 namespace FactoryForge.Sim;
 
 /// <summary>
-/// Runs tests/fixtures/tag_cases.json against the C# tag model.
+/// Runs engine/fixtures/tag_cases.json against the C# tag model.
 ///
 /// <code>godot --headless --path engine -- --self-test=parity</code>
 ///
@@ -33,9 +33,7 @@ public partial class TagParitySelfTest : Node
     {
         try
         {
-            string fixturePath = Path.Combine(
-                ProjectSettings.GlobalizePath("res://"), "..", "tests", "fixtures", "tag_cases.json");
-            var root = JsonNode.Parse(File.ReadAllText(fixturePath))!.AsObject();
+            var root = JsonNode.Parse(FixtureFile.Read("res://fixtures/tag_cases.json"))!.AsObject();
 
             CheckCoerce(root["coerce"]!.AsArray());
             CheckDiffers(root["differs"]!.AsArray());

@@ -244,6 +244,10 @@ public partial class Main : Node
         {
             AddChild(new ModeSelfTest { Name = "ModeSelfTest", Editor = _editor!, Tags = tags });
         }
+        if (_selfTest == "sidecar")
+        {
+            AddChild(new SidecarLocatorSelfTest { Name = "SidecarLocatorSelfTest" });
+        }
         if (_selfTest == "partsettings")
         {
             AddChild(new PartSettingsSelfTest { Name = "PartSettingsSelfTest", Editor = _editor!, Tags = tags });

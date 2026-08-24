@@ -82,6 +82,23 @@ rule, and it is what makes a scene you build addressable from a PLC.
 
 ## ⚡ Quick Start
 
+### Just want to run it? Download a release
+
+Grab the archive for your platform from
+[Releases](https://github.com/malgaroshy-maker/factory/releases), extract it,
+and run `FactoryForge`. **No Godot, no .NET SDK and no Python needed** — the
+sidecar that speaks every PLC protocol ships frozen alongside the engine, and
+F5's *Apply & Connect* finds it automatically.
+
+> **Windows will warn you on first run.** These builds are not code-signed, so
+> SmartScreen shows "Windows protected your PC" — click *More info → Run
+> anyway*. That warning means the binary has no purchased certificate attached,
+> not that anything is wrong with it. See
+> [PACKAGING.md](docs/PACKAGING.md#code-signing--not-signed-and-the-download-page-says-so)
+> for why this project does not buy one.
+
+Everything below is for building from source instead.
+
 ### 1. Installation
 
 ```bash
@@ -170,7 +187,7 @@ See [Getting Started](docs/GETTING_STARTED.md#-connecting-a-scene-you-built-your
 | 🛠️ **[PART_AUTHORING.md](docs/PART_AUTHORING.md)** | Guide & template for building custom 3D factory components |
 | 🔌 **[DRIVER_AUTHORING.md](docs/DRIVER_AUTHORING.md)** | Guide for adding custom Python protocol drivers |
 | ✅ **[TEST_PLAN.md](docs/TEST_PLAN.md)** | What is tested, what is not, and the last run's results |
-| 📦 **[PACKAGING.md](docs/PACKAGING.md)** | Building a distributable binary (not yet verified) |
+| 📦 **[PACKAGING.md](docs/PACKAGING.md)** | Building a distributable release — verified end to end |
 | 📋 **[PLAN.md](docs/PLAN.md)** | Architectural specifications, design choices, and status |
 | 🧹 **[LOOSE_ENDS_PLAN.md](docs/LOOSE_ENDS_PLAN.md)** | Claims without code, controls without effect — what a full sweep of the app found, and the plan to close it |
 | 🗺️ **[ROADMAP.md](docs/ROADMAP.md)** | Milestone completion tracking |

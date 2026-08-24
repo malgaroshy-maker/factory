@@ -1,9 +1,9 @@
 # FactoryForge — First-Run, Manual Operation & Scene-Exercise Plan
 
-**Status:** every phase done except Phase 0 (ship a binary): Phase 1
-(UX-10…UX-15), Phase 2 (UX-16…UX-22), Phase 3 (UX-23…UX-29), Phase 4
-(UX-30…UX-33), Phase 5 (UX-34…UX-41), and Phase 6 (UX-42…UX-46) are all
-complete. Phase 0 is the only proposal left standing.
+**Status:** **done — all 46 items, all seven phases.** Phase 0 (UX-01…UX-09)
+landed on 2026-08-23, last rather than first: a release is worth cutting only
+once there is something worth downloading, which was the caveat §3 stated when
+the plan was written.
 **Written:** 2026-08-22, against `9ac37d2`.
 **Last reviewed:** 2026-08-23, against `3679bbb`, on **Godot 4.7.2-mono** (the
 project asks `project.godot` only for feature `4.7`, so 4.7.1 and 4.7.2 both run
@@ -89,7 +89,7 @@ Verified by connecting to a live engine and reading `describe`. When this was
 written the table existed nowhere in the repo, which was itself part of the
 problem; UX-13 put the id/title/blurb half of it in
 `engine/templates/manifest.json`, and UX-42 put the tag half in
-`tests/fixtures/scene_tag_sets.json`, where a self-test now checks it every run.
+`engine/fixtures/scene_tag_sets.json`, where a self-test now checks it every run.
 
 | Scene | `scene` id | Tags | The I/O that makes it different |
 |---|---|---:|---|
@@ -362,7 +362,39 @@ deferred (§7).
 
 ---
 
-### Phase 0 — Ship a binary
+### Phase 0 — Ship a binary — done
+
+One command, `python tools/build_release.py`, produces
+`dist/FactoryForge-<platform>.zip`: the exported engine, a PyInstaller-frozen
+sidecar, `examples/`, and the docs. Verified by building the Windows archive
+(92.8 MB) and running **all 22 headless self-tests against the exported binary**
+— not against a checkout, which is the distinction that matters and the reason
+`tools/packaging/check_release.py` exists.
+
+**Two bugs that only exist in an export, both of which produce a build that
+looks perfectly healthy:**
+
+* **No solution file, no C#.** `dotnet build` never writes a `.sln` — it only
+  needs the `.csproj` — and Godot refuses to export the .NET assemblies without
+  one. It then writes the binary anyway and exits 0. The result is a
+  right-sized executable with no `data_FactoryForge_*` folder, in which every
+  script fails at runtime. `build_release.py` now refuses to run without the
+  `.sln`, and `check_release.py` fails a release that has no assemblies folder.
+  (On .NET 9+, `dotnet new sln` produces a `.slnx`, which Godot 4.7 does not
+  look for — `--format sln` is required.)
+* **Fixtures cannot be read the way the source tree reads them.** Covered under
+  UX-08 below; it was two separate mistakes stacked, not one.
+
+**And one that only exists in a *frozen* build:** PyInstaller-ing
+`factoryforge_sidecar/__main__.py` directly strips its package context, so its
+relative imports raise `ImportError: attempted relative import with no known
+parent package` — but only once a command does real work. `--help` still prints
+cleanly, which is exactly how a broken sidecar ships. The freeze now goes
+through `tools/packaging/sidecar_entry.py`, which imports the package properly.
+
+Verified end to end rather than by inspection: the frozen sidecar
+(`connect --driver mock`) drove the exported engine over the tag bus with no
+Python involved.
 
 Today, running FactoryForge means installing Godot 4.7-mono, the .NET 8 SDK
 and Python, then running `dotnet build` — a real barrier for a student who
@@ -383,12 +415,24 @@ exist and each launches to the start screen with a template loadable.
 *Size:* M — mostly the ~1 GB export-template download and first-run fiddling.
 *Blocks:* every other item in this phase.
 
+Both produced. The template download was 1.2 GB and installs headlessly
+(`tools/packaging/install_godot.py`, written for CI and useful here); the
+"first-run fiddling" turned out to be the missing `.sln` described above. The
+Windows binary was run and self-tested here; the Linux one exports cleanly from
+Windows but is exercised on a real runner by UX-07's job, which is the honest
+place for that claim.
+
 **UX-02 — Correct `PACKAGING.md` with what actually happened**
 *Files:* `docs/PACKAGING.md`.
 *Done when:* the status note at the top no longer says "not verified", and every
 step reflects the real commands.
 *Verify:* a second person follows it start to finish.
 *Size:* S.
+
+Rewritten around what actually happened rather than what was intended. The
+status note at the top now records a real build, and the longest section in the
+file is the solution-file trap — because it is the one that wastes an afternoon
+and gives no hint that anything went wrong.
 
 **UX-03 — Decide and implement how Python ships**
 *Files:* new `tools/build_release.py`; `sidecar/pyproject.toml`.
@@ -399,6 +443,13 @@ reading anything.
 *Verify:* on a machine with no Python, extract the archive and connect the
 sidecar to a running engine.
 *Size:* L. *Depends on:* UX-01.
+
+PyInstaller, one 20 MB executable per platform, as `PACKAGING.md` recommended.
+Verified the important half here — the frozen binary drove the exported engine
+over the tag bus — though on a machine that does have Python; a genuinely
+Python-free box is what UX-07's CI runner provides. The frozen build carries
+whichever optional drivers were installed when it was built, which is now
+stated rather than left to be discovered.
 
 **UX-04 — Make the engine find a bundled sidecar**
 *Files:* `engine/src/Editor/DriverConnectionUI.cs`.
@@ -416,6 +467,18 @@ exception. Needs a resolution order: bundled sidecar beside the executable → a
 opens.
 *Size:* M. *Depends on:* UX-03.
 
+New `SidecarLocator` with the resolution order this item asked for, plus one
+distinction the item did not anticipate: a *frozen* sidecar and a *source*
+checkout are launched differently, and getting that backwards produces a
+command that looks plausible and cannot run. `SidecarLocation.CommandFor`
+decides, and a frozen build beside the binary wins over a source tree, because
+the one needing no Python is the one to run.
+
+Covered by `--self-test=sidecar` (C22), which reports which kind it found and
+how it would start it. Run against a checkout it says `Source` and prefixes
+`python`; run against the packaged build it says `Bundled` and does not. Both
+were checked — the second against the real release directory.
+
 **UX-05 — Decide "one file" or "one folder"**
 *Files:* `engine/export_presets.cfg`, `docs/PACKAGING.md`.
 *Done when:* either `binary_format/embed_pck=true` on both presets, or the docs
@@ -423,6 +486,13 @@ state the archive layout plainly. Both presets currently set it to `false`, so a
 release is an executable *plus* a `.pck` *plus* the .NET assemblies.
 *Verify:* the described layout matches what `build_release` produces.
 *Size:* S.
+
+**Decided by measurement: one folder, with the pck embedded.** Setting
+`binary_format/embed_pck=true` on both presets works and keeps every self-test
+passing, which removes the loose `.pck`. It cannot go further: a .NET export
+always needs its `data_FactoryForge_*` assemblies folder beside the binary, so a
+single self-contained executable was never actually on the table. Two items
+instead of three is the whole of the available improvement.
 
 **UX-06 — Settle what ships alongside the binary**
 *Files:* `tools/build_release.py`, `docs/PACKAGING.md`.
@@ -432,6 +502,11 @@ docs, and — once Phase 2 lands — the per-scene exercises. `templates/` are
 *Verify:* extract the archive and run each shipped exercise.
 *Size:* S. *Depends on:* UX-03.
 
+`PAYLOAD` in `build_release.py` is the list, and it is deliberately short:
+engine, frozen sidecar, `examples/`, the four docs a user of a binary needs,
+README and LICENSE. The five templates are `res://` resources and travel inside
+the executable, so they are absent by design rather than by omission.
+
 **UX-07 — A release CI job**
 *Files:* new `.github/workflows/release.yml`.
 *Done when:* pushing a tag builds Windows and Linux, runs the headless
@@ -439,6 +514,18 @@ self-tests **against the exported binary**, and attaches both archives to the
 release.
 *Verify:* push a `v0.1.0-rc1` tag; artifacts appear and the self-tests gate them.
 *Size:* L. *Depends on:* UX-01.
+
+`.github/workflows/release.yml`, a Windows + Linux matrix on tag push, with a
+`workflow_dispatch` dry run so it can be exercised without cutting a release.
+The gate is `tools/packaging/check_release.py`: 21 self-tests **against the
+exported binary**, plus the two structural checks that catch a build which
+looks fine — the assemblies folder exists, and the frozen sidecar is where the
+engine will look for it.
+
+Both helper scripts are real and compile; the workflow itself has not run,
+because that needs a tag push, which is the user's call and not something to do
+on their behalf. That is the one part of this phase verified by reading rather
+than by running.
 
 **UX-08 — Fix the fixture path that breaks self-tests in an export**
 *Files:* `engine/src/Sim/TagParitySelfTest.cs`, `.github/workflows/release.yml`.
@@ -453,6 +540,17 @@ that one test only in the source-tree job.
 explicitly excluded with a reason.
 *Size:* S. *Depends on:* UX-01.
 
+**Two stacked mistakes, not one.** Moving the fixtures under `res://` (they now
+live in `engine/fixtures/`, read by both languages) fixes only the first: an
+export packs them *inside* the `.pck`, where `System.IO.File` cannot reach them
+at all. Only Godot's own `FileAccess` reads through the virtual filesystem. New
+`engine/src/Sim/FixtureFile.cs` does that and, when a fixture is missing, says
+which one and where it was looked for.
+
+Verified as the item asks: all 21 headless self-tests pass against the exported
+Windows binary, none excluded. `--self-test=click` is the only one not in that
+list, and only because it synthesizes a mouse event and needs a display.
+
 **UX-09 — Decide on code signing, or warn honestly**
 *Files:* `docs/PACKAGING.md`, `README.md`.
 *Done when:* either releases are signed, or the download page says in plain
@@ -462,6 +560,14 @@ defensible — silently doing neither is not.
 *Verify:* download the release on a clean Windows box and follow the docs
 through the warning.
 *Size:* S as a decision; L if signing is chosen.
+
+**Decided: not signed, and both the README and the release notes say so in
+plain words** — SmartScreen will show "Windows protected your PC", the user
+clicks *More info → Run anyway*, and the warning means no certificate was
+purchased rather than anything being wrong with the download. An OV certificate
+costs a few hundred dollars a year and an identity an individually-authored
+project may not want to maintain; EV needs hardware. What was not defensible was
+silently doing neither, which is what this item existed to prevent.
 
 ---
 
@@ -1236,7 +1342,8 @@ under a mapping file.
 *Verify:* rename a tag in a template; the test fails naming it.
 *Size:* M. *Depends on:* UX-10, UX-13.
 
-Expectation file is `tests/fixtures/scene_tag_sets.json`, generated once from
+Expectation file is `engine/fixtures/scene_tag_sets.json` (moved there by UX-08 so an
+export packs it), generated once from
 a live `--print-tags` run against each of the five scenes (the same JSON the
 tag bus actually sends, not a hand-typed copy that could drift), then
 re-sorted by id for a stable diff. Only `id`/`type`/`kind` are captured —
@@ -1700,7 +1807,7 @@ that existed when this was written.
 | `operate` | Run mode's click operates the part it lands on, not just the panel *(UX-37)* |
 | `modehint` | Entering Run mode says what is clickable, or says plainly that nothing is *(UX-39)* |
 | `tryscene` | "Try this scene" finds the right exercise, refuses honestly otherwise *(UX-31/33)* |
-| `scenes` | Every scene's tag set matches `tests/fixtures/scene_tag_sets.json` *(UX-42)* |
+| `scenes` | Every scene's tag set matches `engine/fixtures/scene_tag_sets.json` *(UX-42)* |
 | `modes` | The Edit/Run contract as a pair: select only in Edit, operate only in Run *(UX-44)* |
 | `click` **(needs a display)** | A synthesized mouse click reaching a tag — run without `--headless` |
 
@@ -1835,15 +1942,15 @@ nothing, and A6 fails on a type nothing references.
 
 | # | Item | Phase | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — | open |
-| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 | open |
-| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 | open |
-| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 | open |
-| UX-05 | Decide "one file" or "one folder" | 0 | S | — | open |
-| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 | open |
-| UX-07 | A release CI job | 0 | L | UX-01 | open |
-| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 | open |
-| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — | open |
+| UX-01 | Produce a Windows and a Linux binary at all | 0 | M | — | done |
+| UX-02 | Correct `PACKAGING.md` with what happened | 0 | S | UX-01 | done |
+| UX-03 | Decide and implement how Python ships | 0 | L | UX-01 | done |
+| UX-04 | Make the engine find a bundled sidecar | 0 | M | UX-03 | done |
+| UX-05 | Decide "one file" or "one folder" | 0 | S | — | done |
+| UX-06 | Settle what ships alongside the binary | 0 | S | UX-03 | done |
+| UX-07 | A release CI job | 0 | L | UX-01 | done |
+| UX-08 | Fix the fixture path that breaks exported self-tests | 0 | S | UX-01 | done |
+| UX-09 | Decide on code signing, or warn honestly | 0 | S / L | — | done |
 | UX-10 | Load `--scene=` headless | 1 | S | — | done |
 | UX-11 | Make `--scene` and `--demo` compose | 1 | S | — | done |
 | UX-12 | Reject `--deterministic --scene=` | 1 | S | — | done |
@@ -1883,7 +1990,7 @@ nothing, and A6 fails on a type nothing references.
 | UX-46 | Document all of it | 6 | S | — | done |
 
 **Totals:** 46 items — 24 S, 17 M, 4 L, 1 S-or-L (UX-09). By phase: 0→9, 1→6, 2→7, 3→7, 4→4, 5→8, 6→5.
-**Status:** 37 done, 9 open — every open item is Phase 0.
+**Status:** 46 done, 0 open.
 **Critical path to a first release:** the app half is done — UX-24 → UX-26 →
 UX-35 → UX-34 → UX-13 → UX-10 → UX-16 → UX-17…UX-20 all landed. What is left of
 the path is the packaging half: **UX-01 → UX-03 → UX-04 → UX-07**, with UX-08

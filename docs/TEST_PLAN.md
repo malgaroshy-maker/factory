@@ -72,9 +72,25 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C16 | Run mode's click operates the part it lands on -- conveyor, pusher, emitter, stack light lamps and tank valves independently, not just the Control Panel | `--self-test=operate` |
 | C17 | Entering Run mode names what's clickable (count and kinds), or says plainly nothing is, in the actual on-screen hint label | `--self-test=modehint` |
 | C18 | "Try this scene" resolves the loaded scene to the right manifest entry, and refuses honestly (naming the scene) rather than pretending on a custom scene with no built-in exercise | `--self-test=tryscene` |
-| C19 | Every shipped scene's tag set (id/type/kind) matches `tests/fixtures/scene_tag_sets.json` -- catches a template edit that renames or retypes a tag out from under a mapping file | `--self-test=scenes` |
+| C19 | Every shipped scene's tag set (id/type/kind) matches `engine/fixtures/scene_tag_sets.json` -- catches a template edit that renames or retypes a tag out from under a mapping file | `--self-test=scenes` |
 | C20 | The Edit/Run contract as a pair: a click selects in Edit and does not in Run, a control operates in Run and does not in Edit, and entering Run clears both the placement preview and the selection | `--self-test=modes` |
 | C21 | Every **settings** control in the part property panel reaches the simulation — a named observable per control (top beam, raycast reach, physics-material friction, belt surface velocity, ramp deck transform); no row is wider than the panel's own scroll bound; and a row the test does not know how to drive is a failure | `--self-test=partsettings` |
+| C22 | The engine can find a sidecar to launch and knows how to start it — a frozen build runs itself, a checkout goes through an interpreter | `--self-test=sidecar` |
+
+### C-release. The same self-tests, against a built binary
+
+`tools/packaging/check_release.py --target windows|linux` runs 21 of the C
+checks against `dist/<target>/FactoryForge*` instead of a source checkout, and
+is the gate on `.github/workflows/release.yml`.
+
+The distinction is the point: a checkout can pass every C check while the
+exported binary fails. Two of them read checked-in fixtures, which used to sit
+outside `res://` at a path that does not exist beside a binary — and even once
+moved in, cannot be read with `System.IO` at all, because an export packs them
+inside the `.pck`. It also checks two structural things no self-test can see
+from the inside: that the .NET assemblies were exported (without them the binary
+still builds, exits 0, and fails every script at runtime) and that the frozen
+sidecar is where `SidecarLocator` will look.
 
 ### D. Engine self-tests (need a display)
 
@@ -199,6 +215,11 @@ patch release runs the project.
 
 Then again after `docs/LOOSE_ENDS_PLAN.md` landed, which added A6 and C21:
 `--only A,B,C,E,G,H` — **43 passed, 0 failed, 344s**.
+
+And after `UX_PLAN.md` Phase 0, which added C22: `--only A,B,C,E,G,H` —
+**44 passed, 0 failed, 437s**. Separately, `check_release.py` runs 21 of the C
+checks against the *exported Windows binary*, which is the gate a release has to
+pass and is not part of this count.
 
 Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
 `docs/UX_PLAN.md` landing in between: ten more headless self-tests (C10…C19,

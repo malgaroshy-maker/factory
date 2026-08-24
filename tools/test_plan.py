@@ -252,9 +252,15 @@ def section_b() -> None:
     code, out = run([sys.executable, "-m", "pytest", "-q", "tests"], timeout=600)
     match = re.search(r"(\d+) passed", out)
     failed = re.search(r"(\d+) failed", out)
-    record("B1", "pytest suite", code == 0,
-           f"{match.group(1) if match else '?'} passed"
-           + (f", {failed.group(1)} FAILED" if failed else ""))
+    # Name the tests that failed, not just how many. A bare count sends you back
+    # to run pytest yourself to find out what broke -- and if it was a flake,
+    # the second run tells you nothing at all.
+    names = re.findall(r"^(?:FAILED\s+)?(tests[/\][\w./\]+::[\w\[\]-]+)", out, re.M)
+    detail = (f"{match.group(1) if match else '?'} passed"
+              + (f", {failed.group(1)} FAILED" if failed else ""))
+    if names:
+        detail += ": " + ", ".join(dict.fromkeys(names))
+    record("B1", "pytest suite", code == 0, detail)
 
 
 # --- C/D. engine self-tests -------------------------------------------------
@@ -316,7 +322,7 @@ def section_c() -> None:
     _self_test("C18", "\"Try this scene\" finds the right exercise, refuses honestly otherwise", "tryscene")
     # Nothing else catches a template edit that quietly renames or retypes a
     # tag out from under a mapping file.
-    _self_test("C19", "every shipped scene's tag set (id/type/kind) matches tests/fixtures/scene_tag_sets.json", "scenes")
+    _self_test("C19", "every shipped scene's tag set (id/type/kind) matches engine/fixtures/scene_tag_sets.json", "scenes")
     # =click and =buttons each cover one half of the Edit/Run contract; this
     # is the only check that a click means one thing in one mode and nothing
     # in the other, as a pair.
@@ -327,6 +333,11 @@ def section_c() -> None:
     # happened (LE-01). This drives every settings row and asserts a named
     # observable per control, and fails on a row it does not know how to drive.
     _self_test("C21", "every settings control in the part panel reaches the simulation", "partsettings")
+    # F5's only job is starting the sidecar, and when the search misses it
+    # falls back to "command copied, run it yourself" -- which looks like a
+    # feature rather than a failure. In a packaged build that fallback used to
+    # be the only path (UX-04).
+    _self_test("C22", "the engine can find a sidecar to launch, and knows how to start it", "sidecar")
 
 
 def section_d(enabled: bool) -> None:

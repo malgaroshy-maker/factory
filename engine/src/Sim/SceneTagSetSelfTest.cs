@@ -9,7 +9,7 @@ namespace FactoryForge.Sim;
 
 /// <summary>
 /// Load every manifest scene in turn and check its tag set -- id, type, kind
-/// -- matches <c>tests/fixtures/scene_tag_sets.json</c> exactly (UX-42).
+/// -- matches <c>engine/fixtures/scene_tag_sets.json</c> exactly (UX-42).
 ///
 /// <code>godot --headless --path engine -- --self-test=scenes</code>
 ///
@@ -46,9 +46,8 @@ public partial class SceneTagSetSelfTest : Node
 
     public override void _Ready()
     {
-        string fixturePath = Path.Combine(
-            ProjectSettings.GlobalizePath("res://"), "..", "tests", "fixtures", "scene_tag_sets.json");
-        _expected = JsonNode.Parse(File.ReadAllText(fixturePath))!.AsObject()["scenes"]!.AsObject();
+        _expected = JsonNode.Parse(FixtureFile.Read("res://fixtures/scene_tag_sets.json"))!
+            .AsObject()["scenes"]!.AsObject();
         _manifest = TemplateManifest.Load();
     }
 
