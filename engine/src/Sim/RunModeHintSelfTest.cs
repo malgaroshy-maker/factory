@@ -92,6 +92,14 @@ public partial class RunModeHintSelfTest : Node
         idleHint.ShowModeEnteredHint(1, "conveyor");
         ok &= Expect(label.Text.Contains("1 part respond"),
                      $"a single operable part: singular, not '1 parts' (got '{label.Text}')");
+        ok &= Expect(!label.Text.Contains("knob"),
+                     $"a scene with no pot does not offer one (got '{label.Text}')");
+
+        // The pot answers to a drag, not a click, so the sentence about clicks
+        // is precisely the one that would leave it undiscovered.
+        idleHint.ShowModeEnteredHint(3, "conveyor, pusher, panel", hasPot: true);
+        ok &= Expect(label.Text.Contains("Drag the knob"),
+                     $"a scene with a pot says how to turn it (got '{label.Text}')");
 
         bus.Free();
         return ok;

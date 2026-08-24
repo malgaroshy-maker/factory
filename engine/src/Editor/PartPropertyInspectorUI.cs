@@ -149,6 +149,28 @@ public partial class PartPropertyInspectorUI : Control
             AddSliderProperty("Stroke Length (m)", pusher.StrokeLength, 0.1f, 1.0f, 0.05f,
                               val => pusher.StrokeLength = val);
         }
+        else if (node is ButtonPanel panel)
+        {
+            // The pot's scale plate. A panel dragged in from the palette used
+            // to get the hardcoded 0-100 "%" default with no way to change it,
+            // so only the shipped templates -- which set these in their JSON --
+            // had a setpoint that meant anything (OP-01). Every value here is
+            // read live by ButtonPanel.ApplySetpoint, so none of them needs a
+            // Rebuild(); the plate re-renders on the next assignment.
+            AddSliderProperty("Scale Min", panel.SetpointMin, -10000.0f, 10000.0f, 1.0f,
+                              val => panel.ConfigureSetpoint(val, panel.SetpointMax,
+                                                             panel.SetpointUnit, panel.Setpoint));
+            AddSliderProperty("Scale Max", panel.SetpointMax, -10000.0f, 10000.0f, 1.0f,
+                              val => panel.ConfigureSetpoint(panel.SetpointMin, val,
+                                                             panel.SetpointUnit, panel.Setpoint));
+            AddTextProperty("Scale Unit", panel.SetpointUnit, 6,
+                            text => panel.ConfigureSetpoint(panel.SetpointMin, panel.SetpointMax,
+                                                            text, panel.Setpoint));
+            // Last, and clamped by the range above it: a setpoint typed outside
+            // the plate is not a setpoint, it is a mislabelled instrument.
+            AddSliderProperty("Setpoint", panel.Setpoint, -10000.0f, 10000.0f, 0.01f,
+                              val => panel.SetSetpoint(val));
+        }
         else if (node is LightArray curtain)
         {
             // Both settings are read only while the curtain is built, so both
@@ -584,6 +606,31 @@ public partial class PartPropertyInspectorUI : Control
             Editor?.MarkDirty();
         };
         row.AddChild(picker);
+    }
+
+    /// <summary>A short free-text setting. Only the setpoint plate's unit uses
+    /// this so far — it is a caption, not a value, and there is no sensible
+    /// slider for "g".</summary>
+    private void AddTextProperty(string labelText, string initialValue, int maxLength,
+                                 System.Action<string> onChanged)
+    {
+        var row = new HBoxContainer();
+        _contentContainer.AddChild(row);
+
+        row.AddChild(new Label { Text = labelText, CustomMinimumSize = new Vector2(140, 0) });
+
+        var field = new LineEdit
+        {
+            Text = initialValue,
+            MaxLength = maxLength,
+            CustomMinimumSize = new Vector2(90, 0),
+            // Without this the field takes its width from its content and a
+            // long entry grows the row past the panel's scroll bound, the same
+            // way the Remover's tag dropdown did (LE-04).
+            ExpandToTextLength = false,
+        };
+        field.TextChanged += (text) => { onChanged(text); Editor?.MarkDirty(); };
+        row.AddChild(field);
     }
 
     private void AddSliderProperty(string labelText, float initialValue, float min, float max, float step, System.Action<float> onChanged)

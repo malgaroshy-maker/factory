@@ -467,7 +467,7 @@ public partial class Main : Node
             if (running)
             {
                 var (count, kinds) = editor.DescribeOperableParts();
-                idleHint.ShowModeEnteredHint(count, kinds);
+                idleHint.ShowModeEnteredHint(count, kinds, editor.HasTurnablePot());
             }
         };
         toolbarUI.ShowMode(editor.Mode == EditorMode.Run);

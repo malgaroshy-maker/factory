@@ -98,13 +98,22 @@ public partial class IdleHintUI : Control
     /// nothing is (UX-39, §2.7) -- Run mode used to be a mode that silently did
     /// nothing on a line built without a Control Panel, the same class of
     /// dishonesty FF-06/FF-23/UX-30 already closed elsewhere.</summary>
-    public void ShowModeEnteredHint(int operableCount, string kinds)
+    /// <param name="hasPot">Whether any panel here carries a turnable setpoint
+    /// pot. Named separately because it is the one control that answers to a
+    /// drag rather than a click, so "N parts respond to a click" is exactly
+    /// the sentence that would leave it undiscovered (OP-02).</param>
+    public void ShowModeEnteredHint(int operableCount, string kinds, bool hasPot = false)
     {
-        ShowInterrupt(operableCount == 0
-            ? "Nothing in this scene responds to a click yet. Add a conveyor, "
-              + "pusher, panel or other part from the palette in Build mode."
-            : $"{operableCount} part{(operableCount == 1 ? "" : "s")} respond to a "
-              + $"click: {kinds}. Hover to see which.");
+        if (operableCount == 0)
+        {
+            ShowInterrupt("Nothing in this scene responds to a click yet. Add a conveyor, "
+                          + "pusher, panel or other part from the palette in Build mode.");
+            return;
+        }
+
+        ShowInterrupt($"{operableCount} part{(operableCount == 1 ? "" : "s")} respond to a "
+                      + $"click: {kinds}. Hover to see which."
+                      + (hasPot ? "  Drag the knob on the panel to change the setpoint." : ""));
     }
 
     /// <summary>Generic hook for anything else that needs to interrupt the

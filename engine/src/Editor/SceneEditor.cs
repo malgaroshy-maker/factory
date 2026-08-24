@@ -729,23 +729,24 @@ public partial class SceneEditor : Node3D
     {
         if (Mode != EditorMode.Run) return false;
 
+        if (FindOperableTarget(from, dir) is not { Dial: true, Panel: { } panel }) return false;
+
+        _dialDrag = panel;
+
+        // Turning the knob takes the tag back from whoever forced it. A force
+        // is sticky everywhere else in the editor and deliberately is not
+        // here: the pot on the panel *is* the operator, and an operator who
+        // turns a knob that then snaps back has been lied to.
         foreach (var entry in _placedParts)
         {
-            if (entry.Node is not ButtonPanel panel) continue;
-            if (!panel.HitTestDial(from, dir)) continue;
-
-            _dialDrag = panel;
-            // Turning the knob takes the tag back from whoever forced it. A
-            // force is sticky everywhere else in the editor and deliberately
-            // is not here: the pot on the panel *is* the operator, and an
-            // operator who turns a knob that then snaps back has been lied to.
+            if (!ReferenceEquals(entry.Node, panel)) continue;
             if (Tags is not null && entry.TagIds.TryGetValue("setpoint", out var id)
                 && Tags.Contains(id))
                 Tags.ClearForce(id);
-            return true;
+            break;
         }
 
-        return false;
+        return true;
     }
 
     /// <summary>Screen pixels of travel since the last motion event, positive
@@ -760,7 +761,8 @@ public partial class SceneEditor : Node3D
     /// (<see cref="PressControlAtRay"/>) and the hover highlight (UX-39), so
     /// the two can never disagree about what the cursor is over.</summary>
     private readonly record struct OperableHit(ButtonPanel? Panel, PanelButton PanelButton,
-                                                 PlacedPart? Part, string? Region)
+                                                 PlacedPart? Part, string? Region,
+                                                 bool Dial = false)
     {
         public Node3D? Node => (Node3D?)Panel ?? Part?.Node;
     }
@@ -784,6 +786,7 @@ public partial class SceneEditor : Node3D
         PanelButton hitButton = default;
         PlacedPart? hitPart = null;
         string? hitRegion = null;
+        bool hitDial = false;
         bool found = false;
 
         foreach (var entry in _placedParts)
@@ -794,6 +797,25 @@ public partial class SceneEditor : Node3D
             switch (entry.Node)
             {
                 case ButtonPanel panel:
+                    // The pot is tested alongside the caps rather than in its
+                    // own separate pass. The hover highlight and the click
+                    // dispatch share this one function precisely so they can
+                    // never disagree about what the cursor is over, and a
+                    // control reachable only through a second, private ray
+                    // test would be a control the hover could not know about.
+                    if (panel.HitTestDial(from, dir))
+                    {
+                        distance = MeasureDistance(entry.Node, from, dir);
+                        if (distance >= nearest) continue;
+                        nearest = distance;
+                        found = true;
+                        hitPanel = panel;
+                        hitButton = default;
+                        hitPart = null;
+                        hitRegion = null;
+                        hitDial = true;
+                        continue;
+                    }
                     if (panel.HitTest(from, dir) is not { } which) continue;
                     // Measured along the ray, the same units the whole-body
                     // parts below use -- distance-to-object-centre would mix
@@ -808,6 +830,7 @@ public partial class SceneEditor : Node3D
                     hitButton = which;
                     hitPart = null;
                     hitRegion = null;
+                    hitDial = false;
                     continue;
 
                 case StackLight light:
@@ -836,9 +859,10 @@ public partial class SceneEditor : Node3D
             hitPanel = null;
             hitPart = entry;
             hitRegion = region;
+            hitDial = false;
         }
 
-        return found ? new OperableHit(hitPanel, hitButton, hitPart, hitRegion) : null;
+        return found ? new OperableHit(hitPanel, hitButton, hitPart, hitRegion, hitDial) : null;
     }
 
     /// <summary>Run mode's click, applied. Refuses outright in Edit mode
@@ -851,6 +875,12 @@ public partial class SceneEditor : Node3D
         if (Mode != EditorMode.Run) return;
         if (Tags is null) return;
         if (FindOperableTarget(from, dir) is not { } hit) return;
+
+        // A press on the pot is a grab, not a button press — handled by the
+        // drag path. Returning here rather than falling through is what stops
+        // a click on the knob also firing whichever cap the enum happens to
+        // default to.
+        if (hit.Dial) return;
 
         if (hit.Panel is not null) hit.Panel.Press(hit.PanelButton);
         else if (hit.Part is not null) OperatePart(hit.Part, hit.Region);
@@ -877,7 +907,24 @@ public partial class SceneEditor : Node3D
 
         var from = camera.ProjectRayOrigin(screenPosition);
         var dir = camera.ProjectRayNormal(screenPosition);
-        SetHoverTarget(FindOperableTarget(from, dir)?.Node);
+        var hit = FindOperableTarget(from, dir);
+        SetHoverTarget(hit?.Node);
+
+        // The outline says "this part responds to a click", which is the wrong
+        // promise for the one control that responds to a *drag*. A cursor that
+        // changes shape is how every other application says "grab this and
+        // pull", and without it the pot is a control you have to already know
+        // about to find (OP-02).
+        SetDialCursor(hit is { Dial: true });
+    }
+
+    private bool _dialCursor;
+
+    private void SetDialCursor(bool over)
+    {
+        if (over == _dialCursor) return;
+        _dialCursor = over;
+        Input.SetDefaultCursorShape(over ? Input.CursorShape.Vsize : Input.CursorShape.Arrow);
     }
 
     private void SetHoverTarget(Node3D? node)
@@ -909,6 +956,10 @@ public partial class SceneEditor : Node3D
     {
         _hoveredNode = null;
         if (_hoverOutline is not null) _hoverOutline.Visible = false;
+        // Called on every mode switch away from Run and every scene wipe, so
+        // the grab cursor goes with it — a resize arrow left over the Build
+        // palette would be a cursor lying about what a click does.
+        SetDialCursor(false);
     }
 
     private static MeshInstance3D BuildHoverOutline() => new()
@@ -929,6 +980,19 @@ public partial class SceneEditor : Node3D
     /// (UX-39) uses this so a scene built with nothing operable says that
     /// plainly instead of presenting a mode that silently does nothing.
     /// </summary>
+    /// <summary>Whether any panel in the scene carries a setpoint pot worth
+    /// telling the user about — one whose scale plate spans a real range.
+    /// A pot with min == max cannot be turned and is not worth naming.</summary>
+    public bool HasTurnablePot()
+    {
+        foreach (var entry in _placedParts)
+        {
+            if (entry.Node is ButtonPanel panel && panel.SetpointMax > panel.SetpointMin)
+                return true;
+        }
+        return false;
+    }
+
     public (int Count, string Kinds) DescribeOperableParts()
     {
         var kinds = new List<string>();

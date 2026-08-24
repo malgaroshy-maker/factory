@@ -48,6 +48,7 @@ public partial class PartSettingsSelfTest : Node
         ["Chute"] = new[] { "Incline (deg)", "Surface Friction" },
         ["Emitter"] = new[] { "Metal every Nth" },
         ["Remover"] = new[] { "Counts into" },
+        ["ButtonPanel"] = new[] { "Scale Min", "Scale Max", "Scale Unit", "Setpoint" },
     };
 
     /// <summary>The panel's ScrollContainer bound, from
@@ -92,7 +93,7 @@ public partial class PartSettingsSelfTest : Node
             case 53: CheckSensorScene(); return;
 
             case 55: Deselect(); Editor.LoadTemplate("res://templates/tank_level_control.json"); return;
-            case 57: CheckTankScene(); Finish(); return;
+            case 57: CheckTankScene(); CheckPanelScene(); Finish(); return;
         }
     }
 
@@ -313,6 +314,53 @@ public partial class PartSettingsSelfTest : Node
         Expect(Mathf.IsEqualApprox(tank.DrainRate, 35.0f), $"Drain Rate reaches the tank (got {tank.DrainRate})");
     }
 
+    /// <summary>The setpoint pot's scale plate. A panel dragged in from the
+    /// palette used to get the hardcoded 0-100 "%" default with no way to
+    /// change it, and nothing here noticed, because this test had never
+    /// inspected a ButtonPanel at all (OP-01).
+    ///
+    /// The observable is the plate itself -- what the instrument reads -- not
+    /// the property that was assigned. A range that reached the field and not
+    /// the plate is exactly the class of failure this whole test exists for.
+    /// </summary>
+    private void CheckPanelScene()
+    {
+        var panel = Find<ButtonPanel>();
+        if (panel is null) { Expect(false, "tank-level-control: no ButtonPanel found"); return; }
+
+        Inspect(panel, "panel", "ButtonPanel");
+
+        Drive("Scale Max", 250.0);
+        Expect(Mathf.IsEqualApprox(panel.SetpointMax, 250.0f),
+               $"Scale Max reaches the panel (got {panel.SetpointMax})");
+
+        DriveText("Scale Unit", "bar");
+        Expect(panel.SetpointUnit == "bar", $"Scale Unit reaches the panel (got '{panel.SetpointUnit}')");
+        Expect(panel.PlateText.EndsWith("bar"),
+               $"the unit reaches the scale plate, not just the property (plate reads '{panel.PlateText}')");
+
+        Drive("Setpoint", 120.0);
+        // Within the control's own 0.01 step, not to the last float bit: the
+        // SpinBox quantises to its step across a ±10000 range, so it lands on
+        // 119.9998. Demanding better would be demanding the widget be a
+        // different widget.
+        Expect(Mathf.Abs(panel.Setpoint - 120.0f) <= 0.01f,
+               $"Setpoint reaches the pot (got {panel.Setpoint})");
+        Expect(panel.PlateText.Contains("120"),
+               $"the pot's value reaches the plate (plate reads '{panel.PlateText}')");
+
+        // A setpoint outside the plate is not a setpoint, it is a mislabelled
+        // instrument -- so the range has to clamp it, and the plate has to show
+        // the clamped value rather than the one that was asked for.
+        Drive("Setpoint", 9000.0);
+        Expect(Mathf.IsEqualApprox(panel.Setpoint, 250.0f),
+               $"the range clamps a setpoint typed past the top of the plate (got {panel.Setpoint})");
+
+        Drive("Scale Min", 300.0);
+        Expect(Mathf.IsEqualApprox(panel.Setpoint, 300.0f),
+               $"raising the bottom of the plate carries the pot up with it (got {panel.Setpoint})");
+    }
+
     // ---------- panel driving
 
     /// <summary>Select a part and check the rows it produced are all ones this
@@ -335,6 +383,18 @@ public partial class PartSettingsSelfTest : Node
             Expect(expected.Contains(label),
                    $"{partType}: settings row '{label}' has no check in PartSettingsSelfTest");
         }
+    }
+
+    /// <summary>Type into a text setting the way a keyboard does. LineEdit's
+    /// TextChanged does not fire for a programmatic assignment, so the signal
+    /// is emitted explicitly -- the alternative is a test that sets a field
+    /// nothing is listening to and calls that a pass.</summary>
+    private void DriveText(string label, string value)
+    {
+        var field = FindSettingControl<LineEdit>(label);
+        if (field is null) { Expect(false, $"no settings control labelled '{label}'"); return; }
+        field.Text = value;
+        field.EmitSignal(LineEdit.SignalName.TextChanged, value);
     }
 
     /// <summary>Move a settings control the way a drag does, by its label.</summary>

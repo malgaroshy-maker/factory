@@ -96,6 +96,11 @@ public partial class ButtonPanel : Node3D
     /// one gesture and fine enough to land on a specific value.</summary>
     private const float DialPixelsPerSweep = 260.0f;
 
+    /// <summary>What the scale plate currently reads. The one observable that
+    /// proves a change to the range or the unit actually reached the
+    /// instrument rather than just the field it was typed in.</summary>
+    public string PlateText => _dialPlate?.Text ?? "";
+
     private Node3D _dial = null!;
     private Label3D _dialPlate = null!;
     private Vector3 _dialCentre;

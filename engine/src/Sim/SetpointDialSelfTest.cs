@@ -153,6 +153,7 @@ public partial class SetpointDialSelfTest : Node
                        $"dragging down runs it to the other stop (want {Min}, got {_panel.Setpoint})");
                 Editor.EndDialDrag();
                 Expect(!Editor.IsDraggingDial, "releasing ends the drag");
+                CheckNoDoubleDuty();
                 Editor.SetMode(EditorMode.Edit);
                 break;
 
@@ -208,6 +209,26 @@ public partial class SetpointDialSelfTest : Node
         var (from, dir) = Aim(DialCentre);
         Expect(_panel.HitTest(from, dir) is null,
                $"a ray at the knob presses no button ({when})");
+    }
+
+    /// <summary>The pot and the caps share one hit test, so each has to be
+    /// exactly one thing. A press on the knob that also fired a button, or a
+    /// press on the mushroom that also grabbed the knob, would both look
+    /// perfectly fine on screen and be maddening in the hand.</summary>
+    private void CheckNoDoubleDuty()
+    {
+        var (estopFrom, estopDir) = Aim(new Vector3(0.0f, 0.1398f, 0.06f));
+        Expect(!Editor.BeginDialDragAtRay(estopFrom, estopDir),
+               "a press on the mushroom does not grab the knob");
+        Editor.EndDialDrag();
+
+        // Drain any pulse the panel is already holding, then press the knob
+        // and check nothing came out of it.
+        _panel.ConsumePresses();
+        var (dialFrom, dialDir) = Aim(DialCentre);
+        Editor.PressControlAtRay(dialFrom, dialDir);
+        Expect(_panel.ConsumePresses().Count == 0,
+               "a press on the knob fires no button");
     }
 
     private void CheckClamping()

@@ -138,6 +138,17 @@ public partial class SceneSelfTest : Node
                 case "Remover":
                     props["count_tag"] = "counter.tall";
                     break;
+                case "ButtonPanel":
+                    // The pot's scale plate and where the knob was left. Saving
+                    // the live value rather than a separate "default" is
+                    // deliberate (see PartProperties): a real pot does not
+                    // spring back, and a scene reopened mid-tuning should open
+                    // where you left it.
+                    props["setpoint_min"] = "0";
+                    props["setpoint_max"] = "450";
+                    props["setpoint_unit"] = "kPa";
+                    props["setpoint"] = "175";
+                    break;
                 case "DigitalDisplay":
                     props["unit"] = "kg";
                     break;
@@ -247,6 +258,12 @@ public partial class SceneSelfTest : Node
                     break;
                 case "DigitalDisplay":
                     Expect(props.GetValueOrDefault("unit") == "kg", "DigitalDisplay kept its unit");
+                    break;
+                case "ButtonPanel":
+                    ExpectNear(props, "setpoint_max", 450.0f, part.Type);
+                    ExpectNear(props, "setpoint", 175.0f, part.Type);
+                    Expect(props.GetValueOrDefault("setpoint_unit") == "kPa",
+                           "ButtonPanel kept the unit its scale plate is graduated in");
                     break;
             }
         }
