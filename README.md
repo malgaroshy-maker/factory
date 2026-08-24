@@ -48,7 +48,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * 🛠️ **3D Scene Editor Suite**: click a placed part and **drag it** to a new cell — one gesture, one **`Ctrl+Z`** — with grid snapping, rotation (**`R`**), duplicate (**`Ctrl+D`**), a selection wireframe gizmo, and undo/redo throughout. The property panel names what the selected part responds to, so none of it has to be guessed.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal — click a PLC address (`%I0.0`, `%Q0.0`), then click the component tag to map it to. **Auto-map** suggests an address for every tag in the loaded scene, and **Export** writes `io_mapping.json` and `io_tags.csv` for the sidecar and for whoever is building the PLC side.
 * 🏷️ **Live tag inspection and forcing**: the Tag Inspector lists every tag the loaded scene owns with its live value, and forces any of them — bit, int and float alike — with a typed value. A `🔓 N forced` chip in the toolbar shows what is being held by hand and releases it all in one click. The parts that measure something — the light curtain, the level tank, the digital display — also read out in 3D on the part itself.
-* 🧪 **A built-in exercise per scene**: `python tools/try_scene.py --scene <id>` (or the toolbar's **🧪 Try** button) spawns or attaches to the engine and drives the scene the way a PLC would — pressing the panel's own buttons, timing the E-stop against a 200 ms limit, turning the setpoint pot mid-run to prove the line follows it — then reports pass/fail. The thing to run before writing a real program against it.
+* 🧪 **A built-in exercise per scene**: `python tools/try_scene.py --scene <id>` (or the toolbar's **🧪 Try** button) spawns or attaches to the engine and drives the scene the way a PLC would — pressing the panel's own buttons, timing the E-stop against a 200 ms limit, turning the setpoint pot mid-run to prove the line follows it, and failing a drive under it to check the controller trips and refuses to reset while the fault stands — then reports pass/fail. The thing to run before writing a real program against it.
 * 🏭 **Native Siemens Integration**: **all three Siemens paths verified driving the 3D scene from a virtual S7-1500** — PLCSIM Advanced Simulation Runtime API (shared memory, no network, no OPC UA licence), OPC UA client, and Snap7 ISO-on-TCP. Belt, emitter, sensors, diverter and counters all run off the CPU's own program.
 * 📊 **Multi-Protocol SCADA Support**: Built-in OPC UA client/server, Modbus TCP server, and Node-RED integration.
 
@@ -118,7 +118,7 @@ Or the full plan — build, the Python suite, the engine's own self-tests,
 determinism, the engine↔sidecar seam and robustness. No PLC needed:
 
 ```bash
-python tools/test_plan.py          # --gui adds the display-dependent check
+python tools/test_plan.py          # --gui adds the two display-dependent checks
 ```
 
 ### 3. Launch 3D Simulation Engine

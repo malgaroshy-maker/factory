@@ -1,7 +1,13 @@
 # The operator plan — driving a scene by hand
 
-*Status: **done** — all ten items. Written and finished 2026-08-24, after a
-session testing the five shipped scenes from the running app.*
+*Status: **done** — OP-01…OP-10, plus FI-01, which the work turned up on its
+own. Written and finished 2026-08-24, after a session testing the five shipped
+scenes from the running app.*
+
+*Test plan at the end: **52 passed, 0 failed**, plus the 2 GUI-only checks
+passing under `--gui`, against the 24 headless engine
+self-tests the release gate runs (`click` and `dragpath` need a display, so
+they are checked by `--only D --gui` instead).*
 
 Three things came out of driving the shipped scenes the way a user actually
 does — open one, press F1, and click things:
@@ -68,6 +74,7 @@ every editor does and it needs no modifier key.
 | **OP-08** | Drag a placed part to move it, as one undoable step | done |
 | **OP-09** | Selecting a part says what you can do with it | done |
 | **OP-10** | Self-tests, fixtures and docs follow the new tags | done |
+| **FI-01** | Drives can fail — the command stays on and the machine stops obeying (§7) | done |
 
 ## 2. Decisions worth writing down
 
@@ -163,10 +170,11 @@ meant a part placed in the wrong cell got deleted and placed again. Now:
 
 * `tools/test_plan.py --only A,B,C` — 31 passed, 0 failed (24 headless engine
   self-tests, 73 pytest cases).
-* Three new self-tests: `--self-test=setpoint` (**C23**) and
-  `--self-test=drag` (**C24**) headless, both wired into `check_release.py` so
-  a packaged binary is gated on them too — 23 self-tests against a release now,
-  up from 21 — plus `--self-test=dragpath` (**D2**), which needs a display.
+* Four new self-tests: `--self-test=setpoint` (**C23**),
+  `--self-test=drag` (**C24**) and `--self-test=fault` (**C25**, see §7)
+  headless, all three wired into `check_release.py` so a packaged binary is
+  gated on them too — 24 self-tests against a release now, up from 21 — plus
+  `--self-test=dragpath` (**D2**), which needs a display.
 
   D2 exists because C24 enters at the ray seam and so skips the two things that
   can kill dragging outright while every headless assertion still passes: the
