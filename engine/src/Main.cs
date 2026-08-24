@@ -85,7 +85,7 @@ public partial class Main : Node
                 _printTags = true;
         }
 
-        // A fixed 10-tag hybrid of two scenes, not a template — the deterministic
+        // A fixed regression scene, not a template — the deterministic
         // scene is the regression contract's own fixed tag set, and --scene=
         // asks to load a template's tags into it instead. Reject the combination
         // rather than silently publishing whichever tags happened to end up in
@@ -128,11 +128,12 @@ public partial class Main : Node
         {
             BuildView(tags);
         }
-        else if (!_deterministic)
+        else
         {
-            // Headless physics still needs a floor to land on and parts to run.
-            StudioEnvironment.AddFloor(this, withGrid: false);
-            BuildHeadlessPhysicsParts(tags);
+            // Headless physics needs a floor to land on; the deterministic
+            // scene simulates its own boxes and has nothing to drop.
+            if (!_deterministic) StudioEnvironment.AddFloor(this, withGrid: false);
+            BuildHeadlessParts(tags);
         }
 
         // Report the bus state rather than announcing "ready" regardless: an
@@ -523,7 +524,27 @@ public partial class Main : Node
     /// to exist or nothing moves. A requested template loads the same way the
     /// windowed path does (UX-10) -- SceneEditor builds parts from JSON with no
     /// renderer, camera or grid involved, so nothing here is display-dependent.</summary>
-    private void BuildHeadlessPhysicsParts(TagTable tags)
+    /// <summary>
+    /// The headless counterpart of <see cref="BuildView"/>: the same parts,
+    /// minus everything that needs a screen.
+    ///
+    /// This runs for the deterministic scene too, and that is the point.
+    /// Headless <c>--deterministic</c> used to build no parts at all, so it
+    /// published 11 tags where the very same flag published 17 with a window
+    /// open -- no operator panel, and therefore no Start, no Stop and no
+    /// E-stop. A program written against the scene on screen would then fail
+    /// against the scene in CI, which is exactly backwards for the mode whose
+    /// whole purpose is repeatable grading (docs/GETTING_STARTED.md sends
+    /// people here for it).
+    ///
+    /// <paramref name="tags"/> already belongs to <see cref="SortingScene"/>
+    /// in that mode, so the parts register as <em>views</em> of tags the scene
+    /// owns and simulates (<c>physical: false</c>) rather than as authorities
+    /// that would fight it for them. The panel is the exception either way: it
+    /// owns its own tags, because nothing in the deterministic scene presses
+    /// buttons.
+    /// </summary>
+    private void BuildHeadlessParts(TagTable tags)
     {
         var editor = new SceneEditor { Name = "SceneEditor", Tags = tags };
         AddChild(editor);
@@ -534,7 +555,7 @@ public partial class Main : Node
         }
         else
         {
-            editor.RegisterDefaultSceneParts(physical: true);
+            editor.RegisterDefaultSceneParts(physical: !_deterministic);
         }
         _editor = editor;
     }

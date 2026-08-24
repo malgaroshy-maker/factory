@@ -122,15 +122,21 @@ exists to clear up.
 
 ### The one thing that had to give
 
-`try_scene.py` no longer runs `sorting-by-height` under `--deterministic`. It
-could not: that flag selects a fixed 10-tag hybrid scene which registers no
-editor parts at all and therefore **has no control panel** — none of
-`panel.start`, `panel.stop` or `panel.estop` exists on it, so there is nothing
-to drive. Its exact `tall=5 short=5` contract still lives in
-`tools/drive_engine.py`, which is the tool written for it. What `try_scene.py`
-runs instead is the line as a user actually opens it, panel included, with
-band-based assertions and conservation — which is the check that catches a
-diverter dropping cartons anyway.
+`try_scene.py` no longer runs `sorting-by-height` under `--deterministic`.
+
+At first it could not: headless, that flag built **no editor parts at all**, so
+the scene had no control panel — none of `panel.start`, `panel.stop` or
+`panel.estop` existed on it and there was nothing to drive. Chasing that turned
+up something worse, which is written up in §6 below, and it is now fixed: the
+deterministic scene has the same 17 tags with or without a window.
+
+The decision stands anyway, for the reason that was always the better one. An
+exact `tall=5 short=5` needs a belt that runs for a fixed length of time, and
+pressing Stop and striking an E-stop mid-run is precisely what takes that away.
+That contract lives in `tools/drive_engine.py`, the tool written for it. What
+`try_scene.py` runs is the line as a user actually opens it, with band-based
+assertions and conservation — which is the check that catches a diverter
+dropping cartons anyway.
 
 ## 4. Moving a part
 
@@ -183,3 +189,32 @@ meant a part placed in the wrong cell got deleted and placed again. Now:
   mushroom, and the pot's end stops were positioned at `centre.Z - 0.004`,
   which is *inside* the 0.12 m-deep housing box — they never rendered at all.
   Both fixed and re-shot.
+
+---
+
+## 6. The bug the plan did not go looking for
+
+`--deterministic` published **17 tags with a window open and 11 without**.
+
+The renderer is optional by design — headless CI runs the same scene with no
+view — and the branch that decided this read
+"if not headless, build the view; **otherwise, if not deterministic**, build
+headless parts". So headless *and* deterministic fell through both arms and
+built nothing: no operator panel, and therefore no Start, no Stop, no Reset and
+no E-stop, on the one configuration whose entire purpose is repeatable grading.
+A program written against the scene on screen would fail against the same scene
+in CI.
+
+`docs/GETTING_STARTED.md` sends people to `--deterministic` for exactly that
+job, one paragraph after telling them to click the control panel, and closes
+with "Both expose the same tags, so your program does not change." That
+sentence had been false for as long as the panel had existed. It is true now.
+
+The fix is that the headless path builds parts in both modes, with
+`physical: !_deterministic` — so in the deterministic scene the parts register
+as *views* of tags `SortingScene` owns and simulates rather than as authorities
+that would fight it for them. The panel is the exception either way, because it
+owns its own tags: nothing in the deterministic scene presses buttons.
+
+Verified against the thing that actually matters here, the regression contract
+itself: `test_plan.py --only E` still gets `(5, 5)` twice, exactly.

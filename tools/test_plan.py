@@ -297,7 +297,8 @@ def section_c() -> None:
            code == 0 and payload.get("scene") == "tank-level-control" and len(payload.get("tags", [])) == 14,   # 13, plus the panel's setpoint pot (OP-01)
            f"scene={payload.get('scene')!r} tags={len(payload.get('tags', []))}" if payload else "no describe line")
 
-    # A fixed 10-tag hybrid of two scenes is worse than refusing outright.
+    # A hybrid of the fixed regression scene and a template is worse than
+    # refusing outright.
     code, out = engine(["--deterministic", "--scene=res://templates/tank_level_control.json"], timeout=20)
     record("C8", "--deterministic --scene= is rejected, not silently hybridized",
            code != 0 and "cannot combine" in out, f"exit={code}")

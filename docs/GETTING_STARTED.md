@@ -85,9 +85,11 @@ the scene is paused.
 
 ### Edit mode and Run mode
 
-A click has to mean one thing at a time. In **Edit** mode it selects a part so
-you can move (`M`) or delete it; in **Run** mode every operable part answers a
-click by doing whatever it does — a conveyor toggles on, a pusher strokes, a
+A click has to mean one thing at a time. In **Edit** mode it selects a part —
+and a click that keeps going is a **drag**, which moves it, snapped to the same
+grid a fresh placement uses and undone by a single `Ctrl+Z`. The property panel
+lists what else the selection answers to. In **Run** mode every operable part
+answers a click by doing whatever it does — a conveyor toggles on, a pusher strokes, a
 stack light lamp switches, a tank valve opens. The toolbar's mode button reads
 `✎ Build` / `👆 Operate` so the two are never mistaken for one another, and the
 parts palette hides itself while the line is running.
@@ -106,6 +108,7 @@ Click the **control panel** beside the belt:
 | Stop (black) | `panel.stop` | Momentary |
 | Reset (blue) | `panel.reset` | Momentary |
 | E-Stop (red mushroom) | `panel.estop` | Maintained — click to strike, click again to release |
+| Setpoint pot | `panel.setpoint` | **Dragged**, not clicked — pull up to raise it. Reads out on the scale plate above it |
 
 Momentary means what it does on a real panel: one click is one clean rising
 edge, however long you hold the mouse down. Write your logic against the edge,
@@ -117,9 +120,23 @@ struck. If your program runs happily with that tag false, it would also run with
 the wire to the E-stop cut — which is the exact failure NC wiring exists to
 catch. This is the cheapest place to learn that.
 
+The pot is the one control on the panel that answers to a drag. It carries the
+scene's own units rather than a percent — the level to hold, the height that
+counts as tall, the weight that counts as a reject — so a controller reads a
+number that already means what it says, with no range to agree on separately.
+Its tag works both ways: turn the knob and it publishes, force it from a PLC
+and the pointer turns to match, so the panel never disagrees with the number
+your program is using.
+
+**Every shipped scene answers to this panel.** Start runs the line, Stop stops
+it, the mushroom latches a trip that only Reset clears, and the pot changes
+what the line is aiming at while it runs. `python tools/try_scene.py --scene
+<id>` presses the same buttons and reports pass/fail, so the exercise and the
+regression test are the same sequence.
+
 If you need repeatable results — grading an exercise, or comparing two runs — add
-`-- --deterministic` for the fixed-timestep scene. Both expose the same tags, so
-your program does not change.
+`-- --deterministic` for the fixed-timestep scene. Both expose the same tags,
+with or without a window, so your program does not change.
 
 ---
 
@@ -338,8 +355,10 @@ I/O list automatically, so the driver sees the new tags without a reconnect.
 ## 🛠️ Using the 3D Scene Editor
 
 * **`Left-Click`**: Select part in 3D or place active palette component on the voxel grid floor.
-* **`R`**: Rotate placement preview 90°.
-* **`M`**: Move selected component to a new voxel location.
+* **`Left-Drag` on a placed part**: Move it. One drag is one `Ctrl+Z`; a click that does not travel only selects.
+* **`R`**: Rotate the placement preview, or the selected part, 90°.
+* **`Ctrl+D`**: Duplicate the selected component.
+* **`M`**: Move the selected component with the cursor, committing on the next click — the keyboard route to the same thing the drag does.
 * **`Delete` / `Backspace`**: Delete selected component.
 * **`Ctrl+Z` / `Ctrl+Y`**: Undo / Redo placement or deletion.
 * **`F1`**: Switch between **Edit** and **Run** mode.

@@ -26,8 +26,9 @@ Assertions are band-based rather than exact counts: these run real rigid-body
 physics, and no such run can promise a number (§4). What each scene *can*
 promise is conservation, timing, and that turning the knob changes what the
 line does. The exact tall=5/short=5 regression contract lives in
-tools/drive_engine.py, against `--deterministic`, which is a fixed 10-tag
-scene with no operator panel at all.
+tools/drive_engine.py, against `--deterministic` -- a count like that needs a
+belt that runs for a fixed length of time, which is the one thing an operator
+sequence deliberately does not give it.
 
 Each scene's driving logic mirrors its engine-side demo profile under
 engine/src/Sim/DemoProfiles/, so a regression in either one fails the same
@@ -1120,12 +1121,12 @@ async def run_scene(godot: str, entry: dict, duration: float | None, verbose: bo
         print(f"Attached to the already-running engine (scene {bus.scene!r}, {len(bus.table)} tags)")
     else:
         # Deliberately *not* --deterministic, even for sorting-by-height.
-        # The deterministic scene is a fixed 10-tag hybrid that registers no
-        # editor parts at all, and therefore has no control panel: driving it
-        # from Start, Stop and an E-stop is not possible, because none of
-        # those tags exist on it. Its exact tall=5/short=5 contract lives in
-        # tools/drive_engine.py, which is the tool written for it; this one
-        # runs the same line the way a user opens it, panel included (OP-03).
+        # Two reasons, and only the second one survives now that the
+        # deterministic scene has a panel of its own: this runs the line the
+        # way a user actually opens it, and an exact count needs a belt that
+        # runs for a fixed length of time -- which is precisely what pressing
+        # Stop and striking an E-stop mid-run takes away. tall=5/short=5 stays
+        # in tools/drive_engine.py, the tool written for it (OP-03).
         print(f"Starting engine for '{entry['title']}'...")
         eng = Engine(godot, entry)
 
