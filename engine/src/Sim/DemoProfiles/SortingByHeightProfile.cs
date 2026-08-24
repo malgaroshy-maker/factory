@@ -22,7 +22,7 @@ public sealed class SortingByHeightProfile : IDemoProfile
     /// always has one, and its pot ships set to this same value.</summary>
     private const double DefaultPushDelay = 0.9;
 
-    private readonly OperatorStation _station = new();
+    private readonly OperatorStation _station = new OperatorStation("panel", "conveyor.fault", "pusher.fault");
 
     private double _elapsed;
     private bool _emitFlag;

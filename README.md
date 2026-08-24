@@ -38,6 +38,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 ## ✨ Key Features
 
 * 🧲 **Material-aware sensing**: items carry a material, so an inductive sensor sorts metal from cardboard instead of being a second presence sensor.
+* ⚠️ **Break the machine on purpose (`⚠ Fault`)**: arm the fault tool and click a conveyor or a pusher. The drive stops **while its command is still on** — the belt disobeys, its fault beacon lights, and `<part>.fault` goes true for the PLC to read. A jammed cylinder freezes mid-stroke rather than returning home, so the limit switches are the only honest thing to read. Until this existed every actuator did exactly what it was told, which made half of real PLC work unteachable: an interlock exists precisely because the plant does not always obey.
 * 🎚️ **Analog I/O**: Float tags end to end — a modulating valve and a level transmitter, so you can write a real PID against a nonlinear process rather than only on/off logic.
 * ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with soft shadows, SSAO, metallic shaders, and continuous collision detection.
@@ -62,16 +63,16 @@ rule, and it is what makes a scene you build addressable from a PLC.
 
 | Component | Description | Tag Bus Interface |
 |---|---|---|
-| **Conveyor Belt** | Surface-velocity belt with side rails and legs | `conveyor.rotate` (Bit, Output) |
+| **Conveyor Belt** | Surface-velocity belt with side rails and legs, plus a drive-fault beacon | `conveyor.rotate` (Bit, Output) · `conveyor.fault` (Bit, Input) |
 | **Photoelectric Sensor** | Diffuse beam sensor, reflects off the item itself | `sensor.detect` (Bit, Input) |
 | **Retroreflective Sensor** | Beams to a reflector post across the lane; sees matt and dark items a diffuse sensor misses | `sensor.detect` (Bit, Input) |
 | **Inductive Sensor** | Responds to metal only — cardboard passes it as if the lane were empty | `sensor.detect` (Bit, Input) |
 | **Light Array** | Light curtain of 12 beams; reports the height of the tallest blocked beam, so one part replaces a low/high sensor pair | `lightarray.height` (Float, Input), `.blocked` (Bit, Input) |
-| **Pneumatic Pusher** | Cylinder housing, chrome shaft & orange face plate | `pusher.extend`, `pusher.extended`, `pusher.retracted` |
+| **Pneumatic Pusher** | Cylinder housing, chrome shaft & orange face plate; a jam freezes it mid-stroke | `pusher.extend`, `pusher.extended`, `pusher.retracted`, `pusher.fault` |
 | **Inclined Ramp (Chute)** | 30° gravity chute with guide rails; incline and friction are a matched pair so cartons actually slide | Physical static body |
 | **Stack Light** | 3-stage industrial tower light (Green, Yellow, Red) | `stacklight.green`, `yellow`, `red` |
 | **Digital Display** | 3D 7-segment LED panel displaying live integer counts | `display.value` (Int, Output) |
-| **Roller Conveyor** | Driven roller deck for pallets and totes that would scuff a belt; rollers spin at the true surface speed | `rollerconveyor.rotate` (Bit, Output) |
+| **Roller Conveyor** | Driven roller deck for pallets and totes that would scuff a belt; rollers spin at the true surface speed | `rollerconveyor.rotate` (Bit, Output) · `.fault` (Bit, Input) |
 | **Weight Scale Conveyor**| Integrated load cell scale reading the carton's mass **in grams** — 720 g for a short carton, 2160 g for a tall one, 12960 g for a metal one — and showing it on the scale | `weighconveyor.weight` (Int, Input) |
 | **Box Emitter** | Spawner emitting tall & short rigid cartons, optionally every Nth in metal | `emitter.emit` (Bit, Output) |
 | **Box Remover** | Area3D zone despawning items & incrementing a counter; the counted tag is pickable, so two removers can feed one total | `remover.count` (Int, Input) |

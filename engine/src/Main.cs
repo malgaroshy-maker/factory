@@ -173,6 +173,10 @@ public partial class Main : Node
         {
             AddChild(new DragPathSelfTest { Name = "DragPathSelfTest", Editor = _editor! });
         }
+        if (_selfTest == "fault")
+        {
+            AddChild(new FaultInjectionSelfTest { Name = "FaultInjectionSelfTest", Tags = tags, Editor = _editor! });
+        }
         if (_selfTest == "drag")
         {
             AddChild(new DragMoveSelfTest { Name = "DragMoveSelfTest", Tags = tags, Editor = _editor! });
@@ -387,6 +391,7 @@ public partial class Main : Node
         driverConnectionUI.IdleHint = idleHint;
         editor.Toolbar = toolbarUI;
         editor.IdleHint = idleHint;
+        toolbarUI.FaultToolToggled += () => editor.SetFaultToolArmed(!editor.FaultToolArmed);
         AddChild(toolbarUI);
 
         // The start screen goes on last so it draws over everything, and it is

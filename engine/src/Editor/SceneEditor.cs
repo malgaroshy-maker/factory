@@ -71,10 +71,10 @@ public partial class SceneEditor : Node3D
 
         private static readonly Dictionary<string, string[]> TagSuffixesByType = new()
         {
-            ["ConveyorBelt"] = new[] { "rotate" },
-            ["RollerConveyor"] = new[] { "rotate" },
-            ["WeighingConveyor"] = new[] { "rotate", "weight" },
-            ["PusherMechanism"] = new[] { "extend", "extended", "retracted" },
+            ["ConveyorBelt"] = new[] { "rotate", "fault" },
+            ["RollerConveyor"] = new[] { "rotate", "fault" },
+            ["WeighingConveyor"] = new[] { "rotate", "weight", "fault" },
+            ["PusherMechanism"] = new[] { "extend", "extended", "retracted", "fault" },
             ["PhotoelectricSensor"] = new[] { "detect" },
             ["RetroreflectiveSensor"] = new[] { "detect" },
             ["InductiveSensor"] = new[] { "detect" },
@@ -85,6 +85,13 @@ public partial class SceneEditor : Node3D
             ["LightArray"] = new[] { "height", "blocked" },
             ["LevelTank"] = new[] { "level", "fill", "drain" },
         };
+
+        /// <summary>Which tag suffixes a part type owns — the one place that
+        /// question is answered, so "can this be faulted?" is derived from the
+        /// tag set rather than kept as a second list that drifts from it.</summary>
+        public static IReadOnlyList<string> SuffixesFor(string partType) =>
+            TagSuffixesByType.TryGetValue(partType, out var suffixes)
+                ? suffixes : System.Array.Empty<string>();
 
         private static Dictionary<string, string> BuildTagIdCache(string instanceId, string partType)
         {
@@ -231,7 +238,13 @@ public partial class SceneEditor : Node3D
                 // which is the difference between a testable path and one that
                 // can only be checked by hand.
                 if (!runClick.Pressed) EndDialDrag();
+                else if (FaultToolArmed) FaultAt(runClick.Position);
                 else if (!BeginDialDragAt(runClick.Position)) PressControlAt(runClick.Position);
+            }
+            else if (@event is InputEventKey runKey && runKey.Pressed && !runKey.Echo
+                     && runKey.Keycode == Key.Escape)
+            {
+                SetFaultToolArmed(false);
             }
             else if (@event is InputEventMouseMotion runMotion)
             {
@@ -708,11 +721,91 @@ public partial class SceneEditor : Node3D
         PressControlAtRay(camera.ProjectRayOrigin(screenPosition), camera.ProjectRayNormal(screenPosition));
     }
 
+    /// <summary>
+    /// While armed, a Run-mode click fails the drive it lands on instead of
+    /// operating it — and a click on an already-failed drive clears it
+    /// (FI-01).
+    ///
+    /// A mode rather than a modifier key, because the point is to be found.
+    /// Faulting a machine is the one thing in this app a user would never
+    /// discover by clicking around, and it is the half of PLC work the
+    /// library could not teach until now: every actuator here did exactly what
+    /// it was told, so a command and reality could never disagree, and an
+    /// interlock exists precisely because the plant does not always obey.
+    /// </summary>
+    public bool FaultToolArmed { get; private set; }
+
+    public void SetFaultToolArmed(bool armed)
+    {
+        FaultToolArmed = armed && Mode == EditorMode.Run;
+        Toolbar?.ShowFaultTool(FaultToolArmed);
+    }
+
+    /// <summary>Part types that have a drive that can fail. Derived from the
+    /// tag set rather than listed twice: anything that registered a
+    /// <c>.fault</c> tag can be faulted, and anything that did not, cannot.
+    /// </summary>
+    public bool CanFault(string partType)
+    {
+        foreach (string suffix in PlacedPart.SuffixesFor(partType))
+        {
+            if (suffix == "fault") return true;
+        }
+        return false;
+    }
+
+    /// <summary>Toggle the fault on whatever drive the ray lands on. Returns
+    /// the instance id if one was toggled, so the hint bar can name it — a
+    /// fault the user cannot see is a fault they will debug for an hour.
+    /// </summary>
+    public string? ToggleFaultAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Run || Tags is null) return null;
+
+        float nearest = float.MaxValue;
+        PlacedPart? hit = null;
+
+        foreach (var entry in _placedParts)
+        {
+            if (!CanFault(entry.PartType)) continue;
+            if (PartBounds.RayDistance(entry.Node, from, dir) is not { } distance) continue;
+            if (distance >= nearest) continue;
+            nearest = distance;
+            hit = entry;
+        }
+
+        if (hit is null) return null;
+        if (!hit.TagIds.TryGetValue("fault", out var id) || !Tags.Contains(id)) return null;
+
+        // Forced, not Set: the fault is an Input, so a plain write would be
+        // overwritten by whatever owns it next tick. Forcing is exactly the
+        // right model anyway -- somebody is holding this contact closed, and
+        // the Tag Inspector shows it held, and one click releases it.
+        bool nowFaulted = !(Tags.TryGetVisible(id, out var current) && (bool)current);
+        if (nowFaulted) Tags.Force(id, true);
+        else Tags.ClearForce(id);
+
+        return hit.InstanceId;
+    }
+
     /// <summary>The pot currently being turned, if any. A drag owns the mouse
     /// until release, so nothing else in Run mode acts on the motion.</summary>
     private ButtonPanel? _dialDrag;
 
     public bool IsDraggingDial => _dialDrag is not null;
+
+    private void FaultAt(Vector2 screenPosition)
+    {
+        var camera = GetViewport().GetCamera3D();
+        if (camera is null) return;
+
+        string? id = ToggleFaultAtRay(camera.ProjectRayOrigin(screenPosition),
+                                      camera.ProjectRayNormal(screenPosition));
+        IdleHint?.Announce(id is null
+            ? "Nothing there has a drive that can fail. Click a conveyor or a pusher."
+            : $"{id}.fault toggled. The command stays on; the machine stops obeying. "
+              + "Click it again to clear, or release the force in the Tag Inspector.");
+    }
 
     private bool BeginDialDragAt(Vector2 screenPosition)
     {
@@ -1784,6 +1877,12 @@ public partial class SceneEditor : Node3D
                     if (node is ConveyorBelt belt && ids.TryGetValue("rotate", out var rotateId)
                         && Tags.TryGetVisible(rotateId, out var rotateVal))
                     {
+                        // Fault first, so SetRunning below already knows: a
+                        // faulted drive refuses the command rather than
+                        // obeying it and being stopped again next tick.
+                        if (ids.TryGetValue("fault", out var beltFaultId)
+                            && Tags.TryGetVisible(beltFaultId, out var beltFaultVal))
+                            belt.SetFaulted((bool)beltFaultVal);
                         belt.SetRunning((bool)rotateVal);
                         if (Scene is not null && instanceId == "conveyor")
                             Scene.TransportSpeed = belt.Speed;
@@ -1794,6 +1893,9 @@ public partial class SceneEditor : Node3D
                     if (node is PusherMechanism pusher && ids.TryGetValue("extend", out var extendId)
                         && Tags.TryGetVisible(extendId, out var extendVal))
                     {
+                        if (ids.TryGetValue("fault", out var pusherFaultId)
+                            && Tags.TryGetVisible(pusherFaultId, out var pusherFaultVal))
+                            pusher.SetFaulted((bool)pusherFaultVal);
                         pusher.UpdateExtension((bool)extendVal, dt);
                         // A VisualOnly pusher mirrors a pusher the scene already
                         // simulates, so the scene keeps the limit switches.

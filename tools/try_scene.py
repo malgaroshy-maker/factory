@@ -201,11 +201,19 @@ async def turn_pot(bus: TagBusClient, value: float, prefix: str = "panel") -> No
 class Station:
     """One control panel, scanned the way a PLC scans it."""
 
-    def __init__(self, bus: TagBusClient, prefix: str = "panel") -> None:
+    def __init__(self, bus: TagBusClient, prefix: str = "panel",
+                 faults: tuple[str, ...] = ()) -> None:
         self.bus = bus
         self.prefix = prefix
+        #: Drive fault contacts this line watches (FI-01). A standing fault
+        #: trips the line exactly like the mushroom does -- and, the part
+        #: students get wrong, Reset cannot clear a fault that is still there.
+        #: A controller that lets you reset a live fault is one that lets you
+        #: restart into it. Mirrors OperatorStation in the engine.
+        self.faults = faults
         self.running = False
         self.tripped = False
+        self.drive_faulted = False
         self._prev = {"start": False, "stop": False, "reset": False}
 
     @property
@@ -224,17 +232,21 @@ class Station:
         self._prev = now
 
         healthy = bit(self.bus, f"{self.prefix}.estop")
+        self.drive_faulted = any(bit(self.bus, tag) for tag in self.faults)
+
         # Latching, and only Reset clears it. A trip that cleared itself when
         # the mushroom popped back out would restart the line under whoever
         # was still working on it -- the exact thing a latch exists to stop.
-        if not healthy:
+        # A live drive fault re-asserts the latch every scan, so Reset while
+        # the fault stands achieves nothing, which is the point.
+        if not healthy or self.drive_faulted:
             self.tripped = True
         elif edges["reset"]:
             self.tripped = False
 
         if self.tripped or edges["stop"]:
             self.running = False
-        elif edges["start"] and healthy:
+        elif edges["start"] and healthy and not self.drive_faulted:
             self.running = True
 
         edges["healthy"] = healthy
@@ -357,6 +369,61 @@ async def exercise_interlocks(bus: TagBusClient, station: Station, check: Checks
     return estop_ms
 
 
+async def exercise_fault(bus: TagBusClient, station: Station, check: Checks,
+                         is_moving, fault_tag: str, what_moves: str) -> float:
+    """Fail a drive under a running line, and check the line notices (FI-01).
+
+    Until drives could fail, every actuator in the library did exactly what it
+    was told, so a command and reality could never disagree -- and an interlock
+    exists precisely because the plant does not always obey. This is the other
+    half of the operator contract, and it is checked the same way on every
+    scene that has a drive to fail.
+
+    Assumes the line is running on entry, and leaves it running.
+    """
+    check(not bit(bus, fault_tag), f"before the fault: {fault_tag} is clear")
+    check(is_moving(), f"before the fault: {what_moves} is running")
+
+    raised = time.perf_counter()
+    await bus.force({fault_tag: True})
+    while time.perf_counter() - raised < 1.0:
+        if not is_moving():
+            break
+        await asyncio.sleep(0.005)
+    trip_ms = (time.perf_counter() - raised) * 1000.0
+
+    check(not is_moving(), f"a faulted drive stops {what_moves}")
+    check(trip_ms <= ESTOP_LIMIT * 1000.0,
+          f"the controller trips within {ESTOP_LIMIT * 1000:.0f}ms of the fault "
+          f"(took {trip_ms:.0f}ms)")
+    await asyncio.sleep(0.2)
+    check(bit(bus, "panel.red"), "a faulted drive lights the panel's red lamp")
+
+    # The one students get wrong. Resetting a live fault must do nothing, and
+    # Start after that must do nothing either.
+    await press(bus, "panel.reset")
+    await asyncio.sleep(0.3)
+    check(bit(bus, "panel.red"), "Reset while the fault stands does not clear it")
+    await press(bus, "panel.start")
+    await asyncio.sleep(0.3)
+    check(not is_moving(), "and Start while the fault stands does not restart the line")
+
+    await bus.force(clear=[fault_tag])
+    await asyncio.sleep(0.3)
+    check(not is_moving(),
+          "clearing the fault alone does not restart the line -- the trip is still latched")
+
+    await press(bus, "panel.reset")
+    await asyncio.sleep(0.3)
+    check(not bit(bus, "panel.red"), "Reset after the fault is gone clears it")
+
+    await press(bus, "panel.start")
+    await asyncio.sleep(0.4)
+    check(is_moving(), f"Start then brings {what_moves} back")
+
+    return trip_ms
+
+
 async def check_quiet_after_stop(bus: TagBusClient, station: Station, check: Checks,
                                  is_moving, counter_tag: str) -> None:
     """Press Stop and prove the line really stopped -- not just that a lamp
@@ -439,15 +506,18 @@ async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: b
             **station.lamps(),
         })
 
-    station = Station(bus)
+    station = Station(bus, faults=("conveyor.fault", "pusher.fault"))
     stop_event, task = controller(tick)
-    estop_ms = -1.0
+    estop_ms = fault_ms = -1.0
     tall = short = 0
     nominal_delays: list[float] = []
 
     try:
         estop_ms = await exercise_interlocks(bus, station, check,
                                              lambda: bit(bus, "conveyor.rotate"), "the belt")
+        fault_ms = await exercise_fault(bus, station, check,
+                                        lambda: bit(bus, "conveyor.rotate"),
+                                        "conveyor.fault", "the belt")
 
         # --- production, at the pot's own setting --------------------------
         tall_before, short_before = num(bus, "counter.tall"), num(bus, "counter.short")
@@ -507,10 +577,10 @@ async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: b
     finally:
         stop_event.set()
         await task
-        await bus.force(clear=["panel.setpoint"])
+        await bus.force(clear=["panel.setpoint", *station.faults])
 
     print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
-          f"tall={tall} short={short} estop={estop_ms:.0f}ms")
+          f"tall={tall} short={short} estop={estop_ms:.0f}ms fault={fault_ms:.0f}ms")
     return not check.problems, "; ".join(check.problems)
 
 
@@ -571,9 +641,9 @@ async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: 
             **station.lamps(),
         })
 
-    station = Station(bus)
+    station = Station(bus, faults=("belt.fault",))
     stop_event, task = controller(tick)
-    estop_ms = -1.0
+    estop_ms = fault_ms = -1.0
     batch = 4
 
     try:
@@ -586,6 +656,8 @@ async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: 
                                              lambda: bit(bus, "belt.rotate"), "the belt")
         check(bit(bus, "tower.green") and not bit(bus, "tower.yellow"),
               "running: the tower shows green only")
+        fault_ms = await exercise_fault(bus, station, check,
+                                        lambda: bit(bus, "belt.rotate"), "belt.fault", "the belt")
 
         # --- the batch ------------------------------------------------------
         await press(bus, "panel.stop")
@@ -638,11 +710,12 @@ async def drive_start_stop_station(bus: TagBusClient, duration: float, verbose: 
     finally:
         stop_event.set()
         await task
-        await bus.force(clear=["panel.setpoint"])
+        await bus.force(clear=["panel.setpoint", *station.faults])
 
     print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
           f"batch={batch} produced={state['produced']} "
-          f"counted={int(num(bus, 'counter.count'))} estop={estop_ms:.0f}ms")
+          f"counted={int(num(bus, 'counter.count'))} estop={estop_ms:.0f}ms "
+          f"fault={fault_ms:.0f}ms")
     return not check.problems, "; ".join(check.problems)
 
 
@@ -767,7 +840,7 @@ async def drive_tank_level_control(bus: TagBusClient, duration: float, verbose: 
         stop_event.set()
         await task
         await bus.write_many({"tank.fill": 0.0, "tank.drain": 0.0})
-        await bus.force(clear=["panel.setpoint"])
+        await bus.force(clear=["panel.setpoint", *station.faults])
 
     print(f"RESULT high sp={HIGH:.0f} reached={high_reach:.1f}s held={high_held:.1f}s "
           f"level={high_level:.1f} | low sp={LOW:.0f} reached={low_reach:.1f}s "
@@ -850,14 +923,16 @@ async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbos
                                   "diverter.extend": extend,
                                   **station.lamps()})
 
-    station = Station(bus)
+    station = Station(bus, faults=("belt.fault", "diverter.fault"))
     stop_event, task = controller(tick)
-    estop_ms = -1.0
+    estop_ms = fault_ms = -1.0
     tall = short = 0
 
     try:
         estop_ms = await exercise_interlocks(bus, station, check,
                                              lambda: bit(bus, "belt.rotate"), "the belt")
+        fault_ms = await exercise_fault(bus, station, check,
+                                        lambda: bit(bus, "belt.rotate"), "belt.fault", "the belt")
 
         threshold = station.setpoint
         check.note(f"height threshold pot reads {threshold:.2f}m")
@@ -914,11 +989,11 @@ async def drive_light_curtain_sorting(bus: TagBusClient, duration: float, verbos
     finally:
         stop_event.set()
         await task
-        await bus.force(clear=["panel.setpoint"])
+        await bus.force(clear=["panel.setpoint", *station.faults])
 
     print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
           f"tall={tall} short={short} measured={len(state['measured'])} "
-          f"estop={estop_ms:.0f}ms")
+          f"estop={estop_ms:.0f}ms fault={fault_ms:.0f}ms")
     return not check.problems, "; ".join(check.problems)
 
 
@@ -992,13 +1067,16 @@ async def drive_roller_line_weighing(bus: TagBusClient, duration: float, verbose
             **{k: v for k, v in station.lamps().items() if k != "panel.red"},
         })
 
-    station = Station(bus)
+    station = Station(bus, faults=("infeed.fault", "scale.fault"))
     stop_event, task = controller(tick)
-    estop_ms = -1.0
+    estop_ms = fault_ms = -1.0
 
     try:
         estop_ms = await exercise_interlocks(bus, station, check,
                                              lambda: bit(bus, "scale.rotate"), "the rollers")
+        fault_ms = await exercise_fault(bus, station, check,
+                                        lambda: bit(bus, "scale.rotate"), "scale.fault",
+                                        "the rollers")
 
         limit = station.setpoint
         check.note(f"reject limit pot reads {limit:.0f}g")
@@ -1063,12 +1141,12 @@ async def drive_roller_line_weighing(bus: TagBusClient, duration: float, verbose
     finally:
         stop_event.set()
         await task
-        await bus.force(clear=["panel.setpoint"])
+        await bus.force(clear=["panel.setpoint", *station.faults])
 
     print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
           f"weighed={len(state['peaks'])} rejects={state['rejects']} "
           f"metal={state['metal_hits']} outfeed={int(num(bus, 'outfeed.count'))} "
-          f"estop={estop_ms:.0f}ms")
+          f"estop={estop_ms:.0f}ms fault={fault_ms:.0f}ms")
     return not check.problems, "; ".join(check.problems)
 
 

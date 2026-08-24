@@ -36,7 +36,7 @@ public sealed class LightCurtainSortingProfile : IDemoProfile
     /// after that acknowledgement, not a blind guess at the whole cycle.</summary>
     private const double ClearDwell = 0.4;
 
-    private readonly OperatorStation _station = new();
+    private readonly OperatorStation _station = new OperatorStation("panel", "belt.fault", "diverter.fault");
 
     private double _elapsed;
     private bool _emitFlag;

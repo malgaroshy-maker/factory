@@ -202,11 +202,20 @@ public partial class RollerProfileSelfTest : Node
         return null;
     }
 
+    /// <summary>The deck's first roller, by name.
+    ///
+    /// This used to take "the first child whose mesh is a CylinderMesh", which
+    /// is a guess about the scene graph rather than a question about the part.
+    /// It held until the base conveyor grew a drive-fault beacon on a
+    /// cylindrical stalk (FI-01) — after which this test measured a lamp post
+    /// for rotation, found it stationary, and correctly reported that the
+    /// rollers were not turning. Asking for the thing by name cannot go wrong
+    /// that way.</summary>
     private static MeshInstance3D? FirstRoller(RollerConveyor? deck)
     {
         if (deck is null) return null;
         foreach (var child in deck.GetChildren())
-            if (child is MeshInstance3D mesh && mesh.Mesh is CylinderMesh) return mesh;
+            if (child is MeshInstance3D mesh && mesh.Name.ToString().StartsWith("Roller")) return mesh;
         return null;
     }
 

@@ -23,9 +23,19 @@ namespace FactoryForge.Sim.DemoProfiles;
 public sealed class OperatorStation
 {
     private readonly string _prefix;
+    private readonly string[] _faultTags;
     private bool _prevStart, _prevStop, _prevReset;
 
-    public OperatorStation(string prefix = "panel") => _prefix = prefix;
+    /// <param name="faultTags">Drive fault contacts this line watches (FI-01).
+    /// A standing fault trips the line exactly like the mushroom does, and —
+    /// this is the part students get wrong — <b>Reset cannot clear a fault that
+    /// is still there</b>. A controller that lets you reset a live fault is one
+    /// that lets you restart into it.</param>
+    public OperatorStation(string prefix = "panel", params string[] faultTags)
+    {
+        _prefix = prefix;
+        _faultTags = faultTags;
+    }
 
     /// <summary>True while the line should be moving.</summary>
     public bool Running { get; private set; }
@@ -50,6 +60,10 @@ public sealed class OperatorStation
         _prevStart = _prevStop = _prevReset = false;
     }
 
+    /// <summary>True while any drive this line watches is reporting a
+    /// fault.</summary>
+    public bool DriveFaulted { get; private set; }
+
     public void Scan(TagTable tags)
     {
         bool start = Bit(tags, $"{_prefix}.start");
@@ -57,16 +71,22 @@ public sealed class OperatorStation
         bool reset = Bit(tags, $"{_prefix}.reset");
         bool healthy = !tags.Contains($"{_prefix}.estop") || Bit(tags, $"{_prefix}.estop");
 
+        DriveFaulted = false;
+        foreach (string id in _faultTags)
+        {
+            if (Bit(tags, id)) { DriveFaulted = true; break; }
+        }
+
         StartEdge = start && !_prevStart;
         bool stopEdge = stop && !_prevStop;
         bool resetEdge = reset && !_prevReset;
         _prevStart = start; _prevStop = stop; _prevReset = reset;
 
-        if (!healthy) Tripped = true;
+        if (!healthy || DriveFaulted) Tripped = true;
         else if (resetEdge) Tripped = false;
 
         if (Tripped || stopEdge) Running = false;
-        else if (StartEdge && healthy) Running = true;
+        else if (StartEdge && healthy && !DriveFaulted) Running = true;
     }
 
     /// <summary>Stop the line from the controller's own side — a batch

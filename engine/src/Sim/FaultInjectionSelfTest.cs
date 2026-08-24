@@ -1,0 +1,218 @@
+using System.Collections.Generic;
+using FactoryForge.Editor;
+using FactoryForge.Parts;
+using FactoryForge.TagBus;
+using Godot;
+
+namespace FactoryForge.Sim;
+
+/// <summary>
+/// Headless check that a drive can fail, and that failing means what it says
+/// (FI-01):
+///
+/// <code>godot --headless --path engine -- --self-test=fault</code>
+///
+/// Every actuator in the library used to do exactly what it was told, so a
+/// command and reality could never disagree. That made half of real PLC work
+/// unteachable here — an interlock exists because the plant does not always
+/// obey, and a student who has only driven a line that always obeys has never
+/// had to check.
+///
+/// So the assertion that matters is not "the belt stopped". It is that the
+/// belt stopped **while the command was still on**: a fault that also cleared
+/// the command would leave the two agreeing, which is the one thing this
+/// feature exists to prevent.
+/// </summary>
+public partial class FaultInjectionSelfTest : Node
+{
+    public SceneEditor Editor { get; set; } = null!;
+    public TagTable Tags { get; set; } = null!;
+
+    private readonly List<string> _failures = new();
+    private int _step;
+    private ConveyorBelt _belt = null!;
+    private PusherMechanism _pusher = null!;
+    private float _extensionWhenFaulted;
+
+    private void Expect(bool condition, string what)
+    {
+        if (condition) return;
+        _failures.Add(what);
+        GD.PrintErr($"  FAIL  {what}");
+    }
+
+    private T? Find<T>() where T : Node3D
+    {
+        foreach (var child in GetParent().GetChildren())
+        {
+            if (child is T found) return found;
+        }
+        return null;
+    }
+
+    private bool Bit(string id) => Tags.Contains(id) && Tags.Visible(id) is true;
+
+    /// <summary>A ray straight down onto a part, standing in for a click on it
+    /// with the fault tool armed.</summary>
+    private static (Vector3 From, Vector3 Dir) Over(Node3D node) =>
+        (node.GlobalPosition + new Vector3(0, 6.0f, 0), Vector3.Down);
+
+    public override void _PhysicsProcess(double delta)
+    {
+        _step++;
+
+        switch (_step)
+        {
+            case 1:
+                Editor.LoadTemplate("res://templates/light_curtain_sorting.json");
+                return;
+
+            case 3:
+            {
+                var belt = Find<ConveyorBelt>();
+                var pusher = Find<PusherMechanism>();
+                if (belt is null || pusher is null)
+                {
+                    Expect(false, "light-curtain-sorting: no belt or no pusher");
+                    Finish();
+                    return;
+                }
+                _belt = belt;
+                _pusher = pusher;
+
+                foreach (string id in new[] { "belt.fault", "diverter.fault" })
+                    Expect(Tags.Contains(id), $"tag {id} exists");
+                Expect(Tags.Get("belt.fault")?.Kind == TagKind.Input,
+                       "belt.fault is an Input — nothing in the simulation computes it");
+                Expect(!Bit("belt.fault"), "a fresh scene has no drive faulted");
+
+                Tags.Set("belt.rotate", true);
+                return;
+            }
+
+            case 5:
+                Expect(_belt.IsRunning, "the belt runs when commanded");
+                Tags.Force("belt.fault", true);
+                return;
+
+            case 7:
+                Expect(!_belt.IsRunning, "a faulted drive stops");
+                Expect(_belt.IsFaulted, "and knows it is faulted");
+                // The whole point. A fault that also dropped the command would
+                // leave the two agreeing and teach nothing.
+                Expect(Bit("belt.rotate"),
+                       "the command is still on — the drive is disobeying, not obeying a stop");
+                Expect(_belt.ConstantLinearVelocity.Length() < 0.001f,
+                       $"the belt surface is actually still (v={_belt.ConstantLinearVelocity.Length():0.###})");
+                return;
+
+            case 9:
+                // A command arriving *while* faulted must not start it either.
+                Tags.Set("belt.rotate", false);
+                return;
+
+            case 11:
+                Tags.Set("belt.rotate", true);
+                return;
+
+            case 13:
+                Expect(!_belt.IsRunning, "commanding a faulted drive on again does not start it");
+                Tags.ClearForce("belt.fault");
+                return;
+
+            case 15:
+                Expect(_belt.IsRunning, "clearing the fault lets the standing command take effect");
+                Expect(!_belt.IsFaulted, "and the drive stops reporting a fault");
+
+                // Now the pusher: a jammed cylinder stops where it is. Not
+                // "returns home" -- a stuck actuator is dangerous precisely
+                // because it does not go anywhere safe on its own.
+                Tags.Set("diverter.extend", true);
+                return;
+
+            case 30:
+                Expect(_pusher.Extension > 0.01f,
+                       $"the pusher is mid-stroke before the jam (at {_pusher.Extension:0.###})");
+                _extensionWhenFaulted = _pusher.Extension;
+                Tags.Force("diverter.fault", true);
+                return;
+
+            case 50:
+                Expect(Mathf.Abs(_pusher.Extension - _extensionWhenFaulted) < 0.001f,
+                       $"a jammed cylinder stops where it is (was {_extensionWhenFaulted:0.###}, "
+                       + $"now {_pusher.Extension:0.###})");
+                Tags.Set("diverter.extend", false);
+                return;
+
+            case 70:
+                Expect(Mathf.Abs(_pusher.Extension - _extensionWhenFaulted) < 0.001f,
+                       "a jammed cylinder does not retract on command either — it is stuck, "
+                       + "which is why the limit switches are the thing to read");
+                Expect(!_pusher.IsRetracted,
+                       "and its retracted limit is honest about that");
+                Tags.ClearForce("diverter.fault");
+                return;
+
+            case 90:
+                Expect(_pusher.IsRetracted,
+                       $"clearing the jam lets it finish the move (at {_pusher.Extension:0.###})");
+                CheckToolTargets();
+                Finish();
+                return;
+        }
+    }
+
+    /// <summary>The fault tool aims at drives and nothing else. A tool that
+    /// silently did nothing on half the parts would be worse than one that
+    /// says so, and a tool that faulted a stack light would be nonsense.
+    /// </summary>
+    private void CheckToolTargets()
+    {
+        Expect(Editor.CanFault("ConveyorBelt"), "a conveyor can be faulted");
+        Expect(Editor.CanFault("RollerConveyor"), "a roller deck can be faulted");
+        Expect(Editor.CanFault("WeighingConveyor"), "a weigh deck can be faulted");
+        Expect(Editor.CanFault("PusherMechanism"), "a pusher can be faulted");
+        Expect(!Editor.CanFault("StackLight"), "a stack light has no drive to fail");
+        Expect(!Editor.CanFault("ButtonPanel"), "a control panel has no drive to fail");
+        Expect(!Editor.CanFault("PhotoelectricSensor"), "a sensor has no drive to fail");
+
+        // Arming is Run-mode only: a fault tool live while you are dragging
+        // conveyors into place would be a trap.
+        Editor.SetMode(EditorMode.Edit);
+        Editor.SetFaultToolArmed(true);
+        Expect(!Editor.FaultToolArmed, "the fault tool refuses to arm in Build mode");
+
+        var (from, dir) = Over(_belt);
+        Expect(Editor.ToggleFaultAtRay(from, dir) is null,
+               "and refuses to fault anything there either");
+
+        Editor.SetMode(EditorMode.Run);
+        Editor.SetFaultToolArmed(true);
+        Expect(Editor.FaultToolArmed, "it arms in Operate mode");
+
+        Expect(Editor.ToggleFaultAtRay(from, dir) == "belt",
+               "a click on the belt faults the belt, by name");
+        Expect(Bit("belt.fault"), "and the tag says so");
+        Expect(Tags.IsForced("belt.fault"),
+               "held as a force, so the Tag Inspector shows it held and one click releases it");
+        Expect(Editor.ToggleFaultAtRay(from, dir) == "belt", "a second click targets it again");
+        Expect(!Bit("belt.fault"), "and clears the fault");
+
+        Editor.SetFaultToolArmed(false);
+        Expect(!Editor.FaultToolArmed, "and it disarms");
+    }
+
+    private void Finish()
+    {
+        if (_failures.Count == 0)
+        {
+            GD.Print("self-test fault: PASS");
+            GetTree().Quit(0);
+        }
+        else
+        {
+            GD.PrintErr($"self-test fault: FAIL ({_failures.Count})");
+            GetTree().Quit(1);
+        }
+    }
+}

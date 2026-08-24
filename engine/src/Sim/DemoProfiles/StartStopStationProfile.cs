@@ -28,7 +28,7 @@ public sealed class StartStopStationProfile : IDemoProfile
     /// <summary>Used only on a line built without a panel.</summary>
     private const int DefaultBatch = 12;
 
-    private readonly OperatorStation _station = new();
+    private readonly OperatorStation _station = new OperatorStation("panel", "belt.fault");
 
     private bool _prevPresent;
     private int _produced;

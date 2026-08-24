@@ -3,6 +3,11 @@
   "scenes": {
     "sorting-by-height": [
       {
+        "id": "conveyor.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
         "id": "conveyor.rotate",
         "type": "bit",
         "kind": "output"
@@ -68,6 +73,11 @@
         "kind": "input"
       },
       {
+        "id": "pusher.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
         "id": "pusher.retracted",
         "type": "bit",
         "kind": "input"
@@ -89,6 +99,11 @@
       }
     ],
     "start-stop-station": [
+      {
+        "id": "belt.fault",
+        "type": "bit",
+        "kind": "input"
+      },
       {
         "id": "belt.rotate",
         "type": "bit",
@@ -239,6 +254,11 @@
     ],
     "light-curtain-sorting": [
       {
+        "id": "belt.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
         "id": "belt.rotate",
         "type": "bit",
         "kind": "output"
@@ -250,6 +270,11 @@
       },
       {
         "id": "diverter.extended",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "diverter.fault",
         "type": "bit",
         "kind": "input"
       },
@@ -326,6 +351,11 @@
         "kind": "output"
       },
       {
+        "id": "infeed.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
         "id": "infeed.rotate",
         "type": "bit",
         "kind": "output"
@@ -372,6 +402,11 @@
       },
       {
         "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "scale.fault",
         "type": "bit",
         "kind": "input"
       },

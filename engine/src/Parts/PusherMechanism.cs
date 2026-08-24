@@ -51,6 +51,11 @@ public partial class PusherMechanism : Node3D
     private CylinderMesh _rodMesh = null!;
     private float _currentExtension;
 
+    /// <summary>How far the rod is out, in metres. Exposed so a test can watch
+    /// a jam freeze it mid-stroke — the limit switches alone cannot tell
+    /// "stuck at 60%" from "still travelling".</summary>
+    public float Extension => _currentExtension;
+
     public bool IsExtended => _currentExtension >= StrokeLength - 0.01f;
     public bool IsRetracted => _currentExtension <= 0.01f;
 
@@ -86,8 +91,21 @@ public partial class PusherMechanism : Node3D
         ApplyExtension();
     }
 
+    /// <summary>
+    /// A jammed cylinder: it stops wherever it is and stays there, whatever
+    /// the valve is told (FI-01). Not "returns home" — a stuck actuator is
+    /// dangerous precisely because it does not go anywhere safe on its own,
+    /// and a plate frozen out across the lane is the failure a student has to
+    /// notice from the limit switches rather than from the command.
+    /// </summary>
+    public bool IsFaulted { get; private set; }
+
+    public void SetFaulted(bool faulted) => IsFaulted = faulted;
+
     public void UpdateExtension(bool extend, float delta)
     {
+        if (IsFaulted) return;
+
         float target = extend ? StrokeLength : 0.0f;
         _currentExtension = Mathf.MoveToward(_currentExtension, target, ExtendSpeed * delta);
         ApplyExtension();

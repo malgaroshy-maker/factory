@@ -122,7 +122,12 @@ public sealed class SortingScene
 
     private void StepBelt(double dt)
     {
+        // Command and fault, in that order and both of them. One tag interface,
+        // two solvers: a drive that can be failed in the rigid-body scene and
+        // not in this one would make the two disagree about what the same tags
+        // mean, which is the single thing this scene exists to rule out.
         if (!(bool)Tags.Visible("conveyor.rotate")) return;
+        if ((bool)Tags.Visible(SortingTags.ConveyorFault)) return;
 
         // A held-out pusher is a wall across the lane, not a magic diverter:
         // boxes that were not swept by the stroke pile up behind its face plate.
@@ -181,10 +186,18 @@ public sealed class SortingScene
     private void StepPusher(double dt)
     {
         double previous = _pusherExtension;
-        double target = (bool)Tags.Visible("pusher.extend") ? 1.0 : 0.0;
-        double step = dt / PusherTravelTime;
-        if (_pusherExtension < target) _pusherExtension = System.Math.Min(target, _pusherExtension + step);
-        else if (_pusherExtension > target) _pusherExtension = System.Math.Max(target, _pusherExtension - step);
+
+        // A jammed cylinder stops where it is and stays there, whatever the
+        // valve is told -- and its limit switches keep telling the truth about
+        // that, which is the whole reason to read them rather than the command.
+        // Same rule as PusherMechanism.UpdateExtension in the rigid-body scene.
+        if (!(bool)Tags.Visible(SortingTags.PusherFault))
+        {
+            double target = (bool)Tags.Visible("pusher.extend") ? 1.0 : 0.0;
+            double step = dt / PusherTravelTime;
+            if (_pusherExtension < target) _pusherExtension = System.Math.Min(target, _pusherExtension + step);
+            else if (_pusherExtension > target) _pusherExtension = System.Math.Max(target, _pusherExtension - step);
+        }
 
         Tags.Set("pusher.extended", _pusherExtension >= 1.0);
         Tags.Set("pusher.retracted", _pusherExtension <= 0.0);

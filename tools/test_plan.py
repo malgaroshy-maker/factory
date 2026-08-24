@@ -349,6 +349,12 @@ def section_c() -> None:
     # mentioned (OP-08). One drag has to be one undoable step, and a press
     # that never travels has to stay a plain click.
     _self_test("C24", "a placed part can be dragged to a new cell, as one undoable step", "drag")
+    # Until drives could fail, every actuator in the library did exactly what
+    # it was told, so a command and reality could never disagree -- and an
+    # interlock exists precisely because the plant does not always obey. The
+    # assertion that matters is not "the belt stopped" but "the belt stopped
+    # while the command was still on" (FI-01).
+    _self_test("C25", "a drive can fail: it stops while still commanded, and a jam freezes mid-stroke", "fault")
 
 
 def section_d(enabled: bool) -> None:

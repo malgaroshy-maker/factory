@@ -31,7 +31,7 @@ public sealed class RollerLineWeighingProfile : IDemoProfile
     /// cartons (720 g and 2160 g) and the steel ones (4320 g and 12960 g).</summary>
     private const double DefaultRejectLimit = 3000.0;
 
-    private readonly OperatorStation _station = new();
+    private readonly OperatorStation _station = new OperatorStation("panel", "infeed.fault", "scale.fault");
 
     private double _elapsed;
     private bool _emitFlag;

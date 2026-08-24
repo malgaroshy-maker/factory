@@ -128,6 +128,29 @@ Its tag works both ways: turn the knob and it publishes, force it from a PLC
 and the pointer turns to match, so the panel never disagrees with the number
 your program is using.
 
+### Breaking it on purpose
+
+A line that always works teaches half the job. In **Operate** mode the toolbar
+has a **`⚠ Fault`** button: arm it, then click a conveyor or a pusher.
+
+The drive stops **while its command is still on**. That is the whole point —
+`belt.rotate` stays true, the belt does not move, its fault beacon lights, and
+`belt.fault` goes true for your program to read. A command and reality have
+disagreed, which is the situation every interlock in every real plant exists
+for, and which nothing in this library could produce until the drives could
+fail. A jammed cylinder is worse and more instructive still: it freezes
+mid-stroke rather than returning home, so `pusher.extended` and
+`pusher.retracted` are both false and the limit switches are the only honest
+thing to read.
+
+Click the same part again to clear it. The fault is held as a *force*, so the
+Tag Inspector shows it held and the `🔓 N forced` chip releases it too.
+
+A controller worth the name should then refuse to restart. The shipped
+exercises check exactly that: Reset while the fault stands does nothing, and
+clearing the fault alone does not restart the line either — the trip is still
+latched, and only Reset then Start bring it back.
+
 **Every shipped scene answers to this panel.** Start runs the line, Stop stops
 it, the mushroom latches a trip that only Reset clears, and the pot changes
 what the line is aiming at while it runs. `python tools/try_scene.py --scene

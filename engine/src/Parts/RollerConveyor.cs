@@ -54,6 +54,13 @@ public partial class RollerConveyor : ConveyorBelt
 
             var roller = new MeshInstance3D
             {
+                // Named, so anything looking for a roller can ask for one
+                // rather than guessing "the first cylinder child". That guess
+                // was in RollerProfileSelfTest until a drive-fault beacon --
+                // mounted on a cylindrical stalk by the base conveyor -- became
+                // the first cylinder and the test started measuring a lamp
+                // post for rotation.
+                Name = $"Roller{i}",
                 Mesh = new CylinderMesh
                 {
                     TopRadius = RollerRadius,

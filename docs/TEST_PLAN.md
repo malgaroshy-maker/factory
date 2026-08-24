@@ -78,13 +78,14 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C22 | The engine can find a sidecar to launch and knows how to start it — a frozen build runs itself, a checkout goes through an interpreter | `--self-test=sidecar` |
 | C23 | The panel's setpoint pot turns, publishes, clamps to its scale plate, and follows a forced tag — and taking hold of the knob clears that force. Hit-tested at two panel headings, and refused outright in Build mode | `--self-test=setpoint` |
 | C24 | A placed part can be dragged to a new cell: it lands on the same grid placement snaps to and stays on the work plane, one whole drag is one `Ctrl+Z`, a press that never travels pushes nothing onto the history, and Run mode refuses to drag at all | `--self-test=drag` |
+| C25 | A drive can **fail**: a faulted conveyor stops *while its command is still on*, refuses to restart until the fault clears, and a jammed cylinder freezes mid-stroke rather than returning home. Also that the fault tool aims at drives and nothing else, and refuses to arm in Build mode | `--self-test=fault` |
 
 ### C-release. The same self-tests, against a built binary
 
 `tools/packaging/check_release.py --target windows|linux` runs 21 of the C
 checks against `dist/<target>/FactoryForge*` instead of a source checkout, and
 is the gate on `.github/workflows/release.yml`. Green on both platforms on
-2026-08-24: Windows 109 MB, Linux 74 MB, 23 self-tests each.
+2026-08-24: Windows 109 MB, Linux 74 MB, 24 self-tests each.
 
 The distinction is the point: a checkout can pass every C check while the
 exported binary fails. Two of them read checked-in fixtures, which used to sit

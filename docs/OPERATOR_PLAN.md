@@ -218,3 +218,75 @@ owns its own tags: nothing in the deterministic scene presses buttons.
 
 Verified against the thing that actually matters here, the regression contract
 itself: `test_plan.py --only E` still gets `(5, 5)` twice, exactly.
+
+---
+
+## 7. Faults — the other half of the operator contract (FI-01)
+
+Everything above makes the line answer to a human. It still assumed the
+machinery answers to the controller, and that assumption was total: every
+actuator in the library did exactly what it was told, so a command and reality
+could never disagree.
+
+That made half of real PLC work unteachable here. An interlock exists precisely
+*because* the plant does not always obey, and a student who has only driven a
+line that always obeys has never had to check. Fault injection was already on
+`docs/ROADMAP.md` under **Near**; it is what "real scenarios" was still missing.
+
+**What a drive fault is.** A `.fault` tag (Bit, **Input**) on conveyors, roller
+decks, weigh decks and pushers. Nothing in the simulation computes it — it is
+raised by whoever is playing maintenance and read by the controller exactly
+like a sensor. A faulted drive **does not move, whatever the command says**,
+and lights a beacon on its own frame, because a stopped belt and a faulted belt
+look identical otherwise and the difference is the whole diagnosis.
+
+The assertion that matters is therefore not "the belt stopped". It is that the
+belt stopped **while the command was still on**. A fault that also dropped the
+command would leave the two agreeing, which is the one thing this exists to
+prevent.
+
+**A jammed cylinder stops where it is.** Not "returns home" — a stuck actuator
+is dangerous precisely because it does not go anywhere safe on its own, and a
+plate frozen halfway across the lane leaves `extended` and `retracted` both
+false. The limit switches become the only honest thing to read, which is the
+lesson.
+
+**Injection is a mode, not a modifier.** A `⚠ Fault` button appears on the
+toolbar in Operate mode; armed, a click fails the drive it lands on and a
+second click clears it. Faulting a machine is the one thing here nobody would
+discover by clicking around. The fault is held as a *force*, so the Tag
+Inspector shows it held and the `🔓 N forced` chip releases it — no second
+mechanism for the same state.
+
+**Both solvers honour it.** `SortingScene`, the fixed-timestep regression
+scene, checks the same two tags in `StepBelt` and `StepPusher`. One tag
+interface, two solvers: a drive that could fail in one and not the other would
+make them disagree about what the same tags mean, which is the single thing
+that scene exists to rule out.
+
+**The controllers react.** `OperatorStation` and `try_scene.py`'s `Station`
+both take the fault contacts their line watches. A standing fault trips the
+line exactly like the mushroom, and — the part students get wrong — **Reset
+cannot clear a fault that is still there**. Clearing the fault alone does not
+restart anything either; the trip is still latched. All four scenes with a
+drive now run that sequence, measured against the same 200 ms limit as the
+E-stop:
+
+```
+RESULT sequence=PASS tall=6 short=6 estop=46ms fault=45ms
+```
+
+### The regression this turned up
+
+`--self-test=roller` failed the moment the beacon landed:
+`a running roller actually turns about that axis (rim moved 0.0 degrees)`.
+
+The rollers were turning fine. The test took *"the first child whose mesh is a
+CylinderMesh"* to mean "a roller" — a guess about the scene graph rather than a
+question about the part — and the beacon's cylindrical stalk, added by the base
+conveyor, became the first cylinder. It measured a lamp post for rotation,
+found it stationary, and reported exactly what it saw.
+
+The fix names the rollers and asks for one by name. Worth recording because the
+test was not wrong to fail: it was wrong to have been able to pass for the
+wrong reason.

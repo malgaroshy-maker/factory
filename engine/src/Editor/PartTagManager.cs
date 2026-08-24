@@ -154,6 +154,11 @@ public static class PartTagManager
         {
             case "ConveyorBelt":
                 tags.Add(new Tag($"{instanceId}.rotate", $"Conveyor {index} (Rotate)", TagType.Bit, TagKind.Output));
+                // The drive's own fault contact (FI-01). An Input, because
+                // nothing in the simulation computes it -- it is raised by
+                // whoever is playing maintenance, and read by the controller
+                // exactly like a sensor.
+                tags.Add(new Tag($"{instanceId}.fault", $"Conveyor {index} Drive Fault", TagType.Bit, TagKind.Input));
                 break;
 
             case "RetroreflectiveSensor":
@@ -163,6 +168,7 @@ public static class PartTagManager
                 break;
 
             case "PusherMechanism":
+                tags.Add(new Tag($"{instanceId}.fault", $"Pusher {index} Drive Fault", TagType.Bit, TagKind.Input));
                 tags.Add(new Tag($"{instanceId}.extend", $"Pusher {index} (Extend)", TagType.Bit, TagKind.Output));
                 tags.Add(new Tag($"{instanceId}.extended", $"Pusher {index} (Extended)", TagType.Bit, TagKind.Input));
                 tags.Add(new Tag($"{instanceId}.retracted", $"Pusher {index} (Retracted)", TagType.Bit, TagKind.Input));
@@ -213,6 +219,7 @@ public static class PartTagManager
 
             case "RollerConveyor":
                 tags.Add(new Tag($"{instanceId}.rotate", $"Roller Conveyor {index} (Rotate)", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.fault", $"Roller Conveyor {index} Drive Fault", TagType.Bit, TagKind.Input));
                 break;
 
             case "LevelTank":
@@ -226,6 +233,7 @@ public static class PartTagManager
             case "WeighingConveyor":
                 tags.Add(new Tag($"{instanceId}.rotate", $"WeighConveyor {index} Rotate", TagType.Bit, TagKind.Output));
                 tags.Add(new Tag($"{instanceId}.weight", $"WeighConveyor {index} Weight", TagType.Int, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"WeighConveyor {index} Drive Fault", TagType.Bit, TagKind.Input));
                 break;
         }
 

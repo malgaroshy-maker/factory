@@ -45,6 +45,9 @@ public partial class SceneToolbarUI : Control
     private Button _demoBtn = null!;
     private bool? _lastDemoActive;
 
+    /// <summary>Arm or disarm the fault tool (FI-01).</summary>
+    [Signal] public delegate void FaultToolToggledEventHandler();
+
     [Signal] public delegate void SaveRequestedEventHandler(string path);
     [Signal] public delegate void LoadRequestedEventHandler(string path);
     [Signal] public delegate void ClearRequestedEventHandler();
@@ -60,6 +63,7 @@ public partial class SceneToolbarUI : Control
     private Button _pauseBtn = null!;
     private OptionButton _rateBox = null!;
     private Button _modeBtn = null!;
+    private Button _faultBtn = null!;
 
     /// <summary>
     /// Show which mode the viewport is in. This is the only cue that a click
@@ -79,6 +83,27 @@ public partial class SceneToolbarUI : Control
             : "Building: click parts to select, M to move, Delete to remove. F1 to operate.";
         _modeBtn.AddThemeColorOverride("font_color",
             running ? new Color(0.45f, 0.95f, 0.55f) : new Color(0.98f, 0.80f, 0.35f));
+
+        // Breaking things is an operating activity, not a building one, and a
+        // fault tool armed while you are dragging conveyors around would be a
+        // trap. Disarms on the way out rather than staying armed invisibly.
+        _faultBtn.Visible = running;
+        if (!running) ShowFaultTool(false);
+    }
+
+    /// <summary>Reflect whether the fault tool is armed. Armed is a *mode*, and
+    /// a mode that does not look different from the outside is how a user ends
+    /// up faulting a belt they meant to switch on.</summary>
+    public void ShowFaultTool(bool armed)
+    {
+        _faultBtn.Text = armed ? "⚠ Faulting" : "⚠ Fault";
+        _faultBtn.TooltipText = armed
+            ? "Armed: click a conveyor or pusher to fault it, or a faulted one to clear it. "
+            + "Click this again, or press Esc, to go back to operating."
+            : "Arm the fault tool, then click a drive to fail it — the command stays on, "
+            + "the machine stops obeying. Read <part>.fault to see it from the PLC.";
+        _faultBtn.AddThemeColorOverride("font_color",
+            armed ? new Color(1.0f, 0.45f, 0.35f) : new Color(0.90f, 0.72f, 0.35f));
     }
 
     /// <summary>Reflect state the user may have changed by keyboard, so the
@@ -267,6 +292,15 @@ public partial class SceneToolbarUI : Control
         };
         tryBtn.Pressed += TryThisScene;
         hbox.AddChild(tryBtn);
+
+        _faultBtn = new Button
+        {
+            Text = "⚠ Fault",
+            CustomMinimumSize = new Vector2(86, 32),
+            Visible = false,
+        };
+        _faultBtn.Pressed += () => EmitSignal(SignalName.FaultToolToggled);
+        hbox.AddChild(_faultBtn);
 
         var wiringBtn = new Button
         {
