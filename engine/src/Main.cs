@@ -168,6 +168,10 @@ public partial class Main : Node
         {
             AddChild(new PanelSelfTest { Name = "PanelSelfTest", Tags = tags, Editor = _editor });
         }
+        if (_selfTest == "dragpath")
+        {
+            AddChild(new DragPathSelfTest { Name = "DragPathSelfTest", Editor = _editor! });
+        }
         if (_selfTest == "drag")
         {
             AddChild(new DragMoveSelfTest { Name = "DragMoveSelfTest", Tags = tags, Editor = _editor! });

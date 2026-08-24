@@ -157,9 +157,21 @@ meant a part placed in the wrong cell got deleted and placed again. Now:
 
 * `tools/test_plan.py --only A,B,C` — 31 passed, 0 failed (24 headless engine
   self-tests, 73 pytest cases).
-* Two new self-tests, `--self-test=setpoint` (**C23**) and `--self-test=drag`
-  (**C24**), both wired into `check_release.py` so a packaged binary is gated
-  on them too — 23 self-tests against a release now, up from 21.
+* Three new self-tests: `--self-test=setpoint` (**C23**) and
+  `--self-test=drag` (**C24**) headless, both wired into `check_release.py` so
+  a packaged binary is gated on them too — 23 self-tests against a release now,
+  up from 21 — plus `--self-test=dragpath` (**D2**), which needs a display.
+
+  D2 exists because C24 enters at the ray seam and so skips the two things that
+  can kill dragging outright while every headless assertion still passes: the
+  pixel threshold, and *which* part a press selects. The second turned out to
+  be a real defect. Edit mode's click asked the viewport where the cursor was
+  instead of asking the event where the click happened — the same bug the Run
+  mode dispatch had already fixed once, still sitting in the Edit path. It is
+  invisible to a person, because for a real click the two agree; it is fatal to
+  a drag, because a drag has to grab the part under the press. Breaking the fix
+  again made D2 fail four assertions, starting with `the press selected 'panel'
+  (got '')`.
 * `try_scene.py` run against all five scenes; every one PASS.
 * **Deliberate break, restored**: removing the drag's `MoveCommand` push made
   C24 fail on exactly the two assertions that describe it

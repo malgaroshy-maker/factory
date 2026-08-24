@@ -107,6 +107,7 @@ each driver module sets.
 | # | Check | Command |
 |---|---|---|
 | D1 | Whole click path from a synthesized mouse event to a tag | `--self-test=click` |
+| D2 | The whole **drag** path: a synthesized press, motion and release move a placed part and one `Ctrl+Z` puts it back. Guards the segment C24 cannot reach — the pixel threshold, and selecting the part under the press rather than under the live cursor | `--self-test=dragpath` |
 
 ### E. Determinism and the regression contract
 

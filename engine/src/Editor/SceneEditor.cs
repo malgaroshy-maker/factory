@@ -270,7 +270,11 @@ public partial class SceneEditor : Node3D
             // selecting did not have to change to make dragging work.
             if (clickBtn.Pressed)
             {
-                SelectPartAtMouse();
+                // The event's own position, not the live cursor — the same
+                // correction Run mode's dispatch already carries. They agree
+                // for a real click, but a drag has to grab the part under the
+                // *press*, and only the event knows where that was.
+                SelectPartAt(clickBtn.Position);
                 ArmPartDrag(clickBtn.Position);
             }
             else
@@ -619,13 +623,13 @@ public partial class SceneEditor : Node3D
         AddChild(_gizmo);
     }
 
-    private void SelectPartAtMouse()
+    private void SelectPartAt(Vector2 screenPosition)
     {
         var camera = GetViewport().GetCamera3D();
         if (camera is null) return;
 
-        var mousePos = GetViewport().GetMousePosition();
-        SelectPartAtRay(camera.ProjectRayOrigin(mousePos), camera.ProjectRayNormal(mousePos));
+        SelectPartAtRay(camera.ProjectRayOrigin(screenPosition),
+                        camera.ProjectRayNormal(screenPosition));
     }
 
     /// <summary>

@@ -355,8 +355,16 @@ def section_d(enabled: bool) -> None:
     if not enabled:
         record("D1", "whole click path, synthesized mouse event to tag", True,
                "not run (pass --gui)", skipped=True)
+        record("D2", "whole drag path, synthesized press/motion/release to a moved part", True,
+               "not run (pass --gui)", skipped=True)
         return
     _self_test("D1", "whole click path, synthesized mouse event to tag", "click", headless=False)
+    # C24's headless half enters at the ray seam, which skips the two things
+    # that can kill dragging outright while every headless assertion passes:
+    # the pixel threshold, and selecting the part under the *press* rather
+    # than under wherever the cursor is when the event is processed (OP-08).
+    _self_test("D2", "whole drag path, synthesized press/motion/release to a moved part",
+               "dragpath", headless=False)
 
 
 # --- E. determinism and the regression contract -----------------------------
