@@ -11,6 +11,8 @@
 
   "_note_shared_bytes": "Byte 0 holds both directions: bits 0-3 are PLC-written, bits 4-7 simulator-written. Bits are not individually addressable over S7, so writing a simulator bit means read-modify-write of a byte the PLC also writes. The driver keeps that window to a single byte, but if you are designing your own DB, put the two directions in different bytes and the race disappears.",
 
+  "_note_operator_tags": "The operator and fault tags (panel.start/stop/reset/estop/setpoint, <drive>.fault) are deliberately NOT mapped here. This file matches examples/tia/FF_IO_datablock.md, whose byte layout was verified against a live CPU, and the ten tags below are the reference line's original I/O. To drive the panel or raise a fault from a real PLC, add the members to FF_IO yourself and extend this file — an unmapped tag is simply not exchanged, so nothing here breaks in the meantime.",
+
   "conveyor.rotate":    "DBX0.0",
   "emitter.emit":       "DBX0.1",
   "pusher.extend":      "DBX0.2",

@@ -279,7 +279,11 @@ public partial class StartScreenUI : Control
             ("Space", "Pause / resume"),
             ("Ctrl+R", "Reset the run"),
             ("C", "Orbit / fly camera"),
-            ("M", "Move selected part"),
+            // Listed above M deliberately. The drag is what everyone tries
+            // first, and a key list that offers only the keyboard route
+            // implies the obvious one does not work.
+            ("Drag", "Move a part — the mouse route"),
+            ("M", "Move selected part — the keyboard route"),
             ("R", "Rotate — while placing, or a selected part"),
             ("Del", "Delete selected part"),
             ("Ctrl+Z / Y", "Undo / redo"),
@@ -287,9 +291,7 @@ public partial class StartScreenUI : Control
             ("Ctrl+S / O", "Save / open a scene"),
             ("F4", "I/O wiring and export"),
             ("F5", "Connect a PLC driver"),
-            ("Esc", "Cancel placement"),
-            ("", ""),
-            ("", ""),
+            ("Esc", "Cancel placement, or disarm the fault tool"),
             ("", ""),
         };
 
