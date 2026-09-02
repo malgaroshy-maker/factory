@@ -107,7 +107,11 @@ F5's *Apply & Connect* finds it automatically.
 > [PACKAGING.md](docs/PACKAGING.md#code-signing--not-signed-and-the-download-page-says-so)
 > for why this project does not buy one.
 
-Everything below is for building from source instead.
+Everything below is for building from source instead. To *build* a release
+yourself: `python tools/build_release.py`, or on Windows double-click
+**`build_windows.bat`**, which also runs the release gate — 25 headless
+self-tests against the exported binary, not against the checkout. See
+[PACKAGING.md](docs/PACKAGING.md).
 
 ### 1. Installation
 

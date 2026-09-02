@@ -1,9 +1,9 @@
 # Packaging a FactoryForge release
 
-*Verified end to end on 2026-08-23 locally, and on 2026-08-24 in CI: both
-platforms build from scratch on clean runners and pass 24 headless self-tests
-against the exported binary. Windows 109 MB + 17 MB sidecar; Linux 74 MB + 31 MB
-sidecar.*
+*Verified end to end on 2026-08-23 locally, on 2026-08-24 in CI, and again on
+2026-09-02 after the nine new parts landed: both platforms build from scratch on
+clean runners and pass **25** headless self-tests against the exported binary.
+Windows 109 MB + 20 MB sidecar; Linux 74 MB + 31 MB sidecar.*
 
 Running FactoryForge from a checkout means installing Godot, the .NET 8 SDK and
 Python first — a real barrier for someone who wanted to learn ladder logic, not
@@ -17,6 +17,22 @@ python tools/build_release.py
 That is the whole recipe. It exports the engine, freezes the sidecar, copies the
 payload, and writes `dist/FactoryForge-<platform>.zip`. The rest of this file is
 what it does and why, for when it breaks.
+
+On Windows, **`build_windows.bat`** does the same thing double-clickably, and
+then runs the release gate — because a build that produced a binary is not the
+same as a build that produced a working one:
+
+```
+build_windows.bat                 engine + frozen sidecar, zipped, checked
+build_windows.bat --no-sidecar    engine only; much faster, no PLC drivers
+build_windows.bat --skip-archive  leave dist\windows\ unzipped
+```
+
+Anything passed to it goes straight to `build_release.py`. It exits non-zero and
+says not to ship the archive if either step fails. It pauses at the end so a
+double-clicked window does not vanish before you can read the result; set
+`FF_NO_PAUSE=1` in CI, where a runner with a real console would otherwise wait
+for a key that is never coming.
 
 ---
 
