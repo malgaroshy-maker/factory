@@ -56,16 +56,37 @@ public partial class ConveyorBelt : StaticBody3D
     private Basis _lastBasis;
     private float _lastSpeed;
 
+    /// <summary>The head and tail drums, so they can be turned at the belt's
+    /// own surface speed (CP-10). Found by name once rather than searched every
+    /// frame — and by name rather than "the cylinders", because the drive-fault
+    /// beacon is mounted on a cylindrical stalk and a positional guess is how
+    /// the roller deck's own test ended up measuring a lamp post.</summary>
+    private readonly System.Collections.Generic.List<MeshInstance3D> _drums = new();
+
+    /// <summary>Drum radius, from the geometry the builder actually made, so a
+    /// resized belt's drums still turn at the right rate.</summary>
+    private float _drumRadius = 0.07f;
+
+    private float _drumSpin;
+
     public override void _Ready()
     {
         var visual = IndustrialMeshBuilder.BuildDetailedConveyor(Size, out _beltMaterial);
         AddChild(visual);
+
+        _drumRadius = Size.Y / 2.0f + 0.008f;
+        foreach (string name in new[] { "HeadDrum", "TailDrum" })
+        {
+            if (visual.GetNodeOrNull<MeshInstance3D>(name) is { } drum) _drums.Add(drum);
+        }
 
         _collisionShape = new CollisionShape3D
         {
             Shape = new BoxShape3D { Size = Size }
         };
         AddChild(_collisionShape);
+
+        AddTransferRamps();
 
         PhysicsMaterialOverride = new PhysicsMaterial
         {
@@ -75,6 +96,68 @@ public partial class ConveyorBelt : StaticBody3D
         };
 
         BuildFaultLamp();
+    }
+
+    /// <summary>Reach of the lead-in wedge beyond each end of the deck.</summary>
+    private const float RampRun = 0.10f;
+
+    /// <summary>How far below deck level the outer lip of the wedge sits.
+    /// Comfortably more than any contact slop a carton can accumulate.</summary>
+    private const float RampRise = 0.05f;
+
+    private const float RampThickness = 0.04f;
+
+    /// <summary>
+    /// A shallow wedge at each end of the deck, sloping from below deck level
+    /// up to it.
+    ///
+    /// This exists because of the most obvious thing anybody builds — two
+    /// conveyors in a line — and a fact about rigid-body contact that is not a
+    /// bug and cannot be tuned away: a body resting on a static deck settles a
+    /// centimetre or two *inside* it. That is the solver's contact slop. A
+    /// carton riding two centimetres low then meets the vertical end face of
+    /// the next conveyor's collider head-on, wedges against it, and stops the
+    /// whole queue behind it — on a belt that is visibly running. It happened
+    /// on roughly half of the pick-and-place cell's runs, and every one of them
+    /// looked like a scene-design problem rather than an engine one.
+    ///
+    /// The wedge removes the face: a carton arriving low rides up it instead of
+    /// into it. It reaches past the deck end, so adjacent decks overlap it, and
+    /// its outer lip is below deck level, so a carton travelling at the correct
+    /// height never touches it at all.
+    ///
+    /// Collision only — <see cref="Editor.PartBounds"/> measures meshes, so the
+    /// ramps do not grow the part's selection box or its footprint in the
+    /// editor.
+    /// </summary>
+    private void AddTransferRamps()
+    {
+        float theta = Mathf.Atan2(RampRise, RampRun);
+        float halfLength = RampRun / 2.0f;
+        float halfThickness = RampThickness / 2.0f;
+
+        // Offset from the wedge's centre to its upper, deck-side corner. Pin
+        // that corner to (end of deck, top of deck) and the slope follows.
+        float dx = halfLength * Mathf.Cos(theta) - halfThickness * Mathf.Sin(theta);
+        float dy = halfLength * Mathf.Sin(theta) + halfThickness * Mathf.Cos(theta);
+
+        float deckTop = Size.Y / 2.0f;
+        float deckEnd = Size.X / 2.0f;
+
+        foreach (int end in new[] { -1, 1 })
+        {
+            var ramp = new CollisionShape3D
+            {
+                Name = end < 0 ? "TailTransferRamp" : "HeadTransferRamp",
+                Shape = new BoxShape3D { Size = new Vector3(RampRun, RampThickness, Size.Z) },
+                Position = new Vector3(end * (deckEnd + dx), deckTop - dy, 0),
+            };
+            // Rotate so the deck-side end is the high one at both ends: the
+            // belt may be reversed or rotated in the editor, and a ramp that
+            // only worked in one direction would be half a fix.
+            ramp.RotateZ(-end * theta);
+            AddChild(ramp);
+        }
     }
 
     /// <summary>A beacon on the drive end, dark until the drive faults. On a
@@ -135,13 +218,29 @@ public partial class ConveyorBelt : StaticBody3D
 
     public override void _Process(double delta)
     {
-        if (IsRunning && _beltMaterial is not null)
+        if (!IsRunning) return;
+        float dt = (float)delta;
+
+        if (_beltMaterial is not null)
         {
-            float dt = (float)delta;
             Vector3 offset = _beltMaterial.Uv1Offset;
             offset.X += Speed * dt * 0.8f;
             _beltMaterial.Uv1Offset = offset;
         }
+
+        // Drums turn at the rate the surface actually moves, so the belt and
+        // what carries it agree instead of the drums being decorative.
+        //
+        // Composed as a basis rather than as euler angles: Godot builds those
+        // as Y*X*Z, so a Z term is applied first, in the mesh's own frame where
+        // the cylinder's axis is still +Y — which tips the drum over instead of
+        // turning it about itself. That is the bug that made the roller deck
+        // tumble end over end, and it would land here identically.
+        if (_drums.Count == 0 || _drumRadius <= 0.0f) return;
+        _drumSpin += Speed / _drumRadius * dt;
+        var lay = new Basis(Vector3.Right, Mathf.Pi / 2);
+        var spin = new Basis(Vector3.Up, -_drumSpin);
+        foreach (var drum in _drums) drum.Basis = lay * spin;
     }
 
     /// <summary>
