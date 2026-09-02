@@ -430,6 +430,275 @@
         "type": "int",
         "kind": "output"
       }
+    ],
+    "pick-and-place-cell": [
+      {
+        "id": "alarm.beacon",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "alarm.horn",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "atstation.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "gantry.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.grip",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "gantry.holding",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.inposition",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.lower",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "gantry.lowered",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.position",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.raised",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "gantry.target",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "infeed.actual",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "infeed.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "infeed.run",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "infeed.speed",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "outfeed.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "pickstation.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "pickstation.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "rate.value",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "scanner.code",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "scanner.enable",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "scanner.present",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "scanner.read",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "tower.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.yellow",
+        "type": "bit",
+        "kind": "output"
+      }
+    ],
+    "heat-treat-station": [
+      {
+        "id": "alarm.beacon",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "alarm.horn",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "oven.attemp",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "oven.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "oven.heater",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "oven.temperature",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "temp_gauge.value",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "temp_readout.value",
+        "type": "int",
+        "kind": "output"
+      },
+      {
+        "id": "tower.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.yellow",
+        "type": "bit",
+        "kind": "output"
+      }
     ]
   }
 }

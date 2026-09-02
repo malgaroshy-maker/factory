@@ -53,6 +53,8 @@ public partial class DemoDriver : Node
         ["tank-level-control"] = () => new TankLevelControlProfile(),
         ["light-curtain-sorting"] = () => new LightCurtainSortingProfile(),
         ["roller-line-weighing"] = () => new RollerLineWeighingProfile(),
+        ["pick-and-place-cell"] = () => new PickAndPlaceCellProfile(),
+        ["heat-treat-station"] = () => new HeatTreatStationProfile(),
     };
 
     private IDemoProfile? _profile;

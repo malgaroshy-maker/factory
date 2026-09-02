@@ -10,7 +10,7 @@ public sealed record TemplateEntry(string Id, string Title, string Blurb, string
 /// <summary>
 /// The single place that knows what templates ship. Before this, the start
 /// screen's blurb text and the template self-test's path list were two
-/// hand-maintained copies of the same five templates, and nothing checked
+/// hand-maintained copies of the same template list, and nothing checked
 /// they agreed. Add a template once, here, and it shows up on the start
 /// screen and in the self-test with no second edit (UX-13).
 /// </summary>

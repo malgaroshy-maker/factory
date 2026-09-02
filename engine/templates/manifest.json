@@ -33,5 +33,19 @@
     "blurb": "A roller deck, a checkweigher and an inductive sensor that sees metal only — cardboard passes it as if the lane were empty.",
     "path": "res://templates/roller_line_weighing.json",
     "scene": "roller-line-weighing"
+  },
+  {
+    "id": "pick-and-place-cell",
+    "title": "Pick & place cell",
+    "blurb": "A gantry with a vacuum cup, fed by a drive you ramp rather than switch. Three motions to sequence, a scanner that identifies each carton, and a grip that reports whether it actually caught anything.",
+    "path": "res://templates/pick_and_place_cell.json",
+    "scene": "pick-and-place-cell"
+  },
+  {
+    "id": "heat-treat-station",
+    "title": "Heat treat station",
+    "blurb": "A thermal process with real inertia: you can heat as fast as the element allows and can only cool at the rate the room takes it. Pure proportional control leaves a standing offset you can measure.",
+    "path": "res://templates/heat_treat_station.json",
+    "scene": "heat-treat-station"
   }
 ]

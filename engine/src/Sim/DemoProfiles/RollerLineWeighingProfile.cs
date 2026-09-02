@@ -57,7 +57,16 @@ public sealed class RollerLineWeighingProfile : IDemoProfile
         _station.Scan(tags);
         _elapsed += delta;
 
-        if (_station.Running)
+        // A checkweigher can only weigh one carton at a time, and this line has
+        // no spacing control of its own -- so the controller provides it, by
+        // holding the feed while the scale is loaded. Two cartons sharing the
+        // deck read as one peak, which under-counts the line and merges a metal
+        // carton's reject into its neighbour's. Mirrors the same interlock in
+        // tools/try_scene.py, and it is a real requirement of real
+        // checkweighers rather than a workaround for this one.
+        bool scaleLoaded = OperatorStation.Num(tags, "scale.weight") > ScaleZero;
+
+        if (_station.Running && !scaleLoaded)
         {
             if (_elapsed >= _nextToggle)
             {
@@ -65,7 +74,7 @@ public sealed class RollerLineWeighingProfile : IDemoProfile
                 _nextToggle = _elapsed + EmitHalfPeriod;
             }
         }
-        else
+        else if (!_station.Running)
         {
             _emitFlag = false;
             _nextToggle = _elapsed + EmitHalfPeriod;

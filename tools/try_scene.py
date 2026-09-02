@@ -469,7 +469,17 @@ async def drive_sorting_by_height(bus: TagBusClient, duration: float, verbose: b
         now = time.perf_counter()
         s["elapsed"] += dt
 
-        if station.running and s["feeding"]:
+        # A checkweigher can only weigh one carton at a time, and this line has
+        # no spacing control of its own -- so the controller provides it, by
+        # holding the feed while the scale is loaded. Without this, two cartons
+        # occasionally share the deck: they read as one peak, so the run counts
+        # fewer cartons than it fed and one metal carton's reject merges into
+        # its neighbour's. That is what "2 over limit, 3 metal" meant when this
+        # exercise failed under load, and it is a real requirement of real
+        # checkweighers rather than a workaround for this one.
+        scale_loaded = num(bus, "scale.weight") > 20.0
+
+        if station.running and s["feeding"] and not scale_loaded:
             if s["elapsed"] >= s["next_toggle"]:
                 s["emit_flag"] = not s["emit_flag"]
                 s["next_toggle"] = s["elapsed"] + EMIT_HALF_PERIOD
@@ -1229,12 +1239,409 @@ async def drive_roller_line_weighing(bus: TagBusClient, duration: float, verbose
     return not check.problems, "; ".join(check.problems)
 
 
+async def drive_pick_and_place_cell(bus: TagBusClient, duration: float,
+                                    verbose: bool) -> tuple[bool, str]:
+    """Sequence a gantry: index, lower, grip, lift, traverse, release (CP-30).
+
+    Three things are checked here that no other scene can check.
+
+    **The drive really is analog.** The infeed is behind a VFD, so commanding a
+    speed and reading it back must not agree instantly. The run watches the gap
+    between `infeed.speed` and `infeed.actual` while the ramp is moving; a drive
+    that reported its own reference would pass every other assertion in this
+    file and still be a bit output wearing a float's clothes.
+
+    **The grip reports the truth.** After the vacuum closes, `gantry.holding`
+    is true only when a carton was really there. The controller below checks it
+    and goes back to waiting if the cup caught nothing, which is the interlock
+    the scene exists to teach.
+
+    **The sequence is written on feedback, not on timers.** Every transition
+    waits on `inposition`, `lowered`, `raised` or `holding`. A timer-based
+    version passes at one travel speed and fails at another, and the travel
+    speed is a slider in the property panel.
+    """
+    PICK_AT, PLACE_AT = 0.0, 96.0
+    #: Short, because the *queue* bounds the feed here, not the clock: the
+    #: infeed holds while a carton is indexed, so cartons accumulate and the
+    #: next is already waiting when the station clears. A six-second cadence
+    #: added its own dead time on top of the travel and the cycle, and the cell
+    #: managed one carton in thirty seconds.
+    FEED_INTERVAL = 2.0
+    #: Percent of the rail counted as arrived. Wider than the machine's own
+    #: in-position window so the two never disagree in a way that stalls it.
+    ARRIVAL_WINDOW = 2.5
+
+    check = Checks(verbose)
+    state = {
+        "step": "topick",
+        "settle": 0.0,
+        "feed": 1.0,
+        "placed": 0,
+        "attempts": 0,
+        "empty": 0,
+        "max_ramp_gap": 0.0,
+        "codes": set(),
+    }
+
+    async def tick(dt: float) -> None:
+        station.scan()
+        running = station.running
+
+        reference = station.setpoint if running else 0.0
+        actual = num(bus, "infeed.actual")
+        if running and abs(reference - actual) > state["max_ramp_gap"]:
+            state["max_ramp_gap"] = abs(reference - actual)
+
+        at_station = bit(bus, "atstation.detect")
+        writes = {
+            # The infeed runs whenever the line does, and deliberately does
+            # *not* hold while a carton is indexed. Holding it looks like the
+            # obvious accumulation interlock and it jams this line solid: a
+            # carton stopped exactly on the joint between two conveyors rests
+            # against the downstream deck's leading face, and contact slop
+            # means it cannot climb back onto it when the belt restarts.
+            # Carried across at speed it never touches that face.
+            "infeed.run": running,
+            "infeed.speed": reference,
+            # Index the carton to the stop rather than coasting it onto a dead
+            # plate: a repeatable pick needs the carton put under the cup on
+            # purpose, not left wherever friction happened to stop it.
+            "pickstation.rotate": running and not at_station,
+            "scanner.enable": True,
+            "rate.value": actual,
+            "alarm.beacon": station.tripped or station.drive_faulted,
+            "alarm.horn": station.drive_faulted,
+            "emitter.emit": False,
+            **station.lamps(),
+        }
+
+        # Feed only into space: not while a carton is indexed at the station,
+        # and not while one is still under the scanner head. Together those
+        # bound the queue to what the infeed can hold without needing a count.
+        if running and not at_station and not bit(bus, "scanner.present"):
+            state["feed"] -= dt
+            if state["feed"] <= 0.0:
+                state["feed"] = FEED_INTERVAL
+                writes["emitter.emit"] = True
+
+        if bit(bus, "scanner.read"):
+            state["codes"].add(int(num(bus, "scanner.code")))
+
+        if not running:
+            writes["gantry.lower"] = False
+            await write_present(bus, writes)
+            return
+
+        in_position = bit(bus, "gantry.inposition")
+        lowered = bit(bus, "gantry.lowered")
+        raised = bit(bus, "gantry.raised")
+        holding = bit(bus, "gantry.holding")
+        step = state["step"]
+
+        def arrived(destination: float) -> bool:
+            """Has the axis reached `destination`?
+
+            Deliberately not `gantry.inposition` on its own. That bit compares
+            the axis to the target the *machine* currently holds, and the
+            target this controller just wrote has not reached the machine yet
+            -- so on the scan that issues a move, `inposition` still reports
+            "arrived", at the place we are trying to leave. The first version
+            of this driver trusted it and released every carton straight back
+            onto the pick station, having never travelled at all. Checking the
+            position feedback against the destination this step wants has no
+            such window.
+            """
+            return abs(num(bus, "gantry.position") - destination) <= ARRIVAL_WINDOW
+
+        if step == "topick":
+            writes["gantry.target"] = PICK_AT
+            writes["gantry.lower"] = False
+            if in_position and arrived(PICK_AT) and raised and at_station:
+                state["settle"] = 0.4
+                state["step"] = "lower"
+        elif step == "lower":
+            state["settle"] -= dt
+            if state["settle"] <= 0.0:
+                writes["gantry.lower"] = True
+                if lowered:
+                    state["settle"] = 0.25
+                    state["step"] = "grip"
+        elif step == "grip":
+            writes["gantry.lower"] = True
+            writes["gantry.grip"] = True
+            state["settle"] -= dt
+            if state["settle"] <= 0.0:
+                state["attempts"] += 1
+                if holding:
+                    state["step"] = "raise"
+                else:
+                    state["empty"] += 1
+                    writes["gantry.grip"] = False
+                    state["step"] = "topick"
+        elif step == "raise":
+            writes["gantry.grip"] = True
+            writes["gantry.lower"] = False
+            if raised:
+                state["step"] = "toplace"
+        elif step == "toplace":
+            writes["gantry.grip"] = True
+            writes["gantry.target"] = PLACE_AT
+            if in_position and arrived(PLACE_AT):
+                state["step"] = "release"
+        elif step == "release":
+            writes["gantry.grip"] = False
+            if not holding:
+                state["placed"] += 1
+                state["step"] = "home"
+        elif step == "home":
+            writes["gantry.target"] = PICK_AT
+            if in_position and arrived(PICK_AT):
+                state["step"] = "topick"
+
+        await write_present(bus, writes)
+
+    station = Station(bus, faults=("gantry.fault", "infeed.fault"))
+    stop_event, task = controller(tick)
+    estop_ms = -1.0
+
+    try:
+        await turn_pot(bus, 70.0)
+        await asyncio.sleep(0.2)
+        # What must be off within 200 ms is the drive *command*, not the
+        # belt's last revolution. This is the one scene where those differ:
+        # the infeed is behind a VFD, and a VFD asked to stop ramps down over
+        # a couple of seconds. That is not a bug to hide -- it is why a real
+        # E-stop circuit removes power or uses safe torque off rather than
+        # politely asking the drive to decelerate. The interlock is measured
+        # against the command; the coast-down is asserted separately below.
+        estop_ms = await exercise_interlocks(bus, station, check,
+                                             lambda: bit(bus, "infeed.run"),
+                                             "the infeed drive command")
+
+        # ...and the drive really does wind down afterwards, rather than the
+        # command being dropped while the belt keeps running forever. Measured
+        # on its own Stop press: exercise_interlocks deliberately leaves the
+        # line running, so timing a coast straight after it would be timing a
+        # drive that is already ramping back up.
+        await press(bus, "panel.stop")
+        coast_start = time.perf_counter()
+        while num(bus, "infeed.actual") > 0.5 and time.perf_counter() - coast_start < 10.0:
+            await asyncio.sleep(0.05)
+        coast = time.perf_counter() - coast_start
+        check(num(bus, "infeed.actual") <= 0.5,
+              f"and the drive itself coasts to a stop, in its own time "
+              f"({coast:.1f}s after the command dropped)")
+        check.note(f"ramp-down took {coast:.1f}s -- an E-stop that only asked the "
+                   f"drive to decelerate would leave the belt moving that long")
+
+        await press(bus, "panel.start")
+        await asyncio.sleep(1.5)   # let the ramp come back up before timing production
+        check.note(f"production begins: running={station.running} tripped={station.tripped} "
+                   f"healthy={bit(bus, 'panel.estop')} actual={num(bus, 'infeed.actual'):.1f} "
+                   f"at_station={bit(bus, 'atstation.detect')} "
+                   f"present={bit(bus, 'scanner.present')}")
+
+        before = num(bus, "outfeed.count")
+        await asyncio.sleep(max(duration, 30.0))
+        moved = num(bus, "outfeed.count") - before
+        check.note(f"production ends: running={station.running} tripped={station.tripped} "
+                   f"step={state['step']} actual={num(bus, 'infeed.actual'):.1f} "
+                   f"at_station={bit(bus, 'atstation.detect')} "
+                   f"present={bit(bus, 'scanner.present')} pos={num(bus, 'gantry.position'):.1f}")
+
+        check(state["placed"] >= 2,
+              f"the sequencer completed at least two full cycles "
+              f"({state['placed']} releases) -- one is a scene that happens to "
+              f"work once, not one that runs")
+        check(moved >= 1,
+              f"and the carton it placed reached the outfeed "
+              f"(count rose by {moved:.0f})")
+        # The gap only has to exist. How large it gets depends on where in the
+        # ramp the sample lands, and asserting a size would be asserting a
+        # sampling accident.
+        check(state["max_ramp_gap"] > 1.0,
+              f"the drive's actual speed lagged its reference during the ramp "
+              f"(largest gap seen {state['max_ramp_gap']:.1f} %)")
+        check(len(state["codes"]) >= 1 and state["codes"].issubset({101, 102, 201}),
+              f"the scanner read real item codes {sorted(state['codes'])}")
+
+        # Seize the gantry mid-run: the axis must stop where it is, even though
+        # the target still says somewhere else.
+        await bus.force({"gantry.fault": True})
+        await asyncio.sleep(0.6)
+        frozen = num(bus, "gantry.position")
+        await asyncio.sleep(1.5)
+        check(abs(num(bus, "gantry.position") - frozen) < 0.5,
+              f"a seized gantry freezes where it is (was {frozen:.1f} %, "
+              f"now {num(bus, 'gantry.position'):.1f} %)")
+        await bus.force(clear=["gantry.fault"])
+    finally:
+        stop_event.set()
+        await task
+
+    print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
+          f"placed={state['placed']} outfeed={int(num(bus, 'outfeed.count'))} "
+          f"codes={sorted(state['codes'])} rampgap={state['max_ramp_gap']:.1f}% "
+          f"empty_picks={state['empty']}/{state['attempts']} estop={estop_ms:.0f}ms")
+    return not check.problems, "; ".join(check.problems)
+
+
+async def drive_heat_treat_station(bus: TagBusClient, duration: float,
+                                   verbose: bool) -> tuple[bool, str]:
+    """PI control of a first-order thermal plant (CP-30).
+
+    What this scene is for, and what is measured here, is the standing offset.
+    The plate loses heat in proportion to how far above ambient it is, so
+    holding a temperature needs a standing heater output -- and a proportional
+    controller can only produce one from a standing error. The run measures that
+    error with the integral term switched off, then switches it on and checks
+    the error actually closes. Nothing else in the project demonstrates why
+    integral action exists rather than merely asserting that it does.
+
+    The element fault is the other half: `oven.heater` still reads whatever was
+    commanded while the temperature falls, so a controller watching only its own
+    output learns nothing.
+    """
+    GAIN = 3.5
+    #: Enough authority that the integral term can supply the whole standing
+    #: output on its own. At 180 degC the plate loses (180-20)*0.30 = 48 degC/s
+    #: of heat, which is about 53 % of the element -- an integral that can only
+    #: contribute 11 % (the first tuning here) cannot close the offset it was
+    #: added to close, and reads as "integral action does not work".
+    INTEGRAL_GAIN = 0.6
+    INTEGRAL_LIMIT = 140.0
+
+    check = Checks(verbose)
+    #: `manual` overrides the controller's own output when it is not None. Used
+    #: only by the element-fault leg, which has to command full power while the
+    #: station is tripped -- something the interlocks correctly refuse to do on
+    #: their own, and the only way to show that the output tells you nothing.
+    state = {"integral": 0.0, "use_integral": False, "power": 0.0, "manual": None}
+
+    async def tick(dt: float) -> None:
+        station.scan()
+        temperature = num(bus, "oven.temperature")
+        setpoint = station.setpoint
+        power = 0.0
+
+        if state["manual"] is not None:
+            power = state["manual"]
+        elif station.running:
+            error = setpoint - temperature
+            proportional = error * GAIN
+            if state["use_integral"]:
+                # Only while the output is not saturated: integrating through a
+                # cold start's flat-out heating is textbook windup.
+                if -100.0 < proportional < 100.0:
+                    state["integral"] = max(-INTEGRAL_LIMIT,
+                                            min(INTEGRAL_LIMIT,
+                                                state["integral"] + error * dt))
+            else:
+                state["integral"] = 0.0
+            power = max(0.0, min(100.0, proportional + state["integral"] * INTEGRAL_GAIN))
+        else:
+            state["integral"] = 0.0
+
+        state["power"] = power
+        await write_present(bus, {
+            "oven.heater": power,
+            "temp_gauge.value": temperature,
+            "temp_readout.value": round(temperature),
+            "alarm.beacon": temperature > setpoint + 25.0 or station.drive_faulted,
+            "alarm.horn": station.drive_faulted,
+            **station.lamps(),
+        })
+
+    async def hold(seconds: float) -> float:
+        """Run for a while and return the mean error over the last third -- the
+        steady-state error, rather than a single sample that could land anywhere
+        on a still-moving ramp."""
+        start = time.perf_counter()
+        samples: list[float] = []
+        while time.perf_counter() - start < seconds:
+            await asyncio.sleep(0.1)
+            if time.perf_counter() - start > seconds * 2 / 3:
+                samples.append(station.setpoint - num(bus, "oven.temperature"))
+            if verbose and int((time.perf_counter() - start) * 2) % 10 == 0:
+                print(f"  t={time.perf_counter() - start:5.1f}s "
+                      f"T={num(bus, 'oven.temperature'):6.1f} "
+                      f"power={state['power']:5.1f} I={state['integral']:6.1f}")
+        return sum(samples) / len(samples) if samples else 0.0
+
+    station = Station(bus, faults=("oven.fault",))
+    stop_event, task = controller(tick)
+    estop_ms = -1.0
+    p_error = pi_error = 0.0
+
+    try:
+        await turn_pot(bus, 180.0)
+        await asyncio.sleep(0.2)
+        estop_ms = await exercise_interlocks(bus, station, check,
+                                             lambda: num(bus, "oven.heater") > 0.5,
+                                             "the heater output")
+
+        budget = max(duration, 50.0)
+        state["use_integral"] = False
+        p_error = await hold(budget * 0.45)
+        check(p_error > 0.5,
+              f"proportional control alone parks below setpoint "
+              f"({p_error:.1f} degC short) -- the offset this scene exists to show")
+
+        state["use_integral"] = True
+        pi_error = await hold(budget * 0.55)
+        check(pi_error < p_error,
+              f"adding integral action closes that offset "
+              f"({p_error:.1f} degC -> {pi_error:.1f} degC)")
+        check(abs(pi_error) < 8.0,
+              f"and holds the setpoint within 8 degC ({pi_error:.1f} degC off)")
+
+        # A failed element, in two parts.
+        #
+        # First: the controller does the right thing and trips. A drive fault
+        # latches the station exactly as the mushroom does, so the heater
+        # command goes to zero -- which is correct, and is also why this leg
+        # cannot end there. A controller that trips proves nothing about
+        # whether the *output* could have told it anything.
+        hot = num(bus, "oven.temperature")
+        await bus.force({"oven.fault": True})
+        await asyncio.sleep(1.0)
+        check(bit(bus, "panel.red"),
+              "a failed element trips the station, exactly like the mushroom does")
+
+        # Second, and this is the lesson: hold the element at full power by
+        # hand, with the fault standing, and watch the temperature fall anyway.
+        # The command reads 100 % throughout. Nothing on the output side of
+        # this controller could distinguish that from a working heater --
+        # only the measurement can.
+        state["manual"] = 100.0
+        await asyncio.sleep(6.0)
+        cooled = num(bus, "oven.temperature")
+        check(cooled < hot - 2.0,
+              f"and cools while commanded flat out ({hot:.1f} degC -> {cooled:.1f} degC)")
+        check(num(bus, "oven.heater") > 99.0,
+              f"with the heater output still reading "
+              f"{num(bus, 'oven.heater'):.0f} % the whole time")
+        state["manual"] = None
+        await bus.force(clear=["oven.fault"])
+    finally:
+        stop_event.set()
+        await task
+
+    print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
+          f"p_offset={p_error:.1f}degC pi_offset={pi_error:.1f}degC "
+          f"final={num(bus, 'oven.temperature'):.1f}degC estop={estop_ms:.0f}ms")
+    return not check.problems, "; ".join(check.problems)
+
+
 DRIVERS = {
     "sorting-by-height": drive_sorting_by_height,
     "start-stop-station": drive_start_stop_station,
     "tank-level-control": drive_tank_level_control,
     "light-curtain-sorting": drive_light_curtain_sorting,
     "roller-line-weighing": drive_roller_line_weighing,
+    "pick-and-place-cell": drive_pick_and_place_cell,
+    "heat-treat-station": drive_heat_treat_station,
 }
 
 #: The *production* window, not the whole run: every scene now runs the shared
@@ -1249,6 +1656,8 @@ DEFAULT_DURATION = {
     "tank-level-control": 50.0,   # two setpoints, half the budget each
     "light-curtain-sorting": 28.0,
     "roller-line-weighing": 30.0,
+    "pick-and-place-cell": 34.0,   # several full gantry cycles, not just one
+    "heat-treat-station": 50.0,    # the P-only offset, then PI closing it
 }
 
 

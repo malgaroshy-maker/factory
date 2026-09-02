@@ -4,10 +4,11 @@ namespace FactoryForge.Sim.DemoProfiles;
 
 /// <summary>
 /// One control panel, scanned the way a PLC scans it — shared by every demo
-/// profile so all five lines answer to Start, Stop, Reset and the mushroom in
+/// profile so every line answers to Start, Stop, Reset and the mushroom in
 /// exactly the same way (OP-02).
 ///
-/// Before this, one profile out of five read the panel. The other four ran
+/// Before this, one profile out of the five that existed read the panel. The
+/// other four ran
 /// regardless: you could strike the E-stop on a running demo and watch the
 /// belt keep going, which teaches the opposite of what an E-stop is for. The
 /// panel was wired to the tag bus and the tag bus was wired to nobody.
@@ -18,7 +19,7 @@ namespace FactoryForge.Sim.DemoProfiles;
 /// mushroom trips it, and only Reset then Start bring it back.
 ///
 /// Mirrors <c>Station</c> in <c>tools/try_scene.py</c>, which drives the same
-/// five scenes over the wire.
+/// same scenes over the wire.
 /// </summary>
 public sealed class OperatorStation
 {

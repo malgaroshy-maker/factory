@@ -1,0 +1,51 @@
+{
+  "name": "heat-treat-station",
+  "version": "1.0",
+  "parts": [
+    {
+      "id": "oven",
+      "type": "HeatingStation",
+      "position": [1.5, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": {
+        "heater_power": "90", "loss_rate": "0.3", "thermal_mass": "6",
+        "ambient": "20", "target_temp": "180", "tolerance": "3"
+      }
+    },
+    {
+      "id": "temp_gauge",
+      "type": "AnalogGauge",
+      "position": [3.0, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "scale_min": "0", "scale_max": "300", "alarm_at": "240", "unit": "C" }
+    },
+    {
+      "id": "temp_readout",
+      "type": "DigitalDisplay",
+      "position": [3.0, 0.5, 1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "unit": "C" }
+    },
+    {
+      "id": "alarm",
+      "type": "AlarmBeacon",
+      "position": [1.5, 0.5, 1.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "rotation_speed": "1.8" }
+    },
+    {
+      "id": "tower",
+      "type": "StackLight",
+      "position": [0.0, 0.5, 1.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": {}
+    },
+    {
+      "id": "panel",
+      "type": "ButtonPanel",
+      "position": [0.0, 0.5, 0.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "properties": { "setpoint_min": "20", "setpoint_max": "280", "setpoint_unit": "C", "setpoint": "180" }
+    }
+  ]
+}

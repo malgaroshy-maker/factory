@@ -34,7 +34,7 @@ public static class TryScene
         if (entry is null)
         {
             idleHint?.Announce($"No built-in exercise for scene '{editor.SceneName}' — "
-                + "try one of the five shipped templates instead.");
+                + "try one of the shipped templates instead.");
             return;
         }
 
