@@ -29,6 +29,26 @@ the moment the scene is saved and reloaded. See Step 5.
 
 ---
 
+> **Everything a part must touch, in one list.** A part that is missing any of
+> these is broken in a way that is quiet rather than loud, which is why they are
+> enumerated rather than left to be remembered:
+>
+> | Where | What it does | What breaks without it |
+> |---|---|---|
+> | `PartCatalog.All` | palette entry, tooltip, self-test coverage | no button, and nobody checks it saves |
+> | `SceneEditor.CreatePartNode` | makes the node | the palette button places nothing |
+> | `PlacedPart.TagSuffixesByType` | the suffixes dispatch caches | dispatch allocates per tag per tick, or misses tags |
+> | `PartTagManager.RegisterPartTags` | declares the tags | the part has no I/O at all |
+> | `SceneEditor._PhysicsProcess` | drives it each tick | tags exist and mean nothing |
+> | `PartProperties.Capture` / `Apply` | saves its settings | every setting silently reverts on load |
+> | `PartPropertyInspectorUI.InspectNode` | its sliders | tuned only by editing JSON |
+> | `WholeBodyOperableTag` (optional) | Operate-mode click | the part cannot be tried by hand |
+>
+> `--self-test=scene` catches the save/load half. `--self-test=newparts` is the
+> pattern for the rest: assert the *effect*, not that the tag exists.
+
+---
+
 ## 📝 Step-by-Step Part Creation
 
 ### Step 1: Create the C# Component Class
@@ -78,13 +98,26 @@ case "CustomPart":
 
 ---
 
-### Step 3: Add Palette Button in `PartPaletteUI.cs`
+### Step 3: Add a Catalog Entry in `PartCatalog.cs`
 
-Add a button for your new part in `engine/src/Editor/PartPaletteUI.cs`:
+The palette is **built from the catalog**, not hand-written, so this one entry
+gives you the button, its group, its tooltip, and — the part that matters — a
+place in `--self-test=scene`, which loads every catalogued type and checks it
+survives a save and a reload. A part added to the palette and forgotten in that
+list used to be a part nobody checked could be saved (CP-33).
+
+Add to `PartCatalog.All` in `engine/src/Editor/PartCatalog.cs`:
 
 ```csharp
-AddPaletteButton(mainBox, "Custom Part", "CustomPart");
+new("CustomPart", "Custom Part", "PROCESS",
+    "One sentence on what this does and why somebody would place it.",
+    "run · active · fault"),
 ```
+
+The summary shows in the palette's tooltip *and* under the part's name in the
+property inspector, and the tag list is what a PLC person is actually asking:
+what will appear in my tag table, and therefore in the F4 export, if I place
+this. Write both for somebody who has not read this guide.
 
 ---
 

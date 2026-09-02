@@ -106,6 +106,13 @@ cd sidecar && python -m factoryforge_sidecar connect --driver opcua-client \
 "<GODOT>" --headless --path engine/ -- --self-test=scene --duration=25
 # Headless: every start-screen template loads and registers its I/O.
 "<GODOT>" --headless --path engine/ -- --self-test=templates --duration=30
+# Headless: the nine parts added in CP-01..CP-09 do what their tags claim --
+# the VFD's actual speed lags its reference, a seized diverter freezes
+# mid-sweep, the gantry refuses to claim a hold it does not have, the scanner's
+# read pulse does not repeat for the same carton, the heater has a real time
+# constant, a locked guard refuses the handle, and a selector still reads the
+# same many ticks after nobody touched it. Asserts effects, not existence.
+"<GODOT>" --headless --path engine/ -- --self-test=newparts --duration=60
 
 # Open a specific scene instead of the start screen (scripting, screenshots)
 "<GODOT>" --path engine/ -- --scene=res://templates/tank_level_control.json
@@ -157,7 +164,28 @@ in `SceneEditor._PhysicsProcess` appends the suffix, so registering a part as
 **A part's settings must be in `PartProperties`, or they are lost.** Scene files
 store a properties map next to the transform. Anything a part reads in `_Ready`
 and is not captured there silently reverts on load — which once cost the
-removers their count tags and the sensors their `VisualOnly` flag.
+removers their count tags and the sensors their `VisualOnly` flag. The converse
+also bites: a value the part *computes* every tick is not a setting, and saving
+it stores a sample and restores it as configuration. `VariableConveyor.Speed` is
+the case — the drive recomputes it from the speed reference, so `PartProperties`
+skips it for that subclass and `--self-test=scene` asserts its absence.
+
+**The palette is generated from `PartCatalog`, not written by hand.** One entry
+gives a part its button, its group, its tooltip, its summary in the property
+inspector, and its place in `--self-test=scene`'s round-trip. That list used to
+be written out three times and a part missing from one of the copies was a part
+nobody checked could be saved. Adding a part means adding a catalog entry; see
+the "everything a part must touch" table in `docs/PART_AUTHORING.md`.
+
+**`inposition` on a positioning axis is stale on the scan that commands a
+move.** `PickPlaceArm.InPosition` compares the axis to the target *the machine
+currently holds*, and a target written this scan does not reach the machine
+until the next physics tick — so the bit still reports "arrived", at the place
+you are trying to leave. Both the demo profile and `tools/try_scene.py` released
+every carton straight back onto the pick station because of it. Check the
+position feedback against the destination the step wants, not the bit alone.
+This is exactly the mistake a student will make, so both files carry the
+explanation rather than only the fix.
 
 **A click means one thing at a time.** `SceneEditor.Mode` is `Edit` or `Run`
 (`F1`). Edit mode selects, moves and deletes; Run mode routes a left click to
@@ -352,7 +380,22 @@ either without noticing. Keep it that way: if you add a tag to one, add it to
     `SortingTags.Undeclare`. Anything reading `conveyor.rotate` or
     `counter.tall` must check `Contains` first.
 
-23. **A test that cannot see the failure mode is not coverage.** The panel had a
+23. **Two conveyors placed end to end wedge, and it is contact slop, not your
+    scene.** A rigid body resting on a static deck settles a centimetre or two
+    *inside* it — that is the solver's allowed penetration and it cannot be
+    tuned away. A carton riding 2 cm low then meets the vertical end face of the
+    next conveyor's collider head-on and stops dead, taking the whole queue with
+    it, on a belt that is visibly running. It reproduced on roughly half of the
+    pick-and-place cell's runs and looked exactly like a template mistake: the
+    cartons stopped at x=1.90 on a deck ending at x=2.00, with velocity 0.00 and
+    the drive reporting 70 %. `ConveyorBelt.AddTransferRamps` now gives every
+    deck a shallow wedge at each end, sloping from below deck level up to it, so
+    a low carton rides up rather than into the face. Do not "fix" a jam like
+    this by leaving a gap between belts, overlapping their decks, or holding the
+    upstream drive — all three were tried, and the last one makes it *worse*
+    (a carton stopped **on** the joint can never restart across it).
+
+24. **A test that cannot see the failure mode is not coverage.** The panel had a
     correct hit test and a correct pulse dispatch and was still completely dead
     from a user's seat. Two self-tests exist for this reason — `--self-test=buttons`
     headless for the logic, `--self-test=click` with a display for the input

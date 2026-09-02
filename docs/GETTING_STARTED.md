@@ -49,8 +49,8 @@ print what to download. To point it at a specific build, set `GODOT` to that
 executable's full path.
 
 FactoryForge opens on a **start screen**: pick a template, open a scene you
-saved, or start empty. The key list is on that screen too, and the 🏠 button in
-the toolbar brings it back.
+saved, or start empty. The key list is on that screen too, and once a scene is
+open **`F12`** (or the toolbar's **`?`**) brings the same list back over it.
 
 The templates each teach one thing:
 
@@ -61,6 +61,8 @@ The templates each teach one thing:
 | **Tank level control** | Analog end to end; outflow varies with level, so a PID tuned full overshoots empty |
 | **Light curtain sorting** | Sorting on a measurement rather than two bits |
 | **Roller line with weighing** | A checkweigher and an inductive sensor that sees metal only |
+| **Pick & place cell** | A gantry with three motions to sequence, on feedback rather than timers, and a grip that reports honestly when it caught nothing |
+| **Heat treat station** | A thermal plant with real inertia — proportional control alone visibly parks short of setpoint, and you can measure by how much |
 
 To skip the start screen — scripting a run, or grabbing a screenshot:
 

@@ -1,6 +1,6 @@
 # FactoryForge Test Plan
 
-*Last run: 2026-08-24. Results at the bottom.*
+*Last run: 2026-08-30. Results at the bottom.*
 
 A single command runs all of it:
 
@@ -79,6 +79,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C23 | The panel's setpoint pot turns, publishes, clamps to its scale plate, and follows a forced tag — and taking hold of the knob clears that force. Hit-tested at two panel headings, and refused outright in Build mode | `--self-test=setpoint` |
 | C24 | A placed part can be dragged to a new cell: it lands on the same grid placement snaps to and stays on the work plane, one whole drag is one `Ctrl+Z`, a press that never travels pushes nothing onto the history, and Run mode refuses to drag at all | `--self-test=drag` |
 | C25 | A drive can **fail**: a faulted conveyor stops *while its command is still on*, refuses to restart until the fault clears, a jammed cylinder freezes mid-stroke rather than returning home, and a seized tank valve keeps filling while its command reads zero. Also that the fault tool aims at drives and nothing else, and refuses to arm in Build mode | `--self-test=fault` |
+| C26 | The nine parts added in CP-01…CP-09 do what their tags claim, asserted by **effect**: the VFD's actual speed lags its reference on the first tick and reaches it later; the diverter reports *neither* limit mid-sweep and freezes at that angle when seized; the gantry travels to a commanded position and refuses to claim a hold it does not have; the scanner's read pulse does not repeat for the same carton; the gauge's needle really moves; the heater has a measurable time constant and cools while its command still reads 100 %; a locked guard refuses the handle; and a selector still reads the same many ticks after nobody touched it | `--self-test=newparts` |
 
 ### C-release. The same self-tests, against a built binary
 
@@ -149,6 +150,8 @@ each driver module sets.
 | H3 | `tank-level-control`: the same controller run at **two** setpoints, with both times reported — reaches and holds 70%, then reaches 20% | mirrors `TankLevelControlProfile` / C11. One setpoint proves the controller runs; two prove the process, since outflow follows Torricelli and the drain valve loses authority as the tank empties (§4.3) |
 | H4 | `light-curtain-sorting`: **conservation** — `tall + short` equals the cartons emitted, after a drain phase, and nothing measured below the threshold is diverted | mirrors `LightCurtainSortingProfile` / C12. "Both counters advanced" passes while the diverter drops cartons on the floor or double-counts them, which is this scene's most likely failure |
 | H5 | `roller-line-weighing`: cartons weighed (counted by scale rising edges), the scale returns to zero between them, and metal detections are non-zero **and strictly fewer** than cartons | mirrors `RollerLineWeighingProfile` / C13. "Metal was seen once" passes for a sensor that fires on everything — the exact confusion this scene exists to clear up |
+| H6 | `pick-and-place-cell`: a full index → lower → grip → lift → traverse → release cycle, with the carton it placed reaching the outfeed; the drive's **actual speed measurably lagging its reference** during the ramp; real item codes read; and a seized gantry freezing where it is | mirrors `PickAndPlaceCellProfile`. The 200 ms E-stop contract is measured against `infeed.run`, not the belt's last revolution: a VFD asked to stop *ramps down*, which is why a real E-stop circuit removes power. The coast-down is timed separately, on its own Stop press |
+| H7 | `heat-treat-station`: the **standing offset measured, not asserted** — the plant is held with the integral term switched off and the steady-state error recorded, then switched on and the error checked to close; then a failed element cools while the heater command is held at 100 % | mirrors `HeatTreatStationProfile`. Nothing else in the project demonstrates *why* integral action exists rather than stating that it does |
 
 Needs no display — the spike behind UX-10 proved templates simulate headless
 — so this runs in the same job as A/C/E, not behind `--gui`. Each check
@@ -216,6 +219,47 @@ Honest list of what this plan does **not** prove:
 
 ## Results
 
+**2026-08-30 — 55 passed, 0 failed, 2 skipped, 781s** (`python tools/test_plan.py`,
+Godot 4.7.2-mono). The two skips are D1/D2, which need a display; both were run
+separately (`--self-test=click`, `--self-test=dragpath`) and **PASS**.
+
+Grown by `docs/COMPONENTS_AND_POLISH_PLAN.md`: C26 (the nine new parts, asserted
+by effect) and H6/H7 (the two new scene exercises). The seven scene exercises:
+
+```
+H1 sorting-by-height      tall=6 short=6                       estop=47ms fault=45ms
+H2 start-stop-station     batch=4 produced=4 counted=3         estop=45ms fault=47ms
+H3 tank-level-control     sp70 reached 9.7s | sp20 reached 20.2s  estop=19ms fault=16ms
+H4 light-curtain-sorting  tall=4 short=5 measured=13           estop=46ms fault=47ms
+H5 roller-line-weighing   weighed=12 rejects=6 metal=4 out=12   estop=46ms fault=45ms
+H6 pick-and-place-cell    placed=6 out=6 codes=[101,102,201]    estop=35ms
+H7 heat-treat-station     P-only offset 14.2degC -> PI 0.0degC  estop=20ms
+```
+
+Two failures found by this run and fixed rather than re-run around:
+
+* **A6** flagged `KeyBindings.Binding` as referenced nowhere outside its own
+  file — true, because both readers reached it through `var`. Named at its use
+  sites.
+* **H6** failed with `placed=0`, and reproduced on about half of all runs. It
+  was not the scene: a carton resting on a static deck settles a centimetre or
+  two inside it (contact slop), then meets the **vertical end face of the next
+  conveyor's collider** and wedges, stopping the queue on a belt that is still
+  running. Every deck now carries a lead-in wedge at both ends
+  (`ConveyorBelt.AddTransferRamps`). Six consecutive runs afterwards placed 6–7
+  cartons each, against 0–1 before. **Any two conveyors placed end to end hit
+  this**, so it was costing every user who built the most obvious thing there
+  is.
+
+Fixing that exposed a third, latent since long before this plan: **H5** began
+failing about one run in six on "the checkweigher and the inductive sensor flag
+the same cartons". Two cartons occasionally shared the weigh deck and read as
+one peak. A real checkweigher line controls spacing and this one had none, so
+the controller now holds the feed while the scale is loaded — in the exercise
+and in `RollerLineWeighingProfile` alike. Eight consecutive runs afterwards gave
+*identical* counts rather than merely passing more often.
+
+
 **2026-08-23 — 47 passed, 0 failed, 417s** (`python tools/test_plan.py --gui`,
 on Godot 4.7.1-mono).
 
@@ -238,7 +282,7 @@ Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
 the per-scene demo profiles, Run-mode click and hover, "Try this scene", and
 the scene-tag-set fixture check), a pairwise Edit/Run self-test (C20), a
 second robustness check for non-bit forcing (G7), and a whole new section —
-H1…H5, all five shipped scenes driven end to end through `try_scene.py`.
+H1…H7, all seven shipped scenes driven end to end through `try_scene.py`.
 
 Notable: **F5 sorts 5 tall / 5 short on the rigid-body scene**, matching the
 deterministic contract. That is not guaranteed and is not asserted — Jolt makes

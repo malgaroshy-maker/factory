@@ -213,9 +213,38 @@ most likely to slip.
       latching E-stop wired normally closed. The first inputs in the library a
       human drives rather than the simulation computing them for you.
 
+- [x] **Nine more parts, from fifteen to twenty-four** (CP-01…CP-09, see
+      [COMPONENTS_AND_POLISH_PLAN.md](COMPONENTS_AND_POLISH_PLAN.md)) — each one
+      chosen for something the library could not previously teach: a
+      **VFD conveyor** whose actual speed lags the reference you gave it, a
+      **pivot diverter** that deflects a carton without stopping the line, a
+      **pick-and-place gantry** with an analog axis, a vertical stroke and a
+      vacuum cup that really picks a box up, a **barcode scanner** reporting an
+      integer code on a one-scan pulse, a **heating station** whose first-order
+      lag makes the case for integral action measurable, an **analog gauge**
+      (the library could display an int and not a float), and an **alarm
+      beacon** that throws real light around — plus a **maintained selector
+      switch** (the first operator input that holds a position instead of
+      pulsing or latching) and an **interlocked guard door** whose solenoid lets
+      the controller decide whether it may be opened at all.
+- [x] **Two more templates**, each with a demo profile and a `try_scene.py`
+      exercise: `pick-and-place-cell` and `heat-treat-station`. Seven scenes
+      now, all seven passing their own exercise.
+- [x] **The palette is generated from one catalog**, searchable, with a tooltip
+      per part naming the tags it will register — and the same catalog is what
+      `--self-test=scene` walks, so a part cannot ship without its save/load
+      being checked.
+- [x] **A key list you can reach from inside a scene** (`F12`), built from the
+      same table the start screen's footer reads.
+- [x] **Presentation pass** — conveyor drums that turn at true surface speed, a
+      cushioned pusher stroke, stack-light lamps that cast real light, a status
+      LED on every sensor head, shop-floor markings, 4× MSAA, and a damped
+      camera that frames the scene you just opened instead of leaving you
+      looking at a control panel.
+
 **Near:** part-to-part linking, which an incremental encoder
 needs to know which conveyor it is mounted on · more parts driven by what
-contributors ask for · fault injection UI · headless grading mode for coursework ·
+contributors ask for · headless grading mode for coursework ·
 MQTT **Sparkplug B** (the industrial MQTT standard, if plain MQTT proves useful) ·
 an example Node-RED flow and dashboard shipped with the docs
 
