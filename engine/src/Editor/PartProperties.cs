@@ -34,7 +34,13 @@ public static class PartProperties
         // its settings, so this covers all three.
         if (node is ConveyorBelt belt)
         {
-            p["speed"] = N(belt.Speed);
+            // A VFD belt's Speed is not a setting: the drive recomputes it from
+            // the speed reference on every dispatch tick. Saving it would store
+            // whatever the drive happened to be doing at the moment of the save
+            // and restore it as if it were a chosen value — a number that looks
+            // like configuration and is really a sample. MaxSpeed, saved below
+            // by the VariableConveyor case, is the setting.
+            if (belt is not VariableConveyor) p["speed"] = N(belt.Speed);
             p["friction"] = N(belt.SurfaceFriction);
             p["size_x"] = N(belt.Size.X);
             p["size_y"] = N(belt.Size.Y);
@@ -99,6 +105,70 @@ public static class PartProperties
                 p["setpoint_max"] = N(panel.SetpointMax);
                 p["setpoint_unit"] = panel.SetpointUnit;
                 p["setpoint"] = N(panel.Setpoint);
+                break;
+
+            // VariableConveyor is a ConveyorBelt subclass, so the belt block
+            // above already carried its speed, friction and size; these are the
+            // two settings that make it a *drive* rather than a belt.
+            case VariableConveyor vfd:
+                p["max_speed"] = N(vfd.MaxSpeed);
+                p["accel_rate"] = N(vfd.AccelRate);
+                break;
+
+            case PivotDiverter diverter:
+                p["divert_angle"] = N(diverter.DivertAngle);
+                p["swing_speed"] = N(diverter.SwingSpeed);
+                p["blade_length"] = N(diverter.BladeLength);
+                break;
+
+            case PickPlaceArm arm:
+                p["rail_length"] = N(arm.RailLength);
+                p["travel_speed"] = N(arm.TravelSpeed);
+                p["stroke"] = N(arm.StrokeLength);
+                p["lower_speed"] = N(arm.LowerSpeed);
+                p["tolerance"] = N(arm.PositionTolerance);
+                break;
+
+            case BarcodeScanner scanner:
+                p["height"] = N(scanner.HeightAboveBelt);
+                p["window"] = N(scanner.WindowLength);
+                break;
+
+            case AnalogGauge gauge:
+                p["scale_min"] = N(gauge.ScaleMin);
+                p["scale_max"] = N(gauge.ScaleMax);
+                p["alarm_at"] = N(gauge.AlarmAt);
+                p["unit"] = gauge.Unit;
+                break;
+
+            case AlarmBeacon beacon:
+                p["rotation_speed"] = N(beacon.RotationSpeed);
+                p["colour_r"] = N(beacon.BeaconColour.R);
+                p["colour_g"] = N(beacon.BeaconColour.G);
+                p["colour_b"] = N(beacon.BeaconColour.B);
+                break;
+
+            case SelectorSwitch selector:
+                p["positions"] = N(selector.PositionCount);
+                p["labels"] = selector.Labels;
+                // Where the switch was left. A real selector does not spring
+                // back, and a scene reopened mid-experiment should reopen in
+                // the mode it was in -- the same reasoning as the panel pot.
+                p["detent"] = N(selector.Detent);
+                break;
+
+            case SafetyGate gate:
+                p["travel"] = N(gate.TravelDistance);
+                p["slide_speed"] = N(gate.SlideSpeed);
+                break;
+
+            case HeatingStation heater:
+                p["heater_power"] = N(heater.HeaterPower);
+                p["loss_rate"] = N(heater.LossRate);
+                p["thermal_mass"] = N(heater.ThermalMass);
+                p["ambient"] = N(heater.Ambient);
+                p["target_temp"] = N(heater.TargetTemp);
+                p["tolerance"] = N(heater.Tolerance);
                 break;
         }
 
@@ -181,6 +251,67 @@ public static class PartProperties
                 // Last, so the clamp sees the range this template asked for
                 // rather than the default 0-100 one.
                 if (Num(props, "setpoint") is { } sp) panel.SetSetpoint(sp);
+                break;
+
+            case VariableConveyor vfd:
+                if (Num(props, "max_speed") is { } maxSpeed) vfd.MaxSpeed = maxSpeed;
+                if (Num(props, "accel_rate") is { } accel) vfd.AccelRate = accel;
+                break;
+
+            case PivotDiverter diverter:
+                if (Num(props, "divert_angle") is { } divertAngle) diverter.DivertAngle = divertAngle;
+                if (Num(props, "swing_speed") is { } swing) diverter.SwingSpeed = swing;
+                if (Num(props, "blade_length") is { } blade) diverter.BladeLength = blade;
+                break;
+
+            case PickPlaceArm arm:
+                if (Num(props, "rail_length") is { } rail) arm.RailLength = rail;
+                if (Num(props, "travel_speed") is { } travel) arm.TravelSpeed = travel;
+                if (Num(props, "stroke") is { } armStroke) arm.StrokeLength = armStroke;
+                if (Num(props, "lower_speed") is { } lowerSpeed) arm.LowerSpeed = lowerSpeed;
+                if (Num(props, "tolerance") is { } tolerance) arm.PositionTolerance = tolerance;
+                break;
+
+            case BarcodeScanner scanner:
+                if (Num(props, "height") is { } scanHeight) scanner.HeightAboveBelt = scanHeight;
+                if (Num(props, "window") is { } window) scanner.WindowLength = window;
+                break;
+
+            case AnalogGauge gauge:
+                if (Num(props, "scale_min") is { } gMin) gauge.ScaleMin = gMin;
+                if (Num(props, "scale_max") is { } gMax) gauge.ScaleMax = gMax;
+                if (Num(props, "alarm_at") is { } gAlarm) gauge.AlarmAt = gAlarm;
+                if (props.TryGetValue("unit", out var gUnit)) gauge.Unit = gUnit;
+                break;
+
+            case AlarmBeacon beacon:
+                if (Num(props, "rotation_speed") is { } beaconSpin) beacon.RotationSpeed = beaconSpin;
+                if (Num(props, "colour_r") is { } cr && Num(props, "colour_g") is { } cg
+                                                     && Num(props, "colour_b") is { } cb)
+                    beacon.BeaconColour = new Color(cr, cg, cb);
+                break;
+
+            case SelectorSwitch selector:
+                if (Num(props, "positions") is { } positions)
+                    selector.PositionCount = (int)positions;
+                if (props.TryGetValue("labels", out var labels)) selector.Labels = labels;
+                // Last, so the clamp sees the detent count this scene asked
+                // for rather than the default three.
+                if (Num(props, "detent") is { } detent) selector.Detent = (int)detent;
+                break;
+
+            case SafetyGate gate:
+                if (Num(props, "travel") is { } gateTravel) gate.TravelDistance = gateTravel;
+                if (Num(props, "slide_speed") is { } slide) gate.SlideSpeed = slide;
+                break;
+
+            case HeatingStation heater:
+                if (Num(props, "heater_power") is { } hp) heater.HeaterPower = hp;
+                if (Num(props, "loss_rate") is { } loss) heater.LossRate = loss;
+                if (Num(props, "thermal_mass") is { } mass) heater.ThermalMass = mass;
+                if (Num(props, "ambient") is { } ambient) heater.Ambient = ambient;
+                if (Num(props, "target_temp") is { } target) heater.TargetTemp = target;
+                if (Num(props, "tolerance") is { } band) heater.Tolerance = band;
                 break;
         }
     }

@@ -84,6 +84,19 @@ public partial class SceneEditor : Node3D
             ["DigitalDisplay"] = new[] { "value" },
             ["LightArray"] = new[] { "height", "blocked" },
             ["LevelTank"] = new[] { "level", "fill", "drain", "fault" },
+            ["VariableConveyor"] = new[] { "run", "speed", "actual", "fault" },
+            ["PivotDiverter"] = new[] { "divert", "diverted", "home", "fault" },
+            ["PickPlaceArm"] = new[]
+            {
+                "target", "lower", "grip", "position", "inposition",
+                "lowered", "raised", "holding", "fault",
+            },
+            ["BarcodeScanner"] = new[] { "enable", "code", "read", "present" },
+            ["AnalogGauge"] = new[] { "value" },
+            ["AlarmBeacon"] = new[] { "beacon", "horn" },
+            ["HeatingStation"] = new[] { "heater", "temperature", "attemp", "fault" },
+            ["SelectorSwitch"] = new[] { "position" },
+            ["SafetyGate"] = new[] { "closed", "lock", "locked" },
         };
 
         /// <summary>Which tag suffixes a part type owns — the one place that
@@ -127,6 +140,20 @@ public partial class SceneEditor : Node3D
     /// nothing was asking it to.
     /// </summary>
     [Signal] public delegate void TagsChangedEventHandler();
+
+    /// <summary>
+    /// Raised when a whole scene arrives — a template opened from the start
+    /// screen, a file loaded, or the built-in demo registered — as opposed to
+    /// one part being placed.
+    ///
+    /// It exists so the camera can frame what just appeared (CP-16). Framing on
+    /// <see cref="TagsChanged"/> instead would also fire on every single
+    /// placement, and a viewport that lurches every time you drop a sensor is
+    /// worse than one that never moves. Opening a template used to leave the
+    /// camera wherever it was, which for the default pose meant a control panel
+    /// filling the frame and the line you had just chosen entirely off-screen.
+    /// </summary>
+    [Signal] public delegate void SceneLoadedEventHandler();
 
     /// <summary>The scene's name, as reported on the bus. Loading a file adopts
     /// the name it was saved under, so a driver is not told every custom line is
@@ -704,7 +731,27 @@ public partial class SceneEditor : Node3D
         ["WeighingConveyor"] = "rotate",
         ["PusherMechanism"] = "extend",
         ["Emitter"] = "emit",
+        ["VariableConveyor"] = "run",
+        ["PivotDiverter"] = "divert",
+        ["PickPlaceArm"] = "lower",
+        ["BarcodeScanner"] = "enable",
+        ["AlarmBeacon"] = "beacon",
+        // The heater's one output is a percentage, so a click drives it fully
+        // on or fully off, exactly as a click on a tank valve does.
+        ["HeatingStation"] = "heater",
+        // Neither of these toggles a bit: the selector steps round a detent
+        // and the gate slides (or refuses, while its solenoid holds it). They
+        // are listed here so the hover outline and the "what is clickable"
+        // hint find them, and handled by name in OperatePart.
+        ["SelectorSwitch"] = "position",
+        ["SafetyGate"] = "closed",
     };
+
+    /// <summary>Whole-body parts whose one operable tag is analog, so a click
+    /// means "fully on / fully off" rather than "flip the bit". Kept as a set
+    /// rather than a second dispatch table so a part cannot end up in both and
+    /// have its click mean two things.</summary>
+    private static readonly HashSet<string> AnalogOperableParts = new() { "HeatingStation" };
 
     /// <summary>
     /// Run mode's click: find the operator control under the cursor and press
@@ -1162,6 +1209,14 @@ public partial class SceneEditor : Node3D
                 "StackLight" => "stack light",
                 "LevelTank" => "tank",
                 "ButtonPanel" => "panel",
+                "VariableConveyor" => "VFD conveyor",
+                "PivotDiverter" => "diverter",
+                "PickPlaceArm" => "gantry",
+                "BarcodeScanner" => "scanner",
+                "AlarmBeacon" => "beacon",
+                "HeatingStation" => "heater",
+                "SelectorSwitch" => "selector",
+                "SafetyGate" => "guard door",
                 _ => entry.PartType,
             };
             if (!kinds.Contains(kind)) kinds.Add(kind);
@@ -1193,9 +1248,22 @@ public partial class SceneEditor : Node3D
                 PulseBit(ids, WholeBodyOperableTag[entry.PartType]);
                 break;
 
+            // Both drive the *part*, not the tag: the part publishes its own
+            // state on the next tick. Writing the tag here instead would make
+            // the click and the machine two authorities for one value, which
+            // is the bug the panel's momentary buttons were written to avoid.
+            case "SelectorSwitch":
+                if (entry.Node is SelectorSwitch selector) selector.Advance();
+                break;
+
+            case "SafetyGate":
+                if (entry.Node is SafetyGate gate) gate.Toggle();
+                break;
+
             default:
-                if (WholeBodyOperableTag.TryGetValue(entry.PartType, out var suffix))
-                    ToggleBit(ids, suffix);
+                if (!WholeBodyOperableTag.TryGetValue(entry.PartType, out var suffix)) break;
+                if (AnalogOperableParts.Contains(entry.PartType)) ToggleValve(ids, suffix);
+                else ToggleBit(ids, suffix);
                 break;
         }
     }
@@ -1324,6 +1392,57 @@ public partial class SceneEditor : Node3D
         var ids = new List<string>();
         foreach (var part in _placedParts) ids.Add(part.InstanceId);
         return ids;
+    }
+
+    /// <summary>
+    /// What the camera should frame when the user presses F (CP-16): the
+    /// selected part if there is one, otherwise everything placed.
+    ///
+    /// In world space, and measured from the meshes rather than assumed from
+    /// the origins — a part's origin is on the work plane and its geometry
+    /// hangs off it in whatever direction that part needs, so framing origins
+    /// would aim the camera at a point above the chute and below the stack
+    /// light. Null when there is nothing placed at all, which the caller
+    /// should treat as "leave the camera alone" rather than as an empty box at
+    /// the origin.
+    /// </summary>
+    public Aabb? FocusBounds()
+    {
+        if (_selectedPart is { } selected) return WorldBounds(selected.Node);
+
+        Aabb? all = null;
+        foreach (var part in _placedParts)
+        {
+            var box = WorldBounds(part.Node);
+            all = all is { } acc ? acc.Merge(box) : box;
+        }
+        return all;
+    }
+
+    private static Aabb WorldBounds(Node3D node)
+    {
+        var local = PartBounds.Measure(node);
+        var xform = node.GlobalTransform;
+
+        // Transform all eight corners, not just position and end: a rotated
+        // part's box is not axis-aligned in world space, and taking two corners
+        // through the transform would give a box that misses half of it.
+        var bounds = new Aabb(xform * local.GetEndpoint(0), Vector3.Zero);
+        for (int corner = 1; corner < 8; corner++)
+            bounds = bounds.Expand(xform * local.GetEndpoint(corner));
+        return bounds;
+    }
+
+    /// <summary>The node behind a placed part, for tests and tooling. A test
+    /// that can only reach a part through its tags cannot tell a part that
+    /// reports the right number from one that reports it while its geometry
+    /// says something else — which is the failure mode the roller deck's
+    /// tumbling axis had, and the reason CP-31 asks parts about themselves as
+    /// well as about their tags.</summary>
+    public Node3D? NodeFor(string instanceId)
+    {
+        int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
+        return index < 0 ? null : _placedParts[index].Node;
     }
 
     /// <summary>A placed part's position, for tests and tooling — verifying a
@@ -1514,6 +1633,7 @@ public partial class SceneEditor : Node3D
         }
 
         NotifyTagsChanged();
+        CallDeferred(nameof(AnnounceSceneLoaded));
 
         void Adopt(Node3D node, string instanceId, string partType) =>
             _placedParts.Add(new PlacedPart(node, instanceId, partType, OwnsTags: false));
@@ -1608,7 +1728,13 @@ public partial class SceneEditor : Node3D
 
         IsDirty = false;
         GD.Print($"Loaded scene from {path} ({_placedParts.Count} parts)");
+        // Deferred: the parts were added this frame and have not run _Ready, so
+        // their geometry does not exist yet and anything measuring them now
+        // would frame a set of empty boxes at their origins.
+        CallDeferred(nameof(AnnounceSceneLoaded));
     }
+
+    private void AnnounceSceneLoaded() => EmitSignal(SignalName.SceneLoaded);
 
     public void ClearAllPlacedParts()
     {
@@ -2079,6 +2205,150 @@ public partial class SceneEditor : Node3D
                     }
                     break;
 
+                case "VariableConveyor":
+                    if (node is VariableConveyor vfd)
+                    {
+                        // Fault first, for the same reason the plain belt does
+                        // it first: a faulted drive has to refuse the command
+                        // rather than obey it and be stopped again next tick.
+                        if (ids.TryGetValue("fault", out var vfdFaultId)
+                            && Tags.TryGetVisible(vfdFaultId, out var vfdFaultVal))
+                            vfd.SetFaulted((bool)vfdFaultVal);
+
+                        bool run = ids.TryGetValue("run", out var runId)
+                                   && Tags.TryGetVisible(runId, out var runVal) && (bool)runVal;
+                        float reference = ids.TryGetValue("speed", out var refId)
+                                          && Tags.TryGetVisible(refId, out var refVal)
+                            ? (float)System.Convert.ToDouble(refVal) : 0.0f;
+
+                        vfd.StepDrive(run, reference, dt);
+                        if (ids.TryGetValue("actual", out var actualId))
+                            Tags.TrySet(actualId, (double)vfd.ActualPercent);
+                    }
+                    break;
+
+                case "PivotDiverter":
+                    if (node is PivotDiverter diverter && ids.TryGetValue("divert", out var divertId)
+                        && Tags.TryGetVisible(divertId, out var divertVal))
+                    {
+                        if (ids.TryGetValue("fault", out var divFaultId)
+                            && Tags.TryGetVisible(divFaultId, out var divFaultVal))
+                            diverter.SetFaulted((bool)divFaultVal);
+
+                        diverter.UpdateSwing((bool)divertVal, dt);
+                        Tags.TrySet(ids["diverted"], diverter.IsDiverted);
+                        Tags.TrySet(ids["home"], diverter.IsHome);
+                    }
+                    break;
+
+                case "PickPlaceArm":
+                    if (node is PickPlaceArm arm)
+                    {
+                        if (ids.TryGetValue("fault", out var armFaultId)
+                            && Tags.TryGetVisible(armFaultId, out var armFaultVal))
+                            arm.SetFaulted((bool)armFaultVal);
+
+                        float armTarget = ids.TryGetValue("target", out var armTargetId)
+                                          && Tags.TryGetVisible(armTargetId, out var armTargetVal)
+                            ? (float)System.Convert.ToDouble(armTargetVal) : 0.0f;
+                        bool lower = ids.TryGetValue("lower", out var lowerId)
+                                     && Tags.TryGetVisible(lowerId, out var lowerVal) && (bool)lowerVal;
+                        bool grip = ids.TryGetValue("grip", out var gripId)
+                                    && Tags.TryGetVisible(gripId, out var gripVal) && (bool)gripVal;
+
+                        arm.Step(armTarget, lower, grip, dt);
+
+                        Tags.TrySet(ids["position"], (double)arm.AxisPosition);
+                        Tags.TrySet(ids["inposition"], arm.InPosition);
+                        Tags.TrySet(ids["lowered"], arm.IsLowered);
+                        Tags.TrySet(ids["raised"], arm.IsRaised);
+                        Tags.TrySet(ids["holding"], arm.IsHolding);
+                    }
+                    break;
+
+                case "BarcodeScanner":
+                    if (node is BarcodeScanner scanner)
+                    {
+                        if (ids.TryGetValue("enable", out var enableId)
+                            && Tags.TryGetVisible(enableId, out var enableVal))
+                            scanner.Enabled = (bool)enableVal;
+
+                        scanner.Scan(dt);
+
+                        Tags.TrySet(ids["code"], scanner.LastCode);
+                        // Written every tick, so the pulse falls again on the
+                        // very next one without anybody having to remember to
+                        // clear it — the panel's queue-and-drain problem does
+                        // not arise here because the read happens on the same
+                        // clock the tag is written on.
+                        Tags.TrySet(ids["read"], scanner.ReadPulse);
+                        Tags.TrySet(ids["present"], scanner.IsPresent);
+                    }
+                    break;
+
+                case "AnalogGauge":
+                    if (node is AnalogGauge gauge && ids.TryGetValue("value", out var gaugeId)
+                        && Tags.TryGetVisible(gaugeId, out var gaugeVal))
+                    {
+                        gauge.Value = (float)System.Convert.ToDouble(gaugeVal);
+                    }
+                    break;
+
+                case "AlarmBeacon":
+                    if (node is AlarmBeacon beacon)
+                    {
+                        if (ids.TryGetValue("beacon", out var beaconId)
+                            && Tags.TryGetVisible(beaconId, out var beaconVal))
+                            beacon.SetBeacon((bool)beaconVal);
+                        if (ids.TryGetValue("horn", out var hornId)
+                            && Tags.TryGetVisible(hornId, out var hornVal))
+                            beacon.SetHorn((bool)hornVal);
+                    }
+                    break;
+
+                case "HeatingStation":
+                    if (node is HeatingStation heater && ids.TryGetValue("heater", out var powerId)
+                        && Tags.TryGetVisible(powerId, out var powerVal))
+                    {
+                        if (ids.TryGetValue("fault", out var heatFaultId)
+                            && Tags.TryGetVisible(heatFaultId, out var heatFaultVal))
+                            heater.SetFaulted((bool)heatFaultVal);
+
+                        // dt is scaled simulation time, so the plant obeys
+                        // pause and the time scale — the same rule the tank
+                        // follows, and it matters more here because the time
+                        // constant is a minute rather than seconds.
+                        heater.Step((float)System.Convert.ToDouble(powerVal), dt);
+                        Tags.TrySet(ids["temperature"], (double)heater.Temperature);
+                        Tags.TrySet(ids["attemp"], heater.AtTemperature);
+                    }
+                    break;
+
+                case "SelectorSwitch":
+                    // The selector is an operator input and nothing else drives
+                    // it, so the part is always the authority: it publishes
+                    // where the knob is and never reads the tag back. That is
+                    // the same one-writer rule the panel's buttons follow.
+                    if (node is SelectorSwitch selector && ids.TryGetValue("position", out var selectorId))
+                        Tags.TrySet(selectorId, selector.Detent);
+                    break;
+
+                case "SafetyGate":
+                    if (node is SafetyGate gate)
+                    {
+                        if (ids.TryGetValue("lock", out var lockId)
+                            && Tags.TryGetVisible(lockId, out var lockVal))
+                            gate.SetLocked((bool)lockVal);
+
+                        gate.Step(dt);
+                        // Closed is the guard switch, wired as a real one is:
+                        // true while the door is shut, so a broken circuit
+                        // reads as an open guard.
+                        Tags.TrySet(ids["closed"], gate.IsClosed);
+                        Tags.TrySet(ids["locked"], gate.IsLocked && gate.IsClosed);
+                    }
+                    break;
+
                 case "WeighingConveyor":
                     if (node is WeighingConveyor weighBelt)
                     {
@@ -2232,6 +2502,15 @@ public partial class SceneEditor : Node3D
             {
                 Range = 0.75f, HeightAboveBelt = 0.06f, Mode = SensingMode.Inductive,
             },
+            "VariableConveyor" => new VariableConveyor { Size = new Vector3(1.5f, 0.12f, 0.5f) },
+            "PivotDiverter" => new PivotDiverter(),
+            "PickPlaceArm" => new PickPlaceArm(),
+            "BarcodeScanner" => new BarcodeScanner(),
+            "AnalogGauge" => new AnalogGauge(),
+            "AlarmBeacon" => new AlarmBeacon(),
+            "HeatingStation" => new HeatingStation(),
+            "SelectorSwitch" => new SelectorSwitch(),
+            "SafetyGate" => new SafetyGate(),
             _ => null
         };
     }

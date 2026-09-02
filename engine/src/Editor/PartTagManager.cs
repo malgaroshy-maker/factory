@@ -238,6 +238,86 @@ public static class PartTagManager
                 tags.Add(new Tag($"{instanceId}.weight", $"WeighConveyor {index} Weight", TagType.Int, TagKind.Input));
                 tags.Add(new Tag($"{instanceId}.fault", $"WeighConveyor {index} Drive Fault", TagType.Bit, TagKind.Input));
                 break;
+
+            case "VariableConveyor":
+                // The library's first analog *drive* (CP-01). `speed` is what
+                // the controller asks for and `actual` is what the drive has
+                // managed so far; they are two tags because they are two
+                // different numbers for as long as the ramp is running.
+                tags.Add(new Tag($"{instanceId}.run", $"VFD Conveyor {index} Run", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.speed", $"VFD Conveyor {index} Speed Ref (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.actual", $"VFD Conveyor {index} Actual Speed (%)", TagType.Float, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"VFD Conveyor {index} Drive Fault", TagType.Bit, TagKind.Input));
+                break;
+
+            case "PivotDiverter":
+                tags.Add(new Tag($"{instanceId}.divert", $"Diverter {index} (Divert)", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.diverted", $"Diverter {index} (Diverted)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.home", $"Diverter {index} (Home)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"Diverter {index} Drive Fault", TagType.Bit, TagKind.Input));
+                // Parked, so the scene starts in the state the geometry shows.
+                tags.Set($"{instanceId}.home", true);
+                break;
+
+            case "PickPlaceArm":
+                tags.Add(new Tag($"{instanceId}.target", $"Gantry {index} Target (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.lower", $"Gantry {index} Lower", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.grip", $"Gantry {index} Vacuum", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.position", $"Gantry {index} Position (%)", TagType.Float, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.inposition", $"Gantry {index} In Position", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.lowered", $"Gantry {index} Lowered", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.raised", $"Gantry {index} Raised", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.holding", $"Gantry {index} Holding", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"Gantry {index} Drive Fault", TagType.Bit, TagKind.Input));
+                tags.Set($"{instanceId}.raised", true);
+                tags.Set($"{instanceId}.inposition", true);
+                break;
+
+            case "BarcodeScanner":
+                tags.Add(new Tag($"{instanceId}.enable", $"Scanner {index} Enable", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.code", $"Scanner {index} Code", TagType.Int, TagKind.Input));
+                // One scan wide, exactly like a panel button's pulse -- which
+                // is why a program has to latch it rather than poll it.
+                tags.Add(new Tag($"{instanceId}.read", $"Scanner {index} Read Pulse", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.present", $"Scanner {index} Item Present", TagType.Bit, TagKind.Input));
+                // Armed on arrival: a scanner that has to be enabled before it
+                // shows anything is a part that looks broken when it is placed.
+                tags.Set($"{instanceId}.enable", true);
+                break;
+
+            case "AnalogGauge":
+                tags.Add(new Tag($"{instanceId}.value", $"Gauge {index} Value", TagType.Float, TagKind.Output));
+                break;
+
+            case "AlarmBeacon":
+                tags.Add(new Tag($"{instanceId}.beacon", $"Beacon {index} Light", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.horn", $"Beacon {index} Horn", TagType.Bit, TagKind.Output));
+                break;
+
+            case "HeatingStation":
+                tags.Add(new Tag($"{instanceId}.heater", $"Heater {index} Power (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.temperature", $"Heater {index} Temperature (C)", TagType.Float, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.attemp", $"Heater {index} At Temperature", TagType.Bit, TagKind.Input));
+                // A failed element still accepts and reports its command; only
+                // the measurement gives it away (CP-07).
+                tags.Add(new Tag($"{instanceId}.fault", $"Heater {index} Element Fault", TagType.Bit, TagKind.Input));
+                break;
+
+            case "SelectorSwitch":
+                // An Int, not a set of mutually exclusive bits: one switch is
+                // in exactly one position, and publishing three bits would
+                // invite a program that handles two of them being true.
+                tags.Add(new Tag($"{instanceId}.position", $"Selector {index} Position", TagType.Int, TagKind.Input));
+                break;
+
+            case "SafetyGate":
+                // Normally closed, like the E-stop beside it: true while the
+                // guard is shut, so a broken circuit reads as "not safe".
+                tags.Add(new Tag($"{instanceId}.closed", $"Guard {index} Closed (NC)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.lock", $"Guard {index} Solenoid Lock", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.locked", $"Guard {index} Locked Shut", TagType.Bit, TagKind.Input));
+                tags.Set($"{instanceId}.closed", true);
+                break;
         }
 
         return (instanceId, true);
