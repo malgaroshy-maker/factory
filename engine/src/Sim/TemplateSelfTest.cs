@@ -33,6 +33,8 @@ public partial class TemplateSelfTest : Node
         ["tank-level-control"] = new[] { "tank", "level_readout", "panel" },
         ["light-curtain-sorting"] = new[] { "belt", "height_gauge", "diverter", "chute", "tall_count" },
         ["roller-line-weighing"] = new[] { "infeed", "scale", "metal_check", "weight_readout" },
+        ["pick-and-place-cell"] = new[] { "infeed", "scanner", "pickstation", "gantry", "outfeed" },
+        ["heat-treat-station"] = new[] { "oven", "temp_gauge", "panel", "alarm" },
     };
 
     /// <summary>Every template with a real file -- the built-in scene (empty

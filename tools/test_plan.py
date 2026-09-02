@@ -287,6 +287,14 @@ def section_c() -> None:
     # on an int or float tag did nothing, silently, and the tank template (all
     # float I/O) could not be operated by hand at all.
     _self_test("C6", "Tag Inspector forces int and float tags, not just bits", "force")
+    # The nine parts added in CP-01..CP-09, asserted by effect rather than by
+    # existence: a ramping drive whose actual lags its reference, a diverter
+    # that reports neither limit mid-sweep and freezes there when seized, a
+    # gantry that will not claim a hold it does not have, a scanner whose read
+    # pulse does not repeat for the same carton, a needle that moves, and a
+    # heater with a real time constant whose failed element cools while its
+    # command still reads 100 %. Given 90s: the thermal ramp is hand-turned
+    # ticks rather than wall clock, but the run still has to build the scene.
 
     # --scene= used to only work windowed; BuildHeadlessPhysicsParts always
     # called RegisterDefaultSceneParts regardless of what was asked for.
@@ -356,6 +364,14 @@ def section_c() -> None:
     # assertion that matters is not "the belt stopped" but "the belt stopped
     # while the command was still on" (FI-01).
     _self_test("C25", "a drive can fail: it stops while still commanded, and a jam freezes mid-stroke", "fault")
+    # The seven parts added in CP-01..CP-07, asserted by effect rather than by
+    # existence: a ramping drive whose actual lags its reference, a diverter
+    # that reports neither limit mid-sweep and freezes there when seized, a
+    # gantry that will not claim a hold it does not have, a scanner whose read
+    # pulse does not repeat for the same carton, a needle that moves, and a
+    # heater with a real time constant whose failed element cools while its
+    # command still reads 100 %.
+    _self_test("C26", "the nine CP-01..CP-09 parts do what their tags claim", "newparts")
 
 
 def section_d(enabled: bool) -> None:
@@ -530,7 +546,7 @@ def section_g() -> None:
            out.strip().splitlines()[-1] if out.strip() else "no output")
 
 
-# --- H. The five scene exercises, driven end to end -------------------------
+# --- H. Every scene exercise, driven end to end -----------------------------
 
 def section_h() -> None:
     print("\nH. Scene exercises (tools/try_scene.py)")
@@ -548,8 +564,13 @@ def section_h() -> None:
             record(f"H{i}", f"{scene_id}: try_scene.py drives it to a real PASS", False,
                    "port 7411 still held from a previous check")
             continue
+        # 150s, not 90: the two CP-30 scenes are the longest exercises in the
+        # set. The heat-treat run has to hold a first-order plant steady twice
+        # -- once with the integral term off to measure the offset, once with
+        # it on to show the offset close -- and that is time the process
+        # constant sets, not the harness.
         code, out = run([sys.executable, str(ROOT / "tools" / "try_scene.py"),
-                         "--scene", scene_id], timeout=90)
+                         "--scene", scene_id], timeout=150)
         # try_scene.py's own PASS/FAIL line carries an em dash, which a
         # subprocess piped on Windows can mangle in transit -- exit code
         # alone is the authoritative pass/fail signal (that convention is

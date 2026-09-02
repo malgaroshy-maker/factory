@@ -27,14 +27,11 @@ public partial class SceneSelfTest : Node
     public TagTable Tags { get; set; } = null!;
     public SceneEditor? Editor { get; set; }
 
-    /// <summary>Every type the palette offers. A part missing here is a part
-    /// nobody checks can be saved.</summary>
-    private static readonly string[] AllTypes =
-    {
-        "ConveyorBelt", "PhotoelectricSensor", "RetroreflectiveSensor", "InductiveSensor",
-        "LightArray", "PusherMechanism", "Chute", "StackLight", "DigitalDisplay",
-        "WeighingConveyor", "RollerConveyor", "Emitter", "Remover", "ButtonPanel", "LevelTank",
-    };
+    /// <summary>Every type the palette offers. Read from the catalog rather
+    /// than copied into a literal here: the copy is what let a part ship in the
+    /// palette with nobody checking it could be saved, which is precisely the
+    /// silent failure this test exists for (CP-33).</summary>
+    private static string[] AllTypes => PartCatalog.AllTypes();
 
     private const string ScenePath = "user://selftest_scene.json";
 
@@ -152,6 +149,56 @@ public partial class SceneSelfTest : Node
                 case "DigitalDisplay":
                     props["unit"] = "kg";
                     break;
+                case "VariableConveyor":
+                    // No "speed": a VFD belt's Speed is recomputed by the drive
+                    // every tick and is deliberately not captured (see
+                    // PartProperties). Friction still is, and so are the two
+                    // settings that make this a drive rather than a belt --
+                    // a subclass whose own settings were dropped would still
+                    // look fine on the inherited ones, which is exactly the
+                    // kind of half-saved part this test exists to catch.
+                    props["friction"] = "0.66";
+                    props["max_speed"] = "1.35";
+                    props["accel_rate"] = "17";
+                    break;
+                case "PivotDiverter":
+                    props["divert_angle"] = "38";
+                    props["swing_speed"] = "155";
+                    props["blade_length"] = "0.51";
+                    break;
+                case "PickPlaceArm":
+                    props["rail_length"] = "2.1";
+                    props["travel_speed"] = "42";
+                    props["stroke"] = "0.48";
+                    props["tolerance"] = "2.5";
+                    break;
+                case "BarcodeScanner":
+                    props["height"] = "0.37";
+                    props["window"] = "0.31";
+                    break;
+                case "AnalogGauge":
+                    props["scale_min"] = "-20";
+                    props["scale_max"] = "260";
+                    props["alarm_at"] = "210";
+                    props["unit"] = "degC";
+                    break;
+                case "AlarmBeacon":
+                    props["rotation_speed"] = "2.4";
+                    break;
+                case "HeatingStation":
+                    props["heater_power"] = "70";
+                    props["thermal_mass"] = "18";
+                    props["target_temp"] = "155";
+                    break;
+                case "SelectorSwitch":
+                    props["positions"] = "4";
+                    props["labels"] = "OFF,SLOW,FAST,PURGE";
+                    props["detent"] = "2";
+                    break;
+                case "SafetyGate":
+                    props["travel"] = "0.9";
+                    props["slide_speed"] = "1.7";
+                    break;
             }
 
             data.Parts.Add(new PartInstanceData
@@ -264,6 +311,54 @@ public partial class SceneSelfTest : Node
                     ExpectNear(props, "setpoint", 175.0f, part.Type);
                     Expect(props.GetValueOrDefault("setpoint_unit") == "kPa",
                            "ButtonPanel kept the unit its scale plate is graduated in");
+                    break;
+                case "VariableConveyor":
+                    Expect(!props.ContainsKey("speed"),
+                           "VariableConveyor does not save the speed its drive computes");
+                    ExpectNear(props, "friction", 0.66f, part.Type);
+                    ExpectNear(props, "max_speed", 1.35f, part.Type);
+                    ExpectNear(props, "accel_rate", 17.0f, part.Type);
+                    break;
+                case "PivotDiverter":
+                    ExpectNear(props, "divert_angle", 38.0f, part.Type);
+                    ExpectNear(props, "swing_speed", 155.0f, part.Type);
+                    ExpectNear(props, "blade_length", 0.51f, part.Type);
+                    break;
+                case "PickPlaceArm":
+                    ExpectNear(props, "rail_length", 2.1f, part.Type);
+                    ExpectNear(props, "travel_speed", 42.0f, part.Type);
+                    ExpectNear(props, "stroke", 0.48f, part.Type);
+                    break;
+                case "BarcodeScanner":
+                    ExpectNear(props, "height", 0.37f, part.Type);
+                    ExpectNear(props, "window", 0.31f, part.Type);
+                    break;
+                case "AnalogGauge":
+                    ExpectNear(props, "scale_max", 260.0f, part.Type);
+                    ExpectNear(props, "alarm_at", 210.0f, part.Type);
+                    Expect(props.GetValueOrDefault("unit") == "degC",
+                           "AnalogGauge kept the unit on its scale plate");
+                    break;
+                case "AlarmBeacon":
+                    ExpectNear(props, "rotation_speed", 2.4f, part.Type);
+                    break;
+                case "HeatingStation":
+                    ExpectNear(props, "heater_power", 70.0f, part.Type);
+                    ExpectNear(props, "thermal_mass", 18.0f, part.Type);
+                    ExpectNear(props, "target_temp", 155.0f, part.Type);
+                    break;
+                case "SelectorSwitch":
+                    ExpectNear(props, "positions", 4.0f, part.Type);
+                    // The detent the switch was left in, not a default: a real
+                    // selector does not spring back, and a scene reopened
+                    // mid-experiment should reopen in the mode it was in.
+                    ExpectNear(props, "detent", 2.0f, part.Type);
+                    Expect(props.GetValueOrDefault("labels") == "OFF,SLOW,FAST,PURGE",
+                           "SelectorSwitch kept the labels on its escutcheon");
+                    break;
+                case "SafetyGate":
+                    ExpectNear(props, "travel", 0.9f, part.Type);
+                    ExpectNear(props, "slide_speed", 1.7f, part.Type);
                     break;
             }
         }
