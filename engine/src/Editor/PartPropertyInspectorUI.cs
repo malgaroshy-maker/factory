@@ -100,9 +100,29 @@ public partial class PartPropertyInspectorUI : Control
             return;
         }
 
-        var header = new Label { Text = partType };
+        var info = PartCatalog.Find(partType);
+
+        var header = new Label { Text = info?.Label ?? partType };
         header.AddThemeFontSizeOverride("font_size", 13);
         _contentContainer.AddChild(header);
+
+        // What this part is for, from the same catalog the palette's tooltip
+        // reads (CP-22). Selecting a part used to show its class name and a
+        // list of sliders, which answers "what can I change" and never "what is
+        // this" — and the class name is not even the thing the user clicked,
+        // since the palette calls it something friendlier.
+        if (info is not null)
+        {
+            var summary = new Label
+            {
+                Text = info.Summary,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                CustomMinimumSize = new Vector2(240, 0),
+            };
+            summary.AddThemeFontSizeOverride("font_size", 10);
+            summary.AddThemeColorOverride("font_color", new Color(0.70f, 0.75f, 0.82f));
+            _contentContainer.AddChild(summary);
+        }
 
         // What you can do with the thing you just selected, where you are
         // already looking. Every one of these worked before OP-09 and none of
@@ -130,8 +150,22 @@ public partial class PartPropertyInspectorUI : Control
         // every other belt has (LE-05).
         if (node is ConveyorBelt belt)
         {
-            AddSliderProperty("Belt Speed (m/s)", belt.Speed, 0.05f, 2.0f, 0.05f,
-                              val => belt.Speed = val);
+            // A VFD belt's speed is not its own setting — the drive computes it
+            // from the reference every tick — so offering the same slider here
+            // would be a control that moves and is overwritten before the next
+            // frame. It gets the two settings that are actually its own.
+            if (belt is VariableConveyor vfd)
+            {
+                AddSliderProperty("Max Speed (m/s @100%)", vfd.MaxSpeed, 0.1f, 3.0f, 0.05f,
+                                  val => vfd.MaxSpeed = val);
+                AddSliderProperty("Ramp Rate (%/s)", vfd.AccelRate, 2.0f, 400.0f, 2.0f,
+                                  val => vfd.AccelRate = val);
+            }
+            else
+            {
+                AddSliderProperty("Belt Speed (m/s)", belt.Speed, 0.05f, 2.0f, 0.05f,
+                                  val => belt.Speed = val);
+            }
             AddSliderProperty("Surface Friction", belt.SurfaceFriction, 0.05f, 1.5f, 0.05f,
                               val => belt.SurfaceFriction = val);
         }
@@ -209,6 +243,80 @@ public partial class PartPropertyInspectorUI : Control
         else if (node is Remover remover)
         {
             AddCountTagRow(remover, instanceId);
+        }
+        else if (node is PivotDiverter diverter)
+        {
+            // Both are read live by UpdateSwing, so neither needs a rebuild;
+            // the blade length is geometry and does, so it is deliberately not
+            // offered here rather than offered and silently ignored.
+            AddSliderProperty("Divert Angle (deg)", diverter.DivertAngle, 10.0f, 80.0f, 1.0f,
+                              val => diverter.DivertAngle = val);
+            AddSliderProperty("Swing Speed (deg/s)", diverter.SwingSpeed, 30.0f, 600.0f, 10.0f,
+                              val => diverter.SwingSpeed = val);
+        }
+        else if (node is PickPlaceArm arm)
+        {
+            AddSliderProperty("Travel Speed (%/s)", arm.TravelSpeed, 5.0f, 200.0f, 5.0f,
+                              val => arm.TravelSpeed = val);
+            AddSliderProperty("Lower Speed (m/s)", arm.LowerSpeed, 0.1f, 3.0f, 0.05f,
+                              val => arm.LowerSpeed = val);
+            AddSliderProperty("In-Position Window (%)", arm.PositionTolerance, 0.2f, 10.0f, 0.1f,
+                              val => arm.PositionTolerance = val);
+        }
+        else if (node is AnalogGauge gauge)
+        {
+            // Every one of these goes through ConfigureScale, which rebuilds
+            // the red band: a band left where the old scale put it would be a
+            // mislabelled instrument, which is worse than no band at all.
+            AddSliderProperty("Scale Min", gauge.ScaleMin, -10000.0f, 10000.0f, 1.0f,
+                              val => gauge.ConfigureScale(val, gauge.ScaleMax, gauge.AlarmAt, gauge.Unit));
+            AddSliderProperty("Scale Max", gauge.ScaleMax, -10000.0f, 10000.0f, 1.0f,
+                              val => gauge.ConfigureScale(gauge.ScaleMin, val, gauge.AlarmAt, gauge.Unit));
+            AddSliderProperty("Alarm At", gauge.AlarmAt, -10000.0f, 10000.0f, 1.0f,
+                              val => gauge.ConfigureScale(gauge.ScaleMin, gauge.ScaleMax, val, gauge.Unit));
+            AddTextProperty("Unit", gauge.Unit, 8,
+                            text => gauge.ConfigureScale(gauge.ScaleMin, gauge.ScaleMax, gauge.AlarmAt, text));
+        }
+        else if (node is HeatingStation heater)
+        {
+            AddSliderProperty("Heater Power", heater.HeaterPower, 5.0f, 200.0f, 1.0f,
+                              val => heater.HeaterPower = val);
+            AddSliderProperty("Thermal Mass", heater.ThermalMass, 1.0f, 60.0f, 1.0f,
+                              val => heater.ThermalMass = val);
+            AddSliderProperty("Loss Rate (/s/degC)", heater.LossRate, 0.02f, 2.0f, 0.02f,
+                              val => heater.LossRate = val);
+            AddSliderProperty("Target (degC)", heater.TargetTemp, 20.0f, 400.0f, 1.0f,
+                              val => heater.TargetTemp = val);
+            AddSliderProperty("Tolerance (degC)", heater.Tolerance, 0.5f, 30.0f, 0.5f,
+                              val => heater.Tolerance = val);
+        }
+        else if (node is AlarmBeacon beacon)
+        {
+            AddSliderProperty("Rotation (rev/s)", beacon.RotationSpeed, 0.2f, 5.0f, 0.1f,
+                              val => beacon.RotationSpeed = val);
+        }
+        else if (node is SelectorSwitch selector)
+        {
+            // Both are read only while the plate and its detent marks are
+            // built, so both need the Rebuild() the comment above demands.
+            AddSliderProperty("Positions", selector.PositionCount, 2, 6, 1,
+                              val => { selector.PositionCount = (int)val; selector.Rebuild(); });
+            AddTextProperty("Labels (comma)", selector.Labels, 24,
+                            text => { selector.Labels = text; selector.Rebuild(); });
+        }
+        else if (node is SafetyGate gate)
+        {
+            AddSliderProperty("Travel (m)", gate.TravelDistance, 0.2f, 1.5f, 0.05f,
+                              val => gate.TravelDistance = val);
+            AddSliderProperty("Slide Speed (m/s)", gate.SlideSpeed, 0.2f, 3.0f, 0.1f,
+                              val => gate.SlideSpeed = val);
+        }
+        else if (node is BarcodeScanner scanner)
+        {
+            AddSliderProperty("Read Window (m)", scanner.WindowLength, 0.08f, 0.8f, 0.02f,
+                              val => { scanner.WindowLength = val; scanner.Rebuild(); });
+            AddSliderProperty("Head Height (m)", scanner.HeightAboveBelt, 0.15f, 0.9f, 0.02f,
+                              val => { scanner.HeightAboveBelt = val; scanner.Rebuild(); });
         }
 
         AddTagControlsSection(instanceId);

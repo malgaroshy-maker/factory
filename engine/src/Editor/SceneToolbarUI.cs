@@ -60,6 +60,12 @@ public partial class SceneToolbarUI : Control
     [Signal] public delegate void StartScreenRequestedEventHandler();
     [Signal] public delegate void DemoToggledEventHandler();
 
+    /// <summary>The key list, on a button (CP-21). F12 opens it too, but a
+    /// keyboard shortcut nobody can see is a feature nobody has: the bindings
+    /// were visible on the start screen and nowhere else, which is exactly
+    /// where a user is not when they want them.</summary>
+    [Signal] public delegate void HelpRequestedEventHandler();
+
     private Button _pauseBtn = null!;
     private OptionButton _rateBox = null!;
     private Button _modeBtn = null!;
@@ -328,6 +334,15 @@ public partial class SceneToolbarUI : Control
         };
         homeBtn.Pressed += () => EmitSignal(SignalName.StartScreenRequested);
         hbox.AddChild(homeBtn);
+
+        var helpBtn = new Button
+        {
+            Text = "?",
+            TooltipText = "Every key and mouse binding (F12)",
+            CustomMinimumSize = new Vector2(36, 32),
+        };
+        helpBtn.Pressed += () => EmitSignal(SignalName.HelpRequested);
+        hbox.AddChild(helpBtn);
 
         hbox.AddChild(new VSeparator());
 

@@ -273,39 +273,26 @@ public partial class StartScreenUI : Control
         grid.AddThemeConstantOverride("v_separation", 6);
         page.AddChild(grid);
 
-        var keys = new (string Key, string Action)[]
-        {
-            ("F1", "Edit / Run mode"),
-            ("Space", "Pause / resume"),
-            ("Ctrl+R", "Reset the run"),
-            ("C", "Orbit / fly camera"),
-            // Listed above M deliberately. The drag is what everyone tries
-            // first, and a key list that offers only the keyboard route
-            // implies the obvious one does not work.
-            ("Drag", "Move a part — the mouse route"),
-            ("M", "Move selected part — the keyboard route"),
-            ("R", "Rotate — while placing, or a selected part"),
-            ("Del", "Delete selected part"),
-            ("Ctrl+Z / Y", "Undo / redo"),
-            ("Ctrl+D", "Duplicate selected part"),
-            ("Ctrl+S / O", "Save / open a scene"),
-            ("F4", "I/O wiring and export"),
-            ("F5", "Connect a PLC driver"),
-            ("Esc", "Cancel placement, or disarm the fault tool"),
-            ("", ""),
-        };
+        // Read from the one binding table rather than a hand-written copy
+        // (CP-21). The copy that used to live here had already drifted: F
+        // framed the selection and was listed nowhere, and the in-app overlay
+        // could not have agreed with it even in principle.
+        // Typed rather than `var`: the record is the shared shape both readers
+        // of this table agree on, and naming it here is the only place in the
+        // codebase that says so out loud. A6 checks for exactly that -- a type
+        // reached only through inference reads as dead code to anything
+        // scanning the source.
+        KeyBindings.Binding[] keys = KeyBindings.All;
 
-        foreach (var (key, action) in keys)
+        foreach (var binding in keys)
         {
-            if (key.Length == 0) { grid.AddChild(new Control()); continue; }
-
-            var row = new HBoxContainer { CustomMinimumSize = new Vector2(210, 0) };
-            var keyLabel = new Label { Text = key, CustomMinimumSize = new Vector2(74, 0) };
+            var row = new HBoxContainer { CustomMinimumSize = new Vector2(230, 0) };
+            var keyLabel = new Label { Text = binding.Key, CustomMinimumSize = new Vector2(86, 0) };
             keyLabel.AddThemeColorOverride("font_color", new Color(0.55f, 0.85f, 1.0f));
             keyLabel.AddThemeFontSizeOverride("font_size", 12);
             row.AddChild(keyLabel);
 
-            var actionLabel = new Label { Text = action };
+            var actionLabel = new Label { Text = binding.Action };
             actionLabel.AddThemeFontSizeOverride("font_size", 12);
             actionLabel.AddThemeColorOverride("font_color", new Color(0.72f, 0.75f, 0.80f));
             row.AddChild(actionLabel);

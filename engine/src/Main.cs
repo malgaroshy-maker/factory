@@ -269,6 +269,10 @@ public partial class Main : Node
         {
             AddChild(new PartSettingsSelfTest { Name = "PartSettingsSelfTest", Editor = _editor!, Tags = tags });
         }
+        if (_selfTest == "newparts")
+        {
+            AddChild(new NewPartsSelfTest { Name = "NewPartsSelfTest", Editor = _editor!, Tags = tags });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -317,6 +321,9 @@ public partial class Main : Node
         };
         AddChild(editor);
         propertyInspector.Editor = editor;
+        // Before the first scene is registered, so the very first line the user
+        // sees is framed too (CP-16).
+        editor.SceneLoaded += FrameWholeScene;
         editor.RegisterDefaultSceneParts(physical: !_deterministic);
         _editor = editor;
         _propertyInspector = propertyInspector;
@@ -392,7 +399,13 @@ public partial class Main : Node
         editor.Toolbar = toolbarUI;
         editor.IdleHint = idleHint;
         toolbarUI.FaultToolToggled += () => editor.SetFaultToolArmed(!editor.FaultToolArmed);
+        toolbarUI.HelpRequested += () => GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
         AddChild(toolbarUI);
+
+        // After every other panel, because CanvasItem siblings draw in tree
+        // order and an overlay behind the parts palette is an overlay nobody
+        // can read. Still before the start screen, which owns the very top.
+        AddChild(new KeyHelpUI { Name = "KeyHelpUI" });
 
         // The start screen goes on last so it draws over everything, and it is
         // only ever a GUI thing — headless runs and the self-tests never see it.
@@ -590,6 +603,21 @@ public partial class Main : Node
             {
                 ResetSimulation();
             }
+            else if (keyEvent.Keycode == Key.F)
+            {
+                FrameSelection();
+            }
+            else if (keyEvent.Keycode == Key.F12)
+            {
+                GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
+            }
+            else if (keyEvent.Keycode == Key.Escape)
+            {
+                // Only if the overlay is actually open: Escape also cancels a
+                // placement and disarms the fault tool, and spending it here
+                // unconditionally would break both.
+                GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.DismissIfOpen();
+            }
             else if (keyEvent.Keycode == Key.C)
             {
                 var orbitCam = GetNode<OrbitCamera>("OrbitCamera");
@@ -610,6 +638,47 @@ public partial class Main : Node
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Put the camera on the selection, or on the whole line if nothing is
+    /// selected (CP-16).
+    ///
+    /// Only the orbit camera is framed: the free-look camera is a flying one
+    /// and moving it under the user is disorienting rather than helpful, so F
+    /// aims the orbit camera and switching back with C arrives somewhere
+    /// sensible.
+    /// </summary>
+    private void FrameSelection()
+    {
+        if (_editor?.FocusBounds() is not { } bounds) return;
+        var orbit = GetNodeOrNull<OrbitCamera>("OrbitCamera");
+        if (orbit is null) return;
+
+        orbit.Frame(bounds);
+        if (!orbit.Current)
+        {
+            orbit.MakeCurrent();
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+        }
+    }
+
+    /// <summary>
+    /// Frame a scene that has just been opened. Deselects nothing and moves no
+    /// state — it only aims the camera, which is what opening a template ought
+    /// to do and did not: the default pose put a control panel across the whole
+    /// frame with the line behind it, so every template opened looking like the
+    /// same close-up of a panel.
+    ///
+    /// Headless runs have no camera node; the guard in FrameSelection covers
+    /// that, and this is connected before the first scene is registered so
+    /// there is exactly one path.
+    /// </summary>
+    private void FrameWholeScene()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+        if (_editor?.FocusBounds() is not { } bounds) return;
+        GetNodeOrNull<OrbitCamera>("OrbitCamera")?.Frame(bounds, overviewPitch: true);
     }
 
     /// <summary>Restart the run without disturbing the scene you built: boxes
