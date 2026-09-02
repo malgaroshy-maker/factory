@@ -3,8 +3,15 @@ using Godot;
 namespace FactoryForge.View;
 
 /// <summary>
-/// Orbit camera: drag to rotate, wheel to zoom, middle-drag to pan.
-/// Deliberately simple — the editor camera work belongs to M4.
+/// Orbit camera: drag to rotate, wheel to zoom, middle-drag to pan, F to frame
+/// whatever is selected.
+///
+/// The motion is damped (CP-16): input moves a *desired* pose and the camera
+/// chases it. Applying input straight to the transform, which is what this used
+/// to do, makes every wheel click a jump-cut and every drag a hard stop — the
+/// single cheapest thing that separates a viewport that feels like a tool from
+/// one that feels like a debug view. Damping is frame-rate independent, so a
+/// 30 fps machine and a 144 fps one settle over the same wall-clock time.
 /// </summary>
 public partial class OrbitCamera : Camera3D
 {
@@ -16,7 +23,60 @@ public partial class OrbitCamera : Camera3D
     private const float MinPitch = -1.45f;
     private const float MaxPitch = -0.05f;
 
-    public override void _Ready() => Apply();
+    /// <summary>Fraction of the remaining error left after one second. 0.0005
+    /// settles in roughly a fifth of a second — quick enough that dragging
+    /// feels direct, slow enough that a wheel click reads as a move.</summary>
+    private const float SettleFactor = 0.0005f;
+
+    /// <summary>Below this the chase stops and the pose snaps, so the camera
+    /// does not spend every frame of an idle scene applying a transform that
+    /// differs in the seventh decimal place.</summary>
+    private const float SettleEpsilon = 0.0005f;
+
+    private Vector3 _targetGoal;
+    private float _distanceGoal;
+    private float _yawGoal;
+    private float _pitchGoal;
+    private bool _settled;
+
+    public override void _Ready()
+    {
+        _targetGoal = Target;
+        _distanceGoal = Distance;
+        _yawGoal = Yaw;
+        _pitchGoal = Pitch;
+        Apply();
+    }
+
+    /// <summary>
+    /// Frame a box: point at its centre and back off far enough to see all of
+    /// it. Used by F on the current selection (CP-16), which was previously a
+    /// matter of scrolling and dragging until the part you had just placed came
+    /// back into shot.
+    /// </summary>
+    /// <param name="overviewPitch">Tip the camera down to a standard
+    /// three-quarter view as well as moving it. Used when a whole scene is
+    /// opened, where the current angle carries no intent worth preserving —
+    /// and deliberately not used by F on a selection, where it does: somebody
+    /// who has orbited round to look at the back of a pusher wants to keep
+    /// looking at the back of it.</param>
+    public void Frame(Aabb bounds, bool overviewPitch = false)
+    {
+        _targetGoal = bounds.GetCenter();
+        if (overviewPitch) _pitchGoal = Mathf.Clamp(-0.52f, MinPitch, MaxPitch);
+
+        // Fit the sphere that contains the box into the vertical field of view,
+        // with a margin so the part is not touching the frame edge. Using the
+        // whole diagonal rather than the tallest side means a long belt is
+        // framed by its length, which is what you actually want to see.
+        float radius = Mathf.Max(bounds.Size.Length() * 0.5f, 0.2f);
+        float halfFov = Mathf.DegToRad(Fov * 0.5f);
+        // 1.15, not the 1.6 this started at: the bounding *sphere* already
+        // over-covers a box-shaped line by a long way, so a generous margin on
+        // top of it framed a whole template at about a quarter of the screen.
+        _distanceGoal = Mathf.Clamp(radius / Mathf.Tan(halfFov) * 1.15f, 1.0f, 20.0f);
+        _settled = false;
+    }
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -24,28 +84,60 @@ public partial class OrbitCamera : Camera3D
         {
             if (Input.IsMouseButtonPressed(MouseButton.Left))
             {
-                Yaw -= motion.Relative.X * 0.006f;
-                Pitch = Mathf.Clamp(Pitch - motion.Relative.Y * 0.006f, MinPitch, MaxPitch);
-                Apply();
+                _yawGoal -= motion.Relative.X * 0.006f;
+                _pitchGoal = Mathf.Clamp(_pitchGoal - motion.Relative.Y * 0.006f, MinPitch, MaxPitch);
+                _settled = false;
             }
             else if (Input.IsMouseButtonPressed(MouseButton.Middle))
             {
                 var right = Transform.Basis.X;
                 var up = Transform.Basis.Y;
-                Target -= (right * motion.Relative.X + up * -motion.Relative.Y) * Distance * 0.0015f;
-                Apply();
+                _targetGoal -= (right * motion.Relative.X + up * -motion.Relative.Y) * Distance * 0.0015f;
+                _settled = false;
             }
         }
         else if (@event is InputEventMouseButton button && button.Pressed)
         {
-            if (button.ButtonIndex == MouseButton.WheelUp) Zoom(-0.4f);
-            else if (button.ButtonIndex == MouseButton.WheelDown) Zoom(0.4f);
+            // Zoom in proportion to the current distance, so one wheel click
+            // covers the same fraction of the view whether you are looking at a
+            // whole line or at one sensor head. A fixed 0.4 m step crawled when
+            // zoomed out and overshot the part entirely when zoomed in.
+            if (button.ButtonIndex == MouseButton.WheelUp) Zoom(-0.16f);
+            else if (button.ButtonIndex == MouseButton.WheelDown) Zoom(0.16f);
         }
     }
 
-    private void Zoom(float amount)
+    private void Zoom(float fraction)
     {
-        Distance = Mathf.Clamp(Distance + amount, 1.0f, 20f);
+        _distanceGoal = Mathf.Clamp(_distanceGoal * (1.0f + fraction), 0.6f, 25f);
+        _settled = false;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_settled) return;
+
+        // Exponential chase. Pow makes it independent of frame time: the same
+        // fraction of the error is removed per second however often this runs.
+        float t = 1.0f - Mathf.Pow(SettleFactor, (float)delta);
+
+        Target = Target.Lerp(_targetGoal, t);
+        Distance = Mathf.Lerp(Distance, _distanceGoal, t);
+        Yaw = Mathf.Lerp(Yaw, _yawGoal, t);
+        Pitch = Mathf.Lerp(Pitch, _pitchGoal, t);
+
+        if (Target.DistanceTo(_targetGoal) < SettleEpsilon
+            && Mathf.Abs(Distance - _distanceGoal) < SettleEpsilon
+            && Mathf.Abs(Yaw - _yawGoal) < SettleEpsilon
+            && Mathf.Abs(Pitch - _pitchGoal) < SettleEpsilon)
+        {
+            Target = _targetGoal;
+            Distance = _distanceGoal;
+            Yaw = _yawGoal;
+            Pitch = _pitchGoal;
+            _settled = true;
+        }
+
         Apply();
     }
 

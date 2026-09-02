@@ -58,16 +58,29 @@ public partial class BoxPhysics : RigidBody3D
         // it also stopped boxes from rotating to face down the chute.
         PhysicsMaterialOverride = new PhysicsMaterial
         {
-            Friction = 0.55f,   // corrugated cardboard on rubber
-            Bounce = 0.0f,      // cartons do not bounce
+            // Friction is a property of the *pair* of surfaces, and the item's
+            // material is already the thing this project models: an inductive
+            // sensor exists here precisely because a steel item is not a
+            // cardboard one. Giving both the same 0.55 made that distinction
+            // stop at the sensor. Steel on a rubber belt slips noticeably more
+            // than corrugated board does, which is why a metal item on a
+            // sloped chute runs away and a carton walks down it.
+            Friction = IsMetal ? 0.38f : 0.55f,
+            Bounce = 0.0f,      // neither cartons nor handled steel bounce
             Rough = true,
         };
 
         _material = new StandardMaterial3D
         {
             AlbedoColor = IsMetal ? MetalColour : (IsTall ? TallColour : ShortColour),
-            Roughness = IsMetal ? 0.30f : 0.55f,
-            Metallic = IsMetal ? 0.75f : 0.0f,
+            // Brushed steel, not chrome. At 0.75/0.30 under a 90%-sky ambient
+            // the metal item reflected the sky hard enough to clip white and
+            // then bloom, so it rendered as a glowing block rather than as a
+            // steel one -- the exact failure IndustrialMeshBuilder's own
+            // comments record for the belt rails and sensor posts, repeated
+            // here because this file picked its numbers separately.
+            Roughness = IsMetal ? 0.45f : 0.55f,
+            Metallic = IsMetal ? 0.45f : 0.0f,
         };
         // A cardboard carton is the one object the eye follows across the
         // whole line, and a flat AlbedoColor reads as painted plastic. A
@@ -105,5 +118,58 @@ public partial class BoxPhysics : RigidBody3D
             Shape = new BoxShape3D { Size = boxSize }
         };
         AddChild(_collisionShape);
+
+        AddSurfaceDetail(boxSize);
+    }
+
+    /// <summary>
+    /// A strip of packing tape down the top seam, or a pair of ribs on a steel
+    /// item.
+    ///
+    /// The carton is the one object the eye follows the whole length of the
+    /// line, and until now it was a flat-shaded rectangle: nothing on it said
+    /// which way was up, so a box that tipped on the chute or was turned by a
+    /// diverter looked exactly the same afterwards. One thin mesh fixes both —
+    /// the box reads as a package, and its orientation is legible.
+    /// </summary>
+    private void AddSurfaceDetail(Vector3 boxSize)
+    {
+        if (IsMetal)
+        {
+            var ribMat = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.52f, 0.54f, 0.58f),
+                Metallic = 0.50f,
+                Roughness = 0.45f,
+            };
+            foreach (float z in new[] { -boxSize.Z * 0.28f, boxSize.Z * 0.28f })
+            {
+                AddChild(new MeshInstance3D
+                {
+                    Name = $"Rib{(z < 0 ? "N" : "F")}",
+                    Mesh = new BoxMesh
+                    {
+                        Size = new Vector3(boxSize.X * 1.02f, boxSize.Y * 0.16f, 0.012f),
+                    },
+                    MaterialOverride = ribMat,
+                    Position = new Vector3(0, 0, z),
+                });
+            }
+            return;
+        }
+
+        var tapeMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.86f, 0.82f, 0.70f),
+            Roughness = 0.35f,
+        };
+        AddChild(new MeshInstance3D
+        {
+            Name = "TopTape",
+            // Slightly proud of the lid so it never z-fights with it.
+            Mesh = new BoxMesh { Size = new Vector3(boxSize.X * 1.005f, 0.004f, 0.035f) },
+            MaterialOverride = tapeMat,
+            Position = new Vector3(0, boxSize.Y / 2.0f, 0),
+        });
     }
 }

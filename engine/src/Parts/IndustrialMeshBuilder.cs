@@ -106,7 +106,57 @@ public static class IndustrialMeshBuilder
         };
         container.AddChild(railBack);
 
-        // 3. Structural support legs
+        // 3. Head and tail drums (CP-10).
+        //
+        // A belt whose only motion was a scrolling texture read as a moving
+        // picture of a belt: nothing about it rotated, so at a standstill and
+        // at full speed the geometry was identical. The drums are what a real
+        // belt turns on, and giving them a keyway stripe means their rotation
+        // is actually visible — a plain cylinder turning about its own axis
+        // looks the same at every angle, which is the lesson the roller deck
+        // already had to learn.
+        float drumRadius = size.Y / 2.0f + 0.008f;
+        float drumSpan = size.Z - 0.10f;
+        var drumMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.30f, 0.31f, 0.34f),
+            Metallic = 0.60f,
+            Roughness = 0.35f,
+        };
+        var keyMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.72f, 0.74f, 0.78f),
+            Metallic = 0.55f,
+            Roughness = 0.40f,
+        };
+
+        foreach (var (name, x) in new (string Name, float X)[]
+                 { ("HeadDrum", size.X / 2 - drumRadius), ("TailDrum", -size.X / 2 + drumRadius) })
+        {
+            var drum = new MeshInstance3D
+            {
+                Name = name,
+                Mesh = new CylinderMesh
+                {
+                    TopRadius = drumRadius,
+                    BottomRadius = drumRadius,
+                    Height = drumSpan,
+                },
+                MaterialOverride = drumMat,
+                Position = new Vector3(x, 0, 0),
+            };
+            // Axis across the lane, so it rolls the way the belt runs.
+            drum.Rotation = new Vector3(Mathf.Pi / 2, 0, 0);
+            drum.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh { Size = new Vector3(0.008f, drumSpan * 0.98f, 0.008f) },
+                MaterialOverride = keyMat,
+                Position = new Vector3(drumRadius, 0, 0),
+            });
+            container.AddChild(drum);
+        }
+
+        // 4. Structural support legs
         float legX1 = -size.X * 0.35f;
         float legX2 = size.X * 0.35f;
         float legH = 0.5f;

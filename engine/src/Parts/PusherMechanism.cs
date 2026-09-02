@@ -155,12 +155,35 @@ public partial class PusherMechanism : Node3D
         _faultLampMat.EmissionEnergyMultiplier = faulted ? 2.4f : 0.0f;
     }
 
+    /// <summary>Fraction of the stroke over which the cylinder accelerates off
+    /// the seal and decelerates into the cushion (CP-11).</summary>
+    private const float CushionFraction = 0.18f;
+
+    /// <summary>Floor on the speed multiplier. Without one the eased profile
+    /// asymptotes and the rod never quite arrives, so the limit switch never
+    /// closes — an easing curve that breaks the machine is not an
+    /// improvement.</summary>
+    private const float MinSpeedFactor = 0.35f;
+
     public void UpdateExtension(bool extend, float delta)
     {
         if (IsFaulted) return;
 
         float target = extend ? StrokeLength : 0.0f;
-        _currentExtension = Mathf.MoveToward(_currentExtension, target, ExtendSpeed * delta);
+        float origin = extend ? 0.0f : StrokeLength;
+
+        // A pneumatic cylinder does not move at one speed. It accelerates off
+        // the seal, runs, and decelerates into the end cushion; a flat
+        // MoveToward reads as a prop being slid by hand, which is what this
+        // looked like. Both ends of the profile are ramps, so the plate eases
+        // out of rest and settles onto the limit rather than slamming into it.
+        float cushion = Mathf.Max(StrokeLength * CushionFraction, 0.01f);
+        float travelled = Mathf.Abs(_currentExtension - origin);
+        float remaining = Mathf.Abs(target - _currentExtension);
+        float factor = Mathf.Min(1.0f, remaining / cushion) * Mathf.Min(1.0f, travelled / cushion);
+        factor = Mathf.Max(factor, MinSpeedFactor);
+
+        _currentExtension = Mathf.MoveToward(_currentExtension, target, ExtendSpeed * factor * delta);
         ApplyExtension();
     }
 

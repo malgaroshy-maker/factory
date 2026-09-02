@@ -65,6 +65,8 @@ public partial class PhotoelectricSensor : Node3D
     private static readonly Color BeamOff = new(0.35f, 0.10f, 0.10f);
     private static readonly Color BeamOn = new(1.0f, 0.15f, 0.15f);
 
+    private StandardMaterial3D? _ledMaterial;
+
     public bool IsDetected
     {
         get
@@ -142,6 +144,26 @@ public partial class PhotoelectricSensor : Node3D
         };
         _beamMesh.RotateX(Mathf.Pi / 2);
         AddChild(_beamMesh);
+
+        // Output-state LED on the head (CP-13). Every real photo-eye has one,
+        // and it is what you look at first when a line stops: it tells you
+        // whether the sensor sees anything at all, separately from whether the
+        // controller is reading it. Here it does the same job for the beam,
+        // which is only visible from angles where nothing is standing in it.
+        _ledMaterial = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.18f, 0.28f, 0.18f),
+            EmissionEnabled = true,
+            Emission = new Color(0.20f, 1.0f, 0.35f),
+            EmissionEnergyMultiplier = 0.0f,
+        };
+        AddChild(new MeshInstance3D
+        {
+            Name = "StatusLed",
+            Mesh = new SphereMesh { Radius = 0.013f, Height = 0.026f },
+            MaterialOverride = _ledMaterial,
+            Position = new Vector3(0.031f, BeamY + 0.03f, 0.04f),
+        });
     }
 
     public override void _Process(double delta)
@@ -155,5 +177,9 @@ public partial class PhotoelectricSensor : Node3D
         _beamMaterial.AlbedoColor = detected ? BeamOn : BeamOff;
         _beamMaterial.Emission = detected ? BeamOn : BeamOff;
         _beamMaterial.EmissionEnergyMultiplier = detected ? 3.0f : 0.4f;
+
+        if (_ledMaterial is null) return;
+        _ledMaterial.AlbedoColor = detected ? new Color(0.35f, 1.0f, 0.45f) : new Color(0.18f, 0.28f, 0.18f);
+        _ledMaterial.EmissionEnergyMultiplier = detected ? 3.5f : 0.0f;
     }
 }

@@ -26,9 +26,15 @@ public partial class RollerConveyor : ConveyorBelt
         base._Ready();
 
         // The inherited visual is a continuous band; hide it and lay rollers.
+        // The head and tail drums go with it (CP-10) — they are what a belt
+        // runs on, and a roller deck has neither.
         var visual = GetNodeOrNull<Node3D>("ConveyorVisual");
         var band = visual?.GetNodeOrNull<MeshInstance3D>("BeltSurfaceMesh");
         if (band is not null) band.Visible = false;
+        foreach (string drumName in new[] { "HeadDrum", "TailDrum" })
+        {
+            if (visual?.GetNodeOrNull<MeshInstance3D>(drumName) is { } drum) drum.Visible = false;
+        }
 
         var rollerMat = new StandardMaterial3D
         {

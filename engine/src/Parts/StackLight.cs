@@ -15,6 +15,14 @@ public partial class StackLight : Node3D
     private StandardMaterial3D _yellowMat = null!;
     private StandardMaterial3D _redMat = null!;
 
+    // One real light per lamp (CP-12). A tower whose lamps only changed their
+    // own albedo lit nothing around them, so at a glance an amber tower and a
+    // dark one differed by a few pixels. A stack light exists to be noticed
+    // from across a building; the light it throws is most of how that works.
+    private OmniLight3D _greenLight = null!;
+    private OmniLight3D _yellowLight = null!;
+    private OmniLight3D _redLight = null!;
+
     public override void _Ready()
     {
         // Geometry is authored from the floor up; the part origin is on the work
@@ -53,6 +61,7 @@ public partial class StackLight : Node3D
             MaterialOverride = _greenMat,
         };
         column.AddChild(_greenLampMesh);
+        _greenLight = AddLampLight(column, 0.45f, new Color(0.25f, 1.0f, 0.35f));
 
         // Yellow lamp dome (middle)
         _yellowMat = CreateLampMaterial(new Color(0.4f, 0.35f, 0.1f));
@@ -68,6 +77,7 @@ public partial class StackLight : Node3D
             MaterialOverride = _yellowMat,
         };
         column.AddChild(_yellowLampMesh);
+        _yellowLight = AddLampLight(column, 0.55f, new Color(1.0f, 0.85f, 0.25f));
 
         // Red lamp dome (top)
         _redMat = CreateLampMaterial(new Color(0.4f, 0.1f, 0.1f));
@@ -83,6 +93,40 @@ public partial class StackLight : Node3D
             MaterialOverride = _redMat,
         };
         column.AddChild(_redLampMesh);
+        _redLight = AddLampLight(column, 0.65f, new Color(1.0f, 0.20f, 0.18f));
+
+        // Sun cap on top, so the tower reads as a finished assembly rather
+        // than as three discs on a stick.
+        column.AddChild(new MeshInstance3D
+        {
+            Name = "TopCap",
+            Mesh = new SphereMesh
+            {
+                Radius = PartLayout.StackLightDiameter / 2,
+                Height = PartLayout.StackLightDiameter * 0.7f,
+                IsHemisphere = true,
+            },
+            Position = new Vector3(0, 0.69f, 0),
+            MaterialOverride = postMat,
+        });
+    }
+
+    /// <summary>A short-range unshadowed light inside a lamp. Shadows are off
+    /// deliberately: three shadow-casting lights per tower, on a scene that can
+    /// hold several towers, buys nothing a viewer would notice and costs a
+    /// shadow map each.</summary>
+    private static OmniLight3D AddLampLight(Node3D parent, float y, Color colour)
+    {
+        var light = new OmniLight3D
+        {
+            LightColor = colour,
+            LightEnergy = 0.0f,
+            OmniRange = 0.9f,
+            ShadowEnabled = false,
+            Position = new Vector3(0, y, 0),
+        };
+        parent.AddChild(light);
+        return light;
     }
 
     /// <summary>Local-space Y of each lamp's centre, matching the literals
@@ -138,6 +182,7 @@ public partial class StackLight : Node3D
         _greenMat.AlbedoColor = color;
         _greenMat.Emission = color;
         _greenMat.EmissionEnergyMultiplier = on ? 3.0f : 0.2f;
+        if (_greenLight is not null) _greenLight.LightEnergy = on ? 1.6f : 0.0f;
     }
 
     public void SetYellowLamp(bool on)
@@ -147,6 +192,7 @@ public partial class StackLight : Node3D
         _yellowMat.AlbedoColor = color;
         _yellowMat.Emission = color;
         _yellowMat.EmissionEnergyMultiplier = on ? 3.0f : 0.2f;
+        if (_yellowLight is not null) _yellowLight.LightEnergy = on ? 1.6f : 0.0f;
     }
 
     public void SetRedLamp(bool on)
@@ -156,5 +202,6 @@ public partial class StackLight : Node3D
         _redMat.AlbedoColor = color;
         _redMat.Emission = color;
         _redMat.EmissionEnergyMultiplier = on ? 3.0f : 0.2f;
+        if (_redLight is not null) _redLight.LightEnergy = on ? 1.6f : 0.0f;
     }
 }

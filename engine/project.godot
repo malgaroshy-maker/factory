@@ -24,6 +24,17 @@ window/size/window_height_override=810
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[rendering]
+
+; The scene is nothing but hard-edged machinery -- rails, posts, belt frames,
+; the light curtain's twelve beams -- and every one of those edges was
+; aliasing. 4x MSAA is the single largest change to how sharp this looks, and
+; it costs a Forward+ desktop renderer very little on geometry this simple.
+; FXAA is left off deliberately: it would soften the 3D readouts (the tank's
+; level, the weigh conveyor's grams, the drive's percentage) which are Label3D
+; text and need to stay crisp.
+anti_aliasing/quality/msaa_3d=2
+
 [dotnet]
 
 project/assembly_name="FactoryForge"
