@@ -51,6 +51,7 @@ public partial class BuildFlowSelfTest : Node
             CheckDuplicateWalksALine();
             CheckNudge();
             CheckMoveDisarms();
+            CheckGroupEdits();
         }
         catch (System.Exception ex)
         {
@@ -209,6 +210,112 @@ public partial class BuildFlowSelfTest : Node
         Editor.NudgeSelectedPart(new Vector2(0, -1));
         Expect(Editor.SelectedPosition!.Value.IsEqualApprox(start),
                "right, up, left, down comes back to where it started");
+    }
+
+    // ---------- ES-01, ES-03: several parts at once
+
+    /// <summary>
+    /// A selection is a group, and everything that can sensibly happen to
+    /// several parts at once happens to all of them as **one undo step**.
+    ///
+    /// The box-select half of ES-02 cannot be reached here: it projects each
+    /// part's bounding box through a camera, and a headless run has none. What
+    /// is checked is everything downstream of that — a selection built by the
+    /// Shift+click path, and the group edits that act on it.
+    /// </summary>
+    private void CheckGroupEdits()
+    {
+        Editor.ClearAllPlacedParts();
+        Editor.SetPlacementPart("ConveyorBelt");
+        Editor.PlacePreviewAt(new Vector3(0, 0, 0));
+        Editor.PlacePreviewAt(new Vector3(2.0f, 0, 0));
+        Editor.PlacePreviewAt(new Vector3(4.0f, 0, 0));
+        Editor.CancelPlacement();
+
+        Editor.SelectPartByIndex(0);
+        Expect(Editor.SelectionCount == 1, "a plain selection holds one part");
+
+        Editor.ToggleSelectionByIndex(1);
+        Editor.ToggleSelectionByIndex(2);
+        Expect(Editor.SelectionCount == 3,
+               $"Shift+click adds to the selection (got {Editor.SelectionCount})");
+
+        Editor.ToggleSelectionByIndex(1);
+        Expect(Editor.SelectionCount == 2, "and clicking one again takes it out");
+        Editor.ToggleSelectionByIndex(1);
+
+        // --- nudge
+        var before = new List<Vector3>(Editor.SelectedPositions());
+        Editor.NudgeSelectedPart(new Vector2(0, 1));
+        var after = Editor.SelectedPositions();
+
+        bool allMoved = true;
+        Vector3 step = after[0] - before[0];
+        for (int i = 0; i < after.Count; i++)
+        {
+            if (!(after[i] - before[i]).IsEqualApprox(step)) allMoved = false;
+        }
+        Expect(step.Length() > 0.01f, "an arrow key moves a group");
+        Expect(allMoved, "and moves every part by the same vector, so the group keeps its shape");
+
+        Editor.Undo();
+        var restored = Editor.SelectedPositions();
+        bool back = true;
+        for (int i = 0; i < restored.Count; i++)
+        {
+            if (!restored[i].IsEqualApprox(before[i])) back = false;
+        }
+        Expect(back, "and one Ctrl+Z puts the whole group back, not one part of it");
+
+        // --- rotate
+        var headingsBefore = new List<float>(Editor.SelectedHeadings());
+        Editor.RotateSelectedPart();
+        var headingsAfter = Editor.SelectedHeadings();
+        bool allTurned = true;
+        for (int i = 0; i < headingsAfter.Count; i++)
+        {
+            if (!Mathf.IsEqualApprox(Mathf.Wrap(headingsAfter[i] - headingsBefore[i], -Mathf.Pi, Mathf.Pi),
+                                     Mathf.Pi / 2.0f))
+                allTurned = false;
+        }
+        Expect(allTurned, "R turns every selected part a quarter turn about its own centre");
+        Editor.Undo();
+
+        // --- duplicate
+        var shape = new List<Vector3>(Editor.SelectedPositions());
+        int wasCount = PartCount();
+        Editor.DuplicateSelectedPart();
+        Expect(PartCount() == wasCount + shape.Count,
+               $"Ctrl+D copies the whole group ({PartCount() - wasCount} of {shape.Count})");
+        Expect(Editor.SelectionCount == shape.Count, "and the copies become the selection");
+
+        var copies = Editor.SelectedPositions();
+        Vector3 groupOffset = copies[0] - shape[0];
+        bool keptShape = true;
+        for (int i = 0; i < copies.Count; i++)
+        {
+            if (!(copies[i] - shape[i]).IsEqualApprox(groupOffset)) keptShape = false;
+        }
+        Expect(groupOffset.Length() > 0.01f, "the copy lands clear of the original");
+        // One offset for the group, not each part's own: a belt, its sensor and
+        // its pusher have to stay lined up with each other.
+        Expect(keptShape, "and the copy is the same shape as what it was copied from");
+
+        Editor.Undo();
+        Expect(PartCount() == wasCount, "one Ctrl+Z takes the whole copy back");
+
+        // --- delete
+        Editor.SelectPartByIndex(0);
+        Editor.ToggleSelectionByIndex(1);
+        int before2 = PartCount();
+        Editor.DeleteSelectedPart();
+        Expect(PartCount() == before2 - 2,
+               $"Del removes every selected part (got {before2 - PartCount()} of 2)");
+        Expect(Editor.SelectionCount == 0, "and leaves nothing selected");
+
+        Editor.Undo();
+        Expect(PartCount() == before2,
+               $"and one Ctrl+Z brings the whole group back (got {PartCount()} of {before2})");
     }
 
     // ---------- BF-01's exception
