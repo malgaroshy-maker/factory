@@ -284,6 +284,14 @@ most likely to slip.
       `Ctrl+A`, `Ctrl+C` and `Ctrl+V` select everything and carry a section
       into another scene; and `1`-`4` snap the camera to iso, top, front and
       side without losing what was framed.
+- [x] **The tag inspector, for scenes with twenty-seven tags in them**
+      (TI-01…TI-04, see [TAG_INSPECTOR_PLAN.md](TAG_INSPECTOR_PLAN.md)) — a
+      search box, groups per machine that collapse, a filter for one half of
+      the I/O at a time, and a forced tag that marks its own name with one
+      button to release every one of them. That last is the one that matters:
+      a forgotten force is a value that disagrees with the simulation on
+      purpose, and it explains more "why is my program not working" than
+      anything else here.
 
 **Near:** part-to-part linking in the editor — the measuring encoder finds the
 belt under it by geometry, which is right for a wheel resting on a deck and

@@ -59,7 +59,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C3 | Scene save/load round-trip, every part type, undo/redo | `--self-test=scene` |
 | C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
 | C5 | F5 driver modal's minimum size still fits the screen once auto-detect writes a long status message | `--self-test=layout` |
-| C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value | `--self-test=force` |
+| C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value. And the panel around it: tags group under the machine that owns them and a group collapses, the search box keeps what matches and takes an empty group's header away with it, the kind filter shows one half of the I/O at a time, and a forced tag marks its **name** rather than only its button — with one button that hands every forced tag back. Driven through the panel's own controls, found by what is on screen. | `--self-test=force` |
 | C7 | `--scene=` loads a template headless (not just windowed) and `--print-tags` dumps its real I/O | `--scene=... --print-tags` |
 | C8 | `--deterministic --scene=` is rejected outright, not silently hybridized | `--deterministic --scene=...` |
 | C9 | `DemoDriver` picks the right profile for each of the five manifest scene ids, and refuses honestly for an unknown one | `--self-test=demo` |

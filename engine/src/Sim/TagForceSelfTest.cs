@@ -40,6 +40,11 @@ public partial class TagForceSelfTest : Node
         _tags.Add(new Tag("test.bit", "bit", TagType.Bit, TagKind.Output));
         _tags.Add(new Tag("test.count", "count", TagType.Int, TagKind.Output));
         _tags.Add(new Tag("test.level", "level", TagType.Float, TagKind.Output, 1.0));
+        // A second machine, and an Input among the Outputs: grouping and the
+        // kind filter are both claims about telling two things apart, and
+        // neither can be checked against a list where everything is the same.
+        _tags.Add(new Tag("other.detect", "detect", TagType.Bit, TagKind.Input));
+        _tags.Add(new Tag("other.count", "count", TagType.Int, TagKind.Input));
 
         var inspector = new TagInspectorUI { Name = "TagInspectorUI" };
         AddChild(inspector);
@@ -56,6 +61,10 @@ public partial class TagForceSelfTest : Node
         CheckInt();
         CheckFloat();
         CheckInvalid();
+        CheckGrouping();
+        CheckSearch();
+        CheckKindFilter();
+        CheckForcedIsObvious();
 
         if (_failures.Count == 0)
         {
@@ -124,6 +133,154 @@ public partial class TagForceSelfTest : Node
     }
 
     private static void Click(Button btn) => btn.EmitSignal(BaseButton.SignalName.Pressed);
+
+    // ---------------------------------------------------------------- TI-01..04
+    //
+    // Driven through the panel's own controls, found the way the force checks
+    // above find a row -- by what is on screen -- rather than through
+    // test-only accessors into its private state.
+
+    private Button? HeaderFor(string prefix)
+    {
+        foreach (var b in FindDescendants<Button>(this))
+        {
+            if (b.TooltipText == $"Collapse or expand {prefix}") return b;
+        }
+        return null;
+    }
+
+    private Control? RowFor(string tagId)
+    {
+        foreach (var b in FindDescendants<Button>(this))
+        {
+            if (b.TooltipText.StartsWith(tagId + "\n")) return b.GetParent() as Control;
+        }
+        return null;
+    }
+
+    private Button? NameButtonFor(string tagId)
+    {
+        foreach (var b in FindDescendants<Button>(this))
+        {
+            if (b.TooltipText.StartsWith(tagId + "\n")) return b;
+        }
+        return null;
+    }
+
+    private LineEdit? SearchBox()
+    {
+        foreach (var le in FindDescendants<LineEdit>(this))
+        {
+            if (le.PlaceholderText == "Search tags…") return le;
+        }
+        return null;
+    }
+
+    private Button? ButtonWithTooltip(string tooltip)
+    {
+        foreach (var b in FindDescendants<Button>(this))
+        {
+            if (b.TooltipText == tooltip) return b;
+        }
+        return null;
+    }
+
+    /// <summary>Type into the search box the way a person does. Setting
+    /// LineEdit.Text from code does not emit text_changed, so the signal is
+    /// raised explicitly -- which still drives the panel's real handler rather
+    /// than a copy of it.</summary>
+    private void Type(LineEdit box, string text)
+    {
+        box.Text = text;
+        box.EmitSignal(LineEdit.SignalName.TextChanged, text);
+    }
+
+    private void CheckGrouping()
+    {
+        Expect(HeaderFor("test") is not null, "tags are grouped under their part's name");
+        Expect(HeaderFor("other") is not null, "and a second part gets its own group");
+
+        var header = HeaderFor("test")!;
+        var row = RowFor("test.bit");
+        if (row?.GetParent() is not Control body) { Expect(false, "test.bit: no group body"); return; }
+
+        Expect(body.Visible, "a group starts expanded");
+        Click(header);
+        Expect(!body.Visible, "clicking its header collapses it");
+        Click(header);
+        Expect(body.Visible, "and clicking again opens it");
+    }
+
+    private void CheckSearch()
+    {
+        var box = SearchBox();
+        if (box is null) { Expect(false, "the panel has no search box"); return; }
+
+        Type(box, "level");
+        Expect(RowFor("test.level")?.Visible == true, "searching keeps what matches");
+        Expect(RowFor("test.bit")?.Visible == false, "and hides what does not");
+        // A whole group with nothing matching takes its header with it, or the
+        // results read as a list of empty machines.
+        Expect(HeaderFor("other")?.Visible == false, "a group with no matches disappears entirely");
+
+        Type(box, "other.");
+        Expect(RowFor("other.detect")?.Visible == true, "searching by part prefix finds its tags");
+        Expect(RowFor("test.level")?.Visible == false, "and drops the other machine");
+
+        Type(box, "");
+        Expect(RowFor("test.bit")?.Visible == true, "clearing the box brings everything back");
+        Expect(HeaderFor("other")?.Visible == true, "headers included");
+    }
+
+    private void CheckKindFilter()
+    {
+        var kind = ButtonWithTooltip("All tags / only what the PLC writes / only what it reads");
+        if (kind is null) { Expect(false, "the panel has no kind filter"); return; }
+
+        Click(kind);      // Outputs
+        Expect(RowFor("test.bit")?.Visible == true, "the Outputs filter keeps what the PLC writes");
+        Expect(RowFor("other.detect")?.Visible == false, "and drops what it reads");
+
+        Click(kind);      // Inputs
+        Expect(RowFor("other.detect")?.Visible == true, "the Inputs filter keeps what the PLC reads");
+        Expect(RowFor("test.bit")?.Visible == false, "and drops what it writes");
+
+        Click(kind);      // back to All
+        Expect(RowFor("test.bit")?.Visible == true && RowFor("other.detect")?.Visible == true,
+               "and cycling once more shows both again");
+    }
+
+    /// <summary>
+    /// The failure mode here is not being unable to find a forced tag. It is
+    /// forgetting one exists -- a value that disagrees with the simulation on
+    /// purpose, hours after you set it.
+    /// </summary>
+    private void CheckForcedIsObvious()
+    {
+        var (_, btn) = FindRow("test.bit");
+        if (btn is null) { Expect(false, "test.bit: no row to force"); return; }
+
+        var name = NameButtonFor("test.bit");
+        Expect(name?.HasThemeColorOverride("font_color") == false,
+               "an ordinary tag's name is not marked");
+
+        Click(btn);
+        Expect(_tags.IsForced("test.bit"), "the tag is forced");
+        Expect(name?.HasThemeColorOverride("font_color") == true,
+               "a forced tag's *name* is marked, not just its button");
+
+        var release = ButtonWithTooltip("Hand every forced tag back to the simulation");
+        Expect(release is not null, "the panel offers a way to release everything at once");
+        Expect(release?.Visible == true, "shown only while something is forced");
+
+        _tags.Force("test.count", 7);
+        Click(release!);
+        Expect(!_tags.IsForced("test.bit") && !_tags.IsForced("test.count"),
+               "and releasing hands every one of them back");
+        Expect(release?.Visible == false, "after which it goes away again");
+        Expect(name?.HasThemeColorOverride("font_color") == false,
+               "and the name stops being marked");
+    }
 
     /// <summary>Find a tag's row the way a user's eye would -- by the tooltip
     /// the inspector puts on that row's name button -- rather than through a
