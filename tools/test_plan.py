@@ -372,6 +372,12 @@ def section_c() -> None:
     # heater with a real time constant whose failed element cools while its
     # command still reads 100 %.
     _self_test("C26", "the nine CP-01..CP-09 parts do what their tags claim", "newparts")
+    # The five parts added in LP-01..LP-05. Two of their claims are statements
+    # about the solver rather than about the dispatch -- a blade that stops a
+    # carton on a running belt, and a deck that carries its load round by
+    # friction -- so that test runs those on real engine ticks and hand-turns
+    # the rest.
+    _self_test("C27", "the five LP-01..LP-05 parts do what their tags claim", "lineparts")
 
 
 def section_d(enabled: bool) -> None:
@@ -564,13 +570,14 @@ def section_h() -> None:
             record(f"H{i}", f"{scene_id}: try_scene.py drives it to a real PASS", False,
                    "port 7411 still held from a previous check")
             continue
-        # 150s, not 90: the two CP-30 scenes are the longest exercises in the
-        # set. The heat-treat run has to hold a first-order plant steady twice
-        # -- once with the integral term off to measure the offset, once with
-        # it on to show the offset close -- and that is time the process
-        # constant sets, not the harness.
+        # 210s, not 90: the longest exercises in the set are long because the
+        # plant is, not because the harness is slow. The heat-treat run holds a
+        # first-order plant steady twice -- once with the integral term off to
+        # measure the offset, once with it on to show it close -- and the
+        # accumulation buffer spends most of its run waiting for released
+        # cartons to travel two metres to the counter, twice.
         code, out = run([sys.executable, str(ROOT / "tools" / "try_scene.py"),
-                         "--scene", scene_id], timeout=150)
+                         "--scene", scene_id], timeout=210)
         # try_scene.py's own PASS/FAIL line carries an em dash, which a
         # subprocess piped on Windows can mangle in transit -- exit code
         # alone is the authoritative pass/fail signal (that convention is

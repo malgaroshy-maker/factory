@@ -273,6 +273,10 @@ public partial class Main : Node
         {
             AddChild(new NewPartsSelfTest { Name = "NewPartsSelfTest", Editor = _editor!, Tags = tags });
         }
+        if (_selfTest == "lineparts")
+        {
+            AddChild(new LinePartsSelfTest { Name = "LinePartsSelfTest", Editor = _editor!, Tags = tags });
+        }
     }
 
     private void BuildView(TagTable tags)

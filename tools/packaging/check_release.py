@@ -34,7 +34,7 @@ SELF_TESTS = [
     "buttons", "templates", "scene", "io", "parity", "layout", "force", "demo",
     "startstop", "tank", "lightcurtain", "roller", "refusal", "proppanel",
     "operate", "modehint", "tryscene", "scenes", "modes", "partsettings",
-    "sidecar", "setpoint", "drag", "fault", "newparts",
+    "sidecar", "setpoint", "drag", "fault", "newparts", "lineparts",
 ]
 
 
