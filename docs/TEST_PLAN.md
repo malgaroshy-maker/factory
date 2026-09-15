@@ -81,6 +81,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C25 | A drive can **fail**: a faulted conveyor stops *while its command is still on*, refuses to restart until the fault clears, a jammed cylinder freezes mid-stroke rather than returning home, and a seized tank valve keeps filling while its command reads zero. Also that the fault tool aims at drives and nothing else, and refuses to arm in Build mode | `--self-test=fault` |
 | C26 | The nine parts added in CP-01…CP-09 do what their tags claim, asserted by **effect**: the VFD's actual speed lags its reference on the first tick and reaches it later; the diverter reports *neither* limit mid-sweep and freezes at that angle when seized; the gantry travels to a commanded position and refuses to claim a hold it does not have; the scanner's read pulse does not repeat for the same carton; the gauge's needle really moves; the heater has a measurable time constant and cools while its command still reads 100 %; a locked guard refuses the handle; and a selector still reads the same many ticks after nobody touched it | `--self-test=newparts` |
 | C27 | The five parts added in LP-01…LP-05 do what their tags claim, asserted by **effect**, and two of them against real physics rather than a hand-turned clock: a raised blade genuinely stops a carton on a belt that is still running and releases it when it drops; a turntable deck carries its load round by friction without throwing it; the measuring wheel counts at the belt's true rate, counts nothing when it is over nothing, and holds at zero while its reset leg is high; forced cooling moves a heating station's balance point by a hundred degrees and a failed fan delivers no air while its reference still reads 100 %; and a two-hand station refuses the permissive for two presses a second apart while *both* of its bits read true | `--self-test=lineparts` |
+| C28 | The loop a person is in while building a line, asserted as a loop rather than as a set of calls: a second click after a placement makes a *second part* with its own instance id, a rotation set while placing survives the placement, Escape puts the part down and a click then places nothing, two `Ctrl+D`s land in two cells instead of stacking in one, an arrow key moves the selection exactly one grid cell and one `Ctrl+Z` puts it back, and committing a **move** leaves the tool empty rather than holding a copy of what was just moved | `--self-test=buildflow` |
 
 ### C-release. The same self-tests, against a built binary
 
@@ -223,6 +224,8 @@ Honest list of what this plan does **not** prove:
 **2026-08-30 — 55 passed, 0 failed, 2 skipped, 781s** (`python tools/test_plan.py`,
 Godot 4.7.2-mono). The two skips are D1/D2, which need a display; both were run
 separately (`--self-test=click`, `--self-test=dragpath`) and **PASS**.
+
+Grown by `docs/BUILD_FLOW_PLAN.md`: C28 (the build loop).
 
 Grown by `docs/LINE_PRIMITIVES_PLAN.md`: C27 (the five line primitives, two of
 them checked against the solver rather than the dispatch) and an eighth scene

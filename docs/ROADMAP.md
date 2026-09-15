@@ -259,6 +259,13 @@ most likely to slip.
       second or two and could never be restarted by the belt underneath it.
       Found by the blade stop, but it was every accumulation the library can
       express.
+- [x] **The build loop** (BF-01…BF-06, see [BUILD_FLOW_PLAN.md](BUILD_FLOW_PLAN.md))
+      — twenty-nine parts, and putting six of them in a row was still six trips
+      to the palette. The part now stays in your hand after you place it, with
+      the palette button lit to say which one; `Ctrl+D` lands its copy clear of
+      the original and selects it, so pressing it again walks a line instead of
+      stacking parts in one cell; and the arrow keys nudge the selection a cell
+      at a time, one undo step per press.
 
 **Near:** part-to-part linking in the editor — the measuring encoder finds the
 belt under it by geometry, which is right for a wheel resting on a deck and
