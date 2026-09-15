@@ -47,6 +47,24 @@ public partial class BoxPhysics : RigidBody3D
         Mass = boxSize.X * boxSize.Y * boxSize.Z * (IsMetal ? MetalDensity : CartonDensity);
         ContinuousCd = true;
 
+        // A carton must never fall asleep (LP-01).
+        //
+        // A belt drives its load through ConstantLinearVelocity, which is a
+        // *surface* velocity: it acts through contact friction, and contact
+        // friction does nothing to a body the solver has already put to sleep.
+        // So a carton held stationary against anything — a blade stop, the
+        // queue in front of it, a seized diverter — sleeps after a second or
+        // two, and then the belt underneath it cannot wake it again. Drop the
+        // blade and the carton simply stays where it is, on a visibly running
+        // belt, forever.
+        //
+        // That is not a stop-gate problem. It is every accumulation this
+        // library can express, which is why the fix belongs to the carton: the
+        // one force that will restart it is the one that cannot reach it while
+        // it is asleep. Sleeping is only an optimisation, and the scene is
+        // capped at a few dozen items.
+        CanSleep = false;
+
         // Damping is air drag, not a stability crutch. The old 0.5 linear damp
         // fought the belt for grip and made boxes glide to a halt on the chute
         // as if through treacle; friction is what should stop a carton.
