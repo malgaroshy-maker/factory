@@ -88,34 +88,18 @@ public static class StudioEnvironment
 
     public static void AddFloor(Node parent, bool withGrid = true)
     {
-        // Darker and less saturated than before, with a faint procedural
-        // speckle so a 40m plane reads as a surface rather than a flat-shaded
-        // slab. See FF-26. The speckle is a near-white multiplier on the
-        // albedo (not a swing toward black), so it cannot accidentally wash
-        // the floor out or blow it toward the "shiny metal slab" failure mode
-        // the metal materials elsewhere in this file already had to avoid.
-        var floorMat = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.15f, 0.14f, 0.14f),
-            AlbedoTexture = new NoiseTexture2D
-            {
-                Width = 256,
-                Height = 256,
-                Seamless = true,
-                ColorRamp = new Gradient
-                {
-                    Offsets = new[] { 0.0f, 1.0f },
-                    Colors = new[] { new Color(0.82f, 0.82f, 0.82f), new Color(1.0f, 1.0f, 1.0f) },
-                },
-                Noise = new FastNoiseLite { NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex, Frequency = 0.06f },
-            },
-            Uv1Scale = new Vector3(GroundExtent, GroundExtent, 1.0f),
-            Roughness = 0.95f,
-        };
+        // Poured concrete with a control joint around every two-metre bay, a
+        // normal map so the sun catches the surface, and worn patches that are
+        // smoother than the aggregate between them (EN-01). The previous floor
+        // was a dark plane with a faint speckle on it: enough to stop it
+        // reading as flat-shaded, not enough to read as anything in
+        // particular, and with nothing on it a person could measure a conveyor
+        // against.
         parent.AddChild(new MeshInstance3D
         {
+            Name = "Floor",
             Mesh = new PlaneMesh { Size = new Vector2(GroundExtent, GroundExtent) },
-            MaterialOverride = floorMat,
+            MaterialOverride = ShopTextures.FloorMaterial(GroundExtent),
         });
 
         // Floor physics static body, sized to match the visual ground rather
@@ -132,6 +116,7 @@ public static class StudioEnvironment
         parent.AddChild(floorBody);
 
         AddFloorMarkings(parent);
+        AddWalls(parent);
 
         if (withGrid)
         {
@@ -142,6 +127,133 @@ public static class StudioEnvironment
                 GridExtentZ = (int)BuildVolumeExtent,
                 CellSize = 0.5f,
             });
+        }
+    }
+
+    /// <summary>How far the shop walls stand from the centre. Outside the
+    /// build volume with room to spare, so nothing a person can place is ever
+    /// against a wall, and close enough that they are in shot on a wide
+    /// view.</summary>
+    public const float WallDistance = 11.0f;
+
+    /// <summary>Eaves height. A real light-industrial unit is five to six
+    /// metres to the underside, and the number matters: cladding of a known
+    /// height is the second thing in the scene a conveyor can be measured
+    /// against, after the two-metre floor bays.</summary>
+    public const float WallHeight = 5.0f;
+
+    /// <summary>
+    /// The shop the line stands in (EN-02).
+    ///
+    /// There were no walls at all. A factory simulator opened on a machine in
+    /// a grey void, and the specific casualty was *scale*: with nothing around
+    /// it, a conveyor could be two metres long or twenty and nothing on screen
+    /// said which.
+    ///
+    /// Three things make this work rather than boxing the user in:
+    ///
+    /// * The panels are **one-sided and face inward**, so the camera can orbit
+    ///   outside the shop and see straight through the wall behind it. A
+    ///   double-sided wall would replace the void with a blank grey box, which
+    ///   is not an improvement.
+    /// * There is **no collision**. These are set dressing. Giving them
+    ///   colliders would stop a carton that outran the line — which the README
+    ///   advertises as normal, and which the kill plane already handles — and
+    ///   would change the behaviour of every scene already authored against a
+    ///   floor that went on for forty metres.
+    /// * The tops are open to the sky, so the sky light and the fog that
+    ///   <see cref="AddEnvironment"/> sets up reach the floor unchanged and a
+    ///   screenshot taken before this still compares.
+    /// </summary>
+    private static void AddWalls(Node parent)
+    {
+        var shop = new Node3D { Name = "ShopWalls" };
+        parent.AddChild(shop);
+
+        float span = WallDistance * 2.0f;
+
+        // Cladding above, a darker painted dado below. Every shop is painted
+        // this way for the same reason: the bottom metre takes the knocks.
+        const float dadoHeight = 1.2f;
+        float cladHeight = WallHeight - dadoHeight;
+
+        var cladMat = ShopTextures.WallMaterial(span, cladHeight, new Color(0.60f, 0.63f, 0.67f));
+        var dadoMat = ShopTextures.WallMaterial(span, dadoHeight, new Color(0.30f, 0.34f, 0.38f));
+
+        // (name, position, heading) — heading turns the quad's own +Z normal to
+        // face the centre of the shop.
+        foreach (var (name, offset, heading) in new (string, Vector3, float)[]
+                 {
+                     ("North", new Vector3(0, 0, -WallDistance), 0.0f),
+                     ("South", new Vector3(0, 0, WallDistance), 180.0f),
+                     ("West", new Vector3(-WallDistance, 0, 0), 90.0f),
+                     ("East", new Vector3(WallDistance, 0, 0), -90.0f),
+                 })
+        {
+            var wall = new Node3D { Name = $"Wall{name}", Position = offset };
+            wall.RotateY(Mathf.DegToRad(heading));
+            shop.AddChild(wall);
+
+            wall.AddChild(new MeshInstance3D
+            {
+                Name = "Cladding",
+                Mesh = new QuadMesh { Size = new Vector2(span, cladHeight) },
+                MaterialOverride = cladMat,
+                Position = new Vector3(0, dadoHeight + cladHeight / 2.0f, 0),
+                // Nothing casts a shadow from out here: these are four large
+                // surfaces well outside the build volume, and shadowing them
+                // buys nothing but shadow-map resolution taken from the
+                // machines, which is where it is wanted.
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            });
+            wall.AddChild(new MeshInstance3D
+            {
+                Name = "Dado",
+                Mesh = new QuadMesh { Size = new Vector2(span, dadoHeight) },
+                MaterialOverride = dadoMat,
+                Position = new Vector3(0, dadoHeight / 2.0f, 0.002f),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            });
+        }
+
+        AddWallStanchions(shop, span);
+    }
+
+    /// <summary>Steel columns down each wall. Cheap, and they are what stops
+    /// four flat panels reading as a painted backdrop: a column has a near
+    /// edge and a far edge, so it moves against the wall as the camera
+    /// orbits.</summary>
+    private static void AddWallStanchions(Node3D shop, float span)
+    {
+        var steelMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.34f, 0.37f, 0.41f),
+            Metallic = 0.45f,
+            Roughness = 0.55f,
+        };
+
+        const int perWall = 5;
+        for (int i = 0; i < perWall; i++)
+        {
+            float along = -span / 2.0f + (i + 0.5f) * (span / perWall);
+
+            foreach (var (name, position) in new (string, Vector3)[]
+                     {
+                         ($"North{i}", new Vector3(along, 0, -WallDistance + 0.12f)),
+                         ($"South{i}", new Vector3(along, 0, WallDistance - 0.12f)),
+                         ($"West{i}", new Vector3(-WallDistance + 0.12f, 0, along)),
+                         ($"East{i}", new Vector3(WallDistance - 0.12f, 0, along)),
+                     })
+            {
+                shop.AddChild(new MeshInstance3D
+                {
+                    Name = $"Stanchion{name}",
+                    Mesh = new BoxMesh { Size = new Vector3(0.22f, WallHeight, 0.16f) },
+                    MaterialOverride = steelMat,
+                    Position = position + new Vector3(0, WallHeight / 2.0f, 0),
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                });
+            }
         }
     }
 
