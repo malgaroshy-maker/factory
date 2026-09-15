@@ -458,6 +458,18 @@ public partial class SceneEditor : Node3D
             {
                 DuplicateSelectedPart();
             }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.A)
+            {
+                SelectEverything();
+            }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.C)
+            {
+                CopySelection();
+            }
+            else if (keyEvent.CtrlPressed && keyEvent.Keycode == Key.V)
+            {
+                PasteClipboard();
+            }
             else if (keyEvent.Keycode == Key.M && _selectedPart is not null)
             {
                 StartMoveSelectedPart();
@@ -470,6 +482,10 @@ public partial class SceneEditor : Node3D
             else if (keyEvent.Keycode == Key.R && _previewNode is null && _selectedPart is not null)
             {
                 RotateSelectedPart();
+            }
+            else if (keyEvent.Keycode == Key.N && !keyEvent.CtrlPressed)
+            {
+                TogglePartNames();
             }
             else if (keyEvent.Keycode == Key.Escape)
             {
@@ -585,6 +601,7 @@ public partial class SceneEditor : Node3D
 
         var placed = new PlacedPart(node, instanceId, partType, owns);
         _placedParts.Add(placed);
+        PartNameLabel.Apply(node, instanceId, PartNamesVisible);
         return placed;
     }
 
@@ -1800,6 +1817,7 @@ public partial class SceneEditor : Node3D
         if (_selectedPart == entry)
         {
             SelectOnly(renamed);
+            PartNameLabel.Apply(renamed.Node, newId, PartNamesVisible);
             // Rebuild the inspector so its name field and its idea of the
             // "previous" name both move on. Without this a second rename in a
             // row would restore the *original* id if it were rejected.
@@ -1960,6 +1978,125 @@ public partial class SceneEditor : Node3D
     /// more than one — a group operation with nothing on screen to say how
     /// large the group is is a group operation nobody trusts.</summary>
     public int SelectionCount => _selection.Count;
+
+    /// <summary>
+    /// Are part names floating over the scene? (NV-01)
+    ///
+    /// Off by default, because a finished line with thirty names over it is
+    /// harder to look at than one without — but on demand, because the instance
+    /// id is the tag prefix and it is the one thing you need the moment you
+    /// stop building and start writing a program against what you built.
+    /// </summary>
+    public bool PartNamesVisible { get; private set; }
+
+    public void SetPartNamesVisible(bool visible)
+    {
+        if (visible == PartNamesVisible) return;
+        PartNamesVisible = visible;
+
+        foreach (var part in _placedParts) PartNameLabel.SetVisible(part.Node, visible);
+        GD.Print(visible ? "Part names on" : "Part names off");
+    }
+
+    public void TogglePartNames() => SetPartNamesVisible(!PartNamesVisible);
+
+    /// <summary>Select every part in the scene — Ctrl+A. Cheap, expected, and
+    /// the fastest way to reach "move the whole line two cells over".</summary>
+    public void SelectEverything()
+    {
+        if (Mode != EditorMode.Edit || _placedParts.Count == 0) return;
+        SelectAll(_placedParts, add: false);
+        GD.Print($"Selected all {_selection.Count} parts");
+    }
+
+    /// <summary>
+    /// What Ctrl+C holds (NV-02).
+    ///
+    /// Stored as <see cref="PartInstanceData"/> — type, offset from the
+    /// group's own anchor, rotation and captured properties — rather than as
+    /// references to the parts themselves, so a copy survives the originals
+    /// being deleted, and so it can be pasted into a *different scene*, which
+    /// is the reason to have a clipboard at all rather than only Ctrl+D.
+    ///
+    /// Ids are deliberately not kept. A pasted part is a new part and must mint
+    /// a fresh instance id, or it would adopt the tags of whatever it was
+    /// copied from and two parts would drive one belt.
+    /// </summary>
+    private readonly List<PartInstanceData> _clipboard = new();
+
+    public int ClipboardCount => _clipboard.Count;
+
+    public void CopySelection()
+    {
+        if (_selection.Count == 0) return;
+
+        // Everything is stored relative to the first selected part, so a paste
+        // can put the group down anywhere and keep its shape.
+        Vector3 anchor = _selection[0].Node.Position;
+
+        _clipboard.Clear();
+        foreach (var entry in _selection)
+        {
+            Vector3 offset = entry.Node.Position - anchor;
+            _clipboard.Add(new PartInstanceData
+            {
+                Id = "",
+                Type = entry.PartType,
+                Position = new[] { offset.X, offset.Y, offset.Z },
+                Rotation = new[]
+                {
+                    entry.Node.Rotation.X, entry.Node.Rotation.Y, entry.Node.Rotation.Z,
+                },
+                Properties = PartProperties.Capture(entry.Node),
+            });
+        }
+
+        _pasteAnchor = anchor;
+        _pasteOffset = Vector3.Zero;
+        GD.Print($"Copied {_clipboard.Count} part(s)");
+    }
+
+    /// <summary>
+    /// Put the clipboard down, one cell clear of where it came from, as one
+    /// undo step — and select what landed, so a second Ctrl+V walks on the way
+    /// a second Ctrl+D does.
+    /// </summary>
+    public void PasteClipboard()
+    {
+        if (Mode != EditorMode.Edit || _clipboard.Count == 0) return;
+
+        float cell = Grid?.CellSize ?? 0.5f;
+        // Offset from the *last paste* rather than always from the original, so
+        // repeated pastes lay a row out instead of stacking in one cell.
+        _pasteOffset += new Vector3(cell * 2.0f, 0, 0);
+
+        var copies = new List<PartInstanceData>(_clipboard.Count);
+        foreach (var item in _clipboard)
+        {
+            copies.Add(new PartInstanceData
+            {
+                Id = "",
+                Type = item.Type,
+                Position = new[]
+                {
+                    _pasteAnchor.X + item.Position[0] + _pasteOffset.X,
+                    PartLayout.WorkPlaneY,
+                    _pasteAnchor.Z + item.Position[2] + _pasteOffset.Z,
+                },
+                Rotation = item.Rotation,
+                Properties = item.Properties,
+            });
+        }
+
+        _history.ExecuteCommand(new DuplicateGroupCommand(this, copies));
+        MarkDirty();
+        GD.Print($"Pasted {copies.Count} part(s)");
+    }
+
+    /// <summary>Where the clipboard was cut from, and how far the last paste
+    /// stepped away from it.</summary>
+    private Vector3 _pasteAnchor;
+    private Vector3 _pasteOffset;
 
     /// <summary>Instance ids of everything selected, for tests and for the
     /// status line.</summary>
@@ -2326,6 +2463,10 @@ public partial class SceneEditor : Node3D
         var (instanceId, owns) = PartTagManager.RegisterPartTags(node, p.Type, Tags, p.Id);
         var placed = new PlacedPart(node, instanceId, p.Type, owns);
         _placedParts.Add(placed);
+        // The name goes on here rather than in a pass afterwards, so a scene
+        // loaded with names already on comes up labelled instead of needing
+        // the toggle flicked to catch up (NV-01).
+        PartNameLabel.Apply(node, instanceId, PartNamesVisible);
         if (notify) NotifyTagsChanged();
         return placed;
     }

@@ -34,11 +34,15 @@ public static class KeyBindings
         new("R", "Rotate — while placing, or a selected part", "BUILDING"),
         new("Arrows", "Nudge selected part one cell", "BUILDING"),
         new("Ctrl+D", "Duplicate — again to build a line", "BUILDING"),
+        new("Ctrl+A", "Select every part", "BUILDING"),
+        new("Ctrl+C / V", "Copy / paste — across scenes too", "BUILDING"),
+        new("N", "Show part names — the tag prefixes", "BUILDING"),
         new("Del", "Delete selected part", "BUILDING"),
         new("Ctrl+Z / Y", "Undo / redo", "BUILDING"),
 
         new("C", "Orbit / fly camera", "CAMERA"),
         new("F", "Frame the selection — or the whole line", "CAMERA"),
+        new("1 / 2 / 3 / 4", "Iso · top · front · side view", "CAMERA"),
         new("Wheel", "Zoom", "CAMERA"),
         new("Middle-drag", "Pan", "CAMERA"),
 

@@ -418,6 +418,7 @@ public partial class Main : Node
         editor.Toolbar = toolbarUI;
         editor.IdleHint = idleHint;
         toolbarUI.FaultToolToggled += () => editor.SetFaultToolArmed(!editor.FaultToolArmed);
+        toolbarUI.PartNamesToggled += () => editor.TogglePartNames();
         toolbarUI.HelpRequested += () => GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
         AddChild(toolbarUI);
 
@@ -630,6 +631,12 @@ public partial class Main : Node
             {
                 GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
             }
+            // 1-4: standard viewing angles (NV-03). They change the angle and
+            // not the subject, so whatever you were looking at stays framed.
+            else if (ViewPresetFor(keyEvent.Keycode) is { } preset)
+            {
+                GetNodeOrNull<OrbitCamera>("OrbitCamera")?.ViewFrom(preset);
+            }
             else if (keyEvent.Keycode == Key.Escape)
             {
                 // Only if the overlay is actually open: Escape also cancels a
@@ -693,6 +700,17 @@ public partial class Main : Node
     /// that, and this is connected before the first scene is registered so
     /// there is exactly one path.
     /// </summary>
+    /// <summary>The number keys' viewing angles, as one table so the key list
+    /// and the handler cannot drift.</summary>
+    private static OrbitCamera.CameraPreset? ViewPresetFor(Key keycode) => keycode switch
+    {
+        Key.Key1 => OrbitCamera.CameraPreset.Iso,
+        Key.Key2 => OrbitCamera.CameraPreset.Top,
+        Key.Key3 => OrbitCamera.CameraPreset.Front,
+        Key.Key4 => OrbitCamera.CameraPreset.Side,
+        _ => null,
+    };
+
     private void FrameWholeScene()
     {
         if (DisplayServer.GetName() == "headless") return;

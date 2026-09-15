@@ -78,6 +78,34 @@ public partial class OrbitCamera : Camera3D
         _settled = false;
     }
 
+    /// <summary>
+    /// Swing to a standard viewing angle, keeping whatever is framed (NV-03).
+    ///
+    /// Laying a line out is a plan-view job and inspecting one is not, and
+    /// hunting for either by dragging is the sort of small friction nobody
+    /// reports and everybody feels. The distance and the point being looked at
+    /// are left alone — this is a change of angle, not of subject, so pressing
+    /// it never loses the thing you were looking at.
+    ///
+    /// Top is clamped to <see cref="MinPitch"/> rather than being a true
+    /// straight-down view: at exactly -90 degrees the yaw stops meaning
+    /// anything and the camera's up vector becomes ambiguous, which makes the
+    /// next drag snap to an angle nobody chose.
+    /// </summary>
+    public void ViewFrom(CameraPreset preset)
+    {
+        (_yawGoal, _pitchGoal) = preset switch
+        {
+            CameraPreset.Top => (_yawGoal, MinPitch),
+            CameraPreset.Front => (0.0f, -0.18f),
+            CameraPreset.Side => (-Mathf.Pi / 2.0f, -0.18f),
+            _ => (-0.62f, -0.55f),      // the three-quarter view everything opens on
+        };
+        _settled = false;
+    }
+
+    public enum CameraPreset { Iso, Top, Front, Side }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is InputEventMouseMotion motion)
