@@ -46,6 +46,8 @@ public partial class SceneToolbarUI : Control
     private bool? _lastDemoActive;
 
     /// <summary>Arm or disarm the fault tool (FI-01).</summary>
+    [Signal] public delegate void PartNamesToggledEventHandler();
+
     [Signal] public delegate void FaultToolToggledEventHandler();
 
     [Signal] public delegate void SaveRequestedEventHandler(string path);
@@ -70,6 +72,7 @@ public partial class SceneToolbarUI : Control
     private OptionButton _rateBox = null!;
     private Button _modeBtn = null!;
     private Button _faultBtn = null!;
+    private Button _namesBtn = null!;
 
     /// <summary>
     /// Show which mode the viewport is in. This is the only cue that a click
@@ -307,6 +310,15 @@ public partial class SceneToolbarUI : Control
         };
         _faultBtn.Pressed += () => EmitSignal(SignalName.FaultToolToggled);
         hbox.AddChild(_faultBtn);
+
+        _namesBtn = new Button
+        {
+            Text = "🏷 Names",
+            TooltipText = "Float each part's name over it — the tag prefix a PLC program uses (N)",
+            CustomMinimumSize = new Vector2(86, 32),
+        };
+        _namesBtn.Pressed += () => EmitSignal(SignalName.PartNamesToggled);
+        hbox.AddChild(_namesBtn);
 
         var wiringBtn = new Button
         {
