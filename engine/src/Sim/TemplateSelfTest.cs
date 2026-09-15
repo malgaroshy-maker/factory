@@ -124,6 +124,47 @@ public partial class TemplateSelfTest : Node
 
         Expect(Editor.SceneName != "sorting-by-height",
                $"{name} reports its own scene name (got '{Editor.SceneName}')");
+
+        CheckBrief(name);
+    }
+
+    /// <summary>
+    /// The scene and the lesson attached to it have to describe the same
+    /// machine (BR-04).
+    ///
+    /// A brief is prose, so nothing about it can be checked automatically —
+    /// except the one part that is not prose. `uses` names the tags a program
+    /// is supposed to drive and read, and a brief naming a tag the scene does
+    /// not have is a broken lesson: somebody follows it, cannot find the tag,
+    /// and concludes the app is wrong rather than the text.
+    ///
+    /// That is also exactly how this goes stale. Nobody edits a template
+    /// *intending* to invalidate its brief; they rename a part, or drop one,
+    /// and the prose keeps saying what it always said. So the check runs
+    /// against the scene the editor has actually just loaded, not against a
+    /// second list of what it ought to contain.
+    /// </summary>
+    private void CheckBrief(string name)
+    {
+        TemplateBrief? brief = TemplateManifest.BriefForScene(Editor!.SceneName);
+        if (brief is null)
+        {
+            Expect(false, $"{name}: no brief in the manifest — a shipped scene with no lesson "
+                          + "attached to it is one nobody can tell what to do with");
+            return;
+        }
+
+        Expect(brief.Task.Length > 0, $"{name}: the brief says what to build");
+        Expect(brief.Uses.Length > 0, $"{name}: the brief names the tags to use");
+        Expect(brief.Done.Length > 0, $"{name}: the brief says how you know it works");
+
+        foreach (string raw in brief.Uses.Split('·'))
+        {
+            string tagId = raw.Trim();
+            if (tagId.Length == 0) continue;
+            Expect(Tags.Contains(tagId),
+                   $"{name}: the brief names '{tagId}', which this scene does not have");
+        }
     }
 
     private void Report()
