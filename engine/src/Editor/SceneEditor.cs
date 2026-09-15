@@ -50,6 +50,17 @@ public partial class SceneEditor : Node3D
     /// after every one of them.</summary>
     [Signal] public delegate void PlacementArmedChangedEventHandler(string partType);
 
+    /// <summary>How many parts are selected, whenever that changes. The
+    /// toolbar says so: a group move with nothing on screen to say how large
+    /// the group is is a group move nobody trusts.</summary>
+    [Signal] public delegate void SelectionChangedEventHandler(int count);
+
+    /// <summary>The box-select rectangle in screen pixels, and whether one is
+    /// being drawn. Emitted rather than drawn here because <c>SceneEditor</c> is
+    /// a <c>Node3D</c> and the rectangle is 2D — see
+    /// <see cref="SelectionRectUI"/>.</summary>
+    [Signal] public delegate void SelectionRectChangedEventHandler(Rect2 rect, bool active);
+
     private string? _activePartType;
     private Node3D? _previewNode;
     private float _previewRotationY;
@@ -131,6 +142,22 @@ public partial class SceneEditor : Node3D
             return cache;
         }
     }
+
+    /// <summary>
+    /// Everything selected, in the order it was added (ES-01).
+    ///
+    /// <see cref="_selectedPart"/> is the *primary* — the last one added — and
+    /// it is what the property inspector, the rename box and the M key act on,
+    /// because all three are about one part by nature. Everything that can
+    /// sensibly happen to several parts at once (move, nudge, rotate,
+    /// duplicate, delete) walks this list instead, as one undo step.
+    ///
+    /// The two are kept in step through <see cref="SelectOnly"/>,
+    /// <see cref="ToggleSelection"/> and <see cref="DeselectPart"/> rather than
+    /// by assignment, so the primary can never end up outside the selection it
+    /// is supposed to be the head of.
+    /// </summary>
+    private readonly List<PlacedPart> _selection = new();
 
     private PlacedPart? _selectedPart;
     private readonly List<PlacedPart> _placedParts = new();
@@ -265,6 +292,23 @@ public partial class SceneEditor : Node3D
         EmitSignal(SignalName.PlacementArmedChanged, _previewNode is null ? "" : partType);
     }
 
+    /// <summary>
+    /// Take this event out of everyone else's hands (ES-05).
+    ///
+    /// The orbit camera and the editor both listen on `_UnhandledInput`, and
+    /// neither used to claim anything — so **dragging a part also orbited the
+    /// view**, because both handlers saw the same motion and both acted on it.
+    /// The part went where the cursor went and the world turned underneath it
+    /// at the same time, which reads as the drag being broken rather than as
+    /// two features fighting.
+    ///
+    /// Claimed only for the gestures the editor is actually using — a part
+    /// drag and a selection box — so a plain left-drag on empty floor still
+    /// orbits, which is the most-used gesture in the app and must not become
+    /// collateral damage.
+    /// </summary>
+    private void ClaimInput() => GetViewport()?.SetInputAsHandled();
+
     public override void _UnhandledInput(InputEvent @event)
     {
         // F1 is the one binding that works in both modes; everything else below
@@ -298,6 +342,7 @@ public partial class SceneEditor : Node3D
                 if (!runClick.Pressed) EndDialDrag();
                 else if (FaultToolArmed) FaultAt(runClick.Position);
                 else if (!BeginDialDragAt(runClick.Position)) PressControlAt(runClick.Position);
+                ClaimInput();
             }
             else if (@event is InputEventKey runKey && runKey.Pressed && !runKey.Echo
                      && runKey.Keycode == Key.Escape)
@@ -310,7 +355,11 @@ public partial class SceneEditor : Node3D
                 // until the button comes back up -- including the hover
                 // highlight, which would otherwise chase whatever the cursor
                 // wandered over mid-turn.
-                if (IsDraggingDial) DragDial(-runMotion.Relative.Y);
+                // The pot is turned by dragging, and without claiming the
+                // motion the camera orbits at the same time -- the same
+                // collision ES-05 fixes in Edit mode, on the one Run-mode
+                // gesture that is a drag rather than a click.
+                if (IsDraggingDial) { DragDial(-runMotion.Relative.Y); ClaimInput(); }
                 else UpdateHoverHighlight(runMotion.Position);
             }
             return;
@@ -345,18 +394,52 @@ public partial class SceneEditor : Node3D
                 // correction Run mode's dispatch already carries. They agree
                 // for a real click, but a drag has to grab the part under the
                 // *press*, and only the event knows where that was.
-                SelectPartAt(clickBtn.Position);
-                ArmPartDrag(clickBtn.Position);
+                if (PickPartAt(clickBtn.Position) is { } hit)
+                {
+                    if (clickBtn.ShiftPressed) ToggleSelection(hit);
+                    // Pressing on something already selected keeps the whole
+                    // group, so a group can be dragged by any member of it.
+                    // Pressing on anything else selects just that one.
+                    else if (!_selection.Contains(hit)) SelectOnly(hit);
+                    ArmPartDrag(clickBtn.Position);
+                    ClaimInput();
+                }
+                else if (clickBtn.CtrlPressed)
+                {
+                    // Ctrl, because a plain left-drag on empty floor is how the
+                    // camera orbits and that is the most-used gesture in the
+                    // app. Empty space without Ctrl still deselects on the
+                    // press, exactly as it did before (ES-02).
+                    BeginSelectionRect(clickBtn.Position, clickBtn.ShiftPressed);
+                    ClaimInput();
+                }
+                else if (!clickBtn.ShiftPressed)
+                {
+                    DeselectPart();
+                }
             }
-            else
+            else if (_selectionRectActive)
+            {
+                EndSelectionRect(clickBtn.Position);
+                ClaimInput();
+            }
+            else if (_partDrag is not null)
             {
                 EndPartDrag();
+                ClaimInput();
             }
+        }
+        else if (_previewNode is null && _selectionRectActive
+                 && @event is InputEventMouseMotion rectMotion)
+        {
+            UpdateSelectionRect(rectMotion.Position);
+            ClaimInput();
         }
         else if (_previewNode is null && _partDrag is not null
                  && @event is InputEventMouseMotion dragMotion)
         {
             UpdatePartDrag(dragMotion.Position);
+            ClaimInput();
         }
         else if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
         {
@@ -635,6 +718,16 @@ public partial class SceneEditor : Node3D
         ClearPanelPulses(part.InstanceId);
         part.Node.QueueFree();
         _placedParts.Remove(part);
+        _dragOrigins.Remove(part);
+
+        // A freed part must not stay in the selection: the gizmo drops invalid
+        // nodes on its own, but a group edit would still walk over it and touch
+        // a node that no longer exists.
+        if (_selection.Remove(part))
+        {
+            if (_selection.Count == 0) DeselectPart();
+            else RefreshSelection();
+        }
     }
 
     /// <summary>
@@ -679,7 +772,22 @@ public partial class SceneEditor : Node3D
         _partDragFrom = screenPosition;
         _partDragOrigin = selected.Node.Position;
         _partDragMoved = false;
+        CaptureDragOrigins();
     }
+
+    /// <summary>Where every selected part stood when the drag began, so the
+    /// rest of the group can follow the one under the cursor by the same
+    /// vector. Recorded on arming rather than on the first motion, for the same
+    /// reason the single-part drag records its origin there: the undo step has
+    /// to know where the drag *started*, not wherever things had already slid
+    /// to.</summary>
+    private void CaptureDragOrigins()
+    {
+        _dragOrigins.Clear();
+        foreach (var entry in _selection) _dragOrigins[entry] = entry.Node.Position;
+    }
+
+    private readonly Dictionary<PlacedPart, Vector3> _dragOrigins = new();
 
     private void UpdatePartDrag(Vector2 screenPosition)
     {
@@ -702,7 +810,21 @@ public partial class SceneEditor : Node3D
     {
         if (_partDrag is null) return;
         if (WorkPlanePoint(from, dir) is not { } point) return;
+
+        // The part under the cursor goes where the cursor is; everything else
+        // selected follows by the same vector, so a group keeps its shape. The
+        // delta is measured from the drag's origin rather than from the last
+        // frame, so a drag that leaves and re-enters the work plane does not
+        // accumulate error.
+        Vector3 delta = point - _partDragOrigin;
         _partDrag.Node.Position = point;
+
+        foreach (var (entry, origin) in _dragOrigins)
+        {
+            if (entry == _partDrag) continue;
+            if (!IsInstanceValid(entry.Node)) continue;
+            entry.Node.Position = origin + delta;
+        }
     }
 
     /// <summary>Begin a drag on whatever part the ray hits, selecting it the
@@ -717,10 +839,111 @@ public partial class SceneEditor : Node3D
         _partDragFrom = Vector2.Zero;
         _partDragOrigin = selected.Node.Position;
         _partDragMoved = true;      // no screen travel to threshold against
+        CaptureDragOrigins();
         return true;
     }
 
     public bool IsDraggingPart => _partDrag is not null;
+
+    // ---------------------------------------------------------- box select
+
+    private bool _selectionRectActive;
+    private bool _selectionRectAdds;
+    private Vector2 _selectionRectFrom;
+    private Vector2 _selectionRectTo;
+
+    /// <summary>Below this the press was a click, not a box — the same
+    /// threshold a part drag uses, for the same reason: a hand shakes.</summary>
+    private const float SelectionRectMinPixels = 6.0f;
+
+    private void BeginSelectionRect(Vector2 screenPosition, bool adds)
+    {
+        _selectionRectActive = true;
+        _selectionRectAdds = adds;
+        _selectionRectFrom = screenPosition;
+        _selectionRectTo = screenPosition;
+    }
+
+    private void UpdateSelectionRect(Vector2 screenPosition)
+    {
+        _selectionRectTo = screenPosition;
+        EmitSignal(SignalName.SelectionRectChanged, CurrentSelectionRect(), true);
+    }
+
+    private Rect2 CurrentSelectionRect()
+    {
+        var topLeft = new Vector2(Mathf.Min(_selectionRectFrom.X, _selectionRectTo.X),
+                                  Mathf.Min(_selectionRectFrom.Y, _selectionRectTo.Y));
+        var size = (_selectionRectTo - _selectionRectFrom).Abs();
+        return new Rect2(topLeft, size);
+    }
+
+    /// <summary>
+    /// Finish a box (ES-02).
+    ///
+    /// A box that never grew is a click on empty space, and that still means
+    /// "deselect" — which is why the press could not deselect on its own.
+    /// </summary>
+    private void EndSelectionRect(Vector2 screenPosition)
+    {
+        _selectionRectActive = false;
+        _selectionRectTo = screenPosition;
+        EmitSignal(SignalName.SelectionRectChanged, new Rect2(), false);
+
+        Rect2 rect = CurrentSelectionRect();
+        if (rect.Size.X < SelectionRectMinPixels && rect.Size.Y < SelectionRectMinPixels)
+        {
+            if (!_selectionRectAdds) DeselectPart();
+            return;
+        }
+
+        SelectAll(PartsWithinRect(rect), _selectionRectAdds);
+    }
+
+    /// <summary>
+    /// Every part whose on-screen extent meets the box.
+    ///
+    /// Tested against the part's projected bounding box rather than against its
+    /// origin: a three-metre belt's origin is in the middle of it, so an origin
+    /// test would refuse a box drawn neatly around one end of a line and
+    /// silently include a belt whose visible body is entirely outside the box.
+    ///
+    /// Corners behind the camera are dropped rather than projected —
+    /// <c>UnprojectPosition</c> mirrors those to the opposite side of the
+    /// screen, which would make a part behind you intersect almost any box.
+    /// </summary>
+    private List<PlacedPart> PartsWithinRect(Rect2 rect)
+    {
+        var found = new List<PlacedPart>();
+        var camera = GetViewport()?.GetCamera3D();
+        if (camera is null) return found;
+
+        foreach (var entry in _placedParts)
+        {
+            var box = PartBounds.Measure(entry.Node);
+            Transform3D toWorld = entry.Node.GlobalTransform;
+
+            bool any = false;
+            Vector2 lo = Vector2.Zero;
+            Vector2 hi = Vector2.Zero;
+
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 world = toWorld * box.GetEndpoint(corner);
+                if (camera.IsPositionBehind(world)) continue;
+
+                Vector2 screen = camera.UnprojectPosition(world);
+                if (!any) { lo = screen; hi = screen; any = true; continue; }
+                lo = new Vector2(Mathf.Min(lo.X, screen.X), Mathf.Min(lo.Y, screen.Y));
+                hi = new Vector2(Mathf.Max(hi.X, screen.X), Mathf.Max(hi.Y, screen.Y));
+            }
+
+            if (!any) continue;
+            if (rect.Intersects(new Rect2(lo, hi - lo))) found.Add(entry);
+        }
+
+        return found;
+    }
 
     /// <summary>Commit the drag as one undoable step. A drag that never moved
     /// the part pushes nothing: Ctrl+Z after a click should undo whatever you
@@ -730,14 +953,59 @@ public partial class SceneEditor : Node3D
         if (_partDrag is { } dragged && _partDragMoved
             && dragged.Node.Position != _partDragOrigin)
         {
-            _history.ExecuteCommand(new MoveCommand(dragged.Node, _partDragOrigin,
-                                                    dragged.Node.Position));
+            var moves = new List<IEditorCommand>(_dragOrigins.Count);
+            foreach (var (entry, origin) in _dragOrigins)
+            {
+                if (!IsInstanceValid(entry.Node)) continue;
+                if (entry.Node.Position == origin) continue;
+                moves.Add(new MoveCommand(entry.Node, origin, entry.Node.Position));
+            }
+            if (moves.Count == 0)
+                moves.Add(new MoveCommand(dragged.Node, _partDragOrigin, dragged.Node.Position));
+
+            _history.ExecuteCommand(CompositeCommand.Of(moves));
             MarkDirty();
-            GD.Print($"Moved {dragged.InstanceId} (Ctrl+Z to put it back)");
+            GD.Print(moves.Count == 1
+                ? $"Moved {dragged.InstanceId} (Ctrl+Z to put it back)"
+                : $"Moved {moves.Count} parts (Ctrl+Z to put them back)");
         }
 
         _partDrag = null;
         _partDragMoved = false;
+        _dragOrigins.Clear();
+    }
+
+    /// <summary>
+    /// Several edits that undo and redo as one.
+    ///
+    /// Every group action here is a list of the single-part commands that
+    /// already existed, which is deliberate: deleting five parts is five
+    /// deletes, and reusing the command that was already correct for one is
+    /// less to get wrong than a second, bulk implementation of the same thing.
+    /// Undo runs them backwards, because a group can contain commands whose
+    /// effects depend on order.
+    /// </summary>
+    private sealed class CompositeCommand : IEditorCommand
+    {
+        private readonly List<IEditorCommand> _steps;
+
+        private CompositeCommand(List<IEditorCommand> steps) => _steps = steps;
+
+        /// <summary>One command for one step, so a single-part edit still
+        /// pushes exactly what it used to and nothing has to special-case a
+        /// group of one.</summary>
+        public static IEditorCommand Of(List<IEditorCommand> steps) =>
+            steps.Count == 1 ? steps[0] : new CompositeCommand(steps);
+
+        public void Execute()
+        {
+            foreach (var step in _steps) step.Execute();
+        }
+
+        public void Undo()
+        {
+            for (int i = _steps.Count - 1; i >= 0; i--) _steps[i].Undo();
+        }
     }
 
     private sealed class MoveCommand : IEditorCommand
@@ -785,14 +1053,18 @@ public partial class SceneEditor : Node3D
     /// other path while Run is active would be exactly the "a click selects
     /// in Edit and does not in Run" contract broken from the inside.
     /// </summary>
-    public void SelectPartAtRay(Vector3 from, Vector3 dir)
+    /// <summary>
+    /// The part a ray enters first, or null.
+    ///
+    /// Split out of <see cref="SelectPartAtRay"/> so a press can ask *what is
+    /// under the cursor* without committing to selecting it — which is what
+    /// Shift+click and "drag the group you already had" both need. The previous
+    /// test ranked by camera distance to a part's origin and accepted anything
+    /// within a metre, which cannot separate parts a cell apart on the same
+    /// work plane, and made a 3 m belt clickable only near its middle.
+    /// </summary>
+    private PlacedPart? PickPartAtRay(Vector3 from, Vector3 dir)
     {
-        if (Mode != EditorMode.Edit) return;
-
-        // Pick the part the ray actually enters first. The previous test ranked
-        // by camera distance to a part's *origin* and accepted anything within a
-        // metre of it, which cannot separate parts that sit a cell apart on the
-        // same work plane — and made a 3 m belt clickable only near its middle.
         float nearest = float.MaxValue;
         PlacedPart? hitPart = null;
 
@@ -805,15 +1077,31 @@ public partial class SceneEditor : Node3D
             hitPart = entry;
         }
 
+        return hitPart;
+    }
+
+    private PlacedPart? PickPartAt(Vector2 screenPosition)
+    {
+        if (Mode != EditorMode.Edit) return null;
+        var camera = GetViewport()?.GetCamera3D();
+        if (camera is null) return null;
+        return PickPartAtRay(camera.ProjectRayOrigin(screenPosition),
+                             camera.ProjectRayNormal(screenPosition));
+    }
+
+    public void SelectPartAtRay(Vector3 from, Vector3 dir)
+    {
+        if (Mode != EditorMode.Edit) return;
+
+        PlacedPart? hitPart = PickPartAtRay(from, dir);
+
         if (hitPart is not null)
         {
             // Only when the selection actually changes: re-clicking the part
             // you already have selected is not a moment that needs teaching,
             // and a hint that reappears on every click is a nag (OP-09).
             bool isNew = _selectedPart != hitPart;
-            _selectedPart = hitPart;
-            _gizmo.AttachToNode(hitPart.Node);
-            PropertyInspector?.InspectNode(hitPart.Node, hitPart.InstanceId, hitPart.PartType);
+            SelectOnly(hitPart);
             if (isNew)
                 IdleHint?.Announce($"Selected {hitPart.InstanceId}. Drag it to move it, " +
                                    "R to rotate, Ctrl+D to duplicate, Del to delete.");
@@ -1511,7 +1799,7 @@ public partial class SceneEditor : Node3D
         _placedParts[index] = renamed;
         if (_selectedPart == entry)
         {
-            _selectedPart = renamed;
+            SelectOnly(renamed);
             // Rebuild the inspector so its name field and its idea of the
             // "previous" name both move on. Without this a second rename in a
             // row would restore the *original* id if it were rejected.
@@ -1531,9 +1819,7 @@ public partial class SceneEditor : Node3D
         int index = _placedParts.FindIndex(p => p.InstanceId == instanceId);
         if (index < 0) return false;
 
-        _selectedPart = _placedParts[index];
-        _gizmo?.AttachToNode(_selectedPart.Node);
-        PropertyInspector?.InspectNode(_selectedPart.Node, instanceId, _selectedPart.PartType);
+        SelectOnly(_placedParts[index]);
         return true;
     }
 
@@ -1614,23 +1900,99 @@ public partial class SceneEditor : Node3D
 
     private void DeselectPart()
     {
+        _selection.Clear();
         _selectedPart = null;
-        _gizmo?.AttachToNode(null);
+        _gizmo?.AttachToNodes(System.Array.Empty<Node3D>());
         PropertyInspector?.InspectNode(null, "", "");
+        EmitSignal(SignalName.SelectionChanged, 0);
     }
 
-    private void DeleteSelectedPart()
+    /// <summary>Replace the selection with one part.</summary>
+    private void SelectOnly(PlacedPart part)
     {
-        if (_selectedPart is not { } entry) return;
+        _selection.Clear();
+        _selection.Add(part);
+        RefreshSelection();
+    }
 
-        var position = entry.Node.Position;
-        var rotation = entry.Node.Rotation;
-        string partType = entry.PartType;
-        GD.Print($"Deleted part '{entry.InstanceId}'");
+    /// <summary>Add a part to the selection, or take it out if it is already
+    /// in — what Shift+click does. Removing the primary promotes whatever is
+    /// left, so the inspector never ends up describing a part that is no longer
+    /// selected.</summary>
+    private void ToggleSelection(PlacedPart part)
+    {
+        if (!_selection.Remove(part)) _selection.Add(part);
+        if (_selection.Count == 0) { DeselectPart(); return; }
+        RefreshSelection();
+    }
+
+    private void SelectAll(IEnumerable<PlacedPart> parts, bool add)
+    {
+        if (!add) _selection.Clear();
+        foreach (var part in parts)
+        {
+            if (!_selection.Contains(part)) _selection.Add(part);
+        }
+        if (_selection.Count == 0) { DeselectPart(); return; }
+        RefreshSelection();
+    }
+
+    /// <summary>Push the selection out to everything that shows it. One place,
+    /// so the gizmo, the inspector and the primary cannot disagree.</summary>
+    private void RefreshSelection()
+    {
+        _selectedPart = _selection.Count > 0 ? _selection[^1] : null;
+
+        var nodes = new List<Node3D>(_selection.Count);
+        foreach (var part in _selection) nodes.Add(part.Node);
+        _gizmo?.AttachToNodes(nodes);
+
+        // One part gets its own panel; several get the primary's, because a
+        // panel that tried to edit five parts at once would have to invent a
+        // meaning for five different belt speeds.
+        if (_selectedPart is { } primary)
+            PropertyInspector?.InspectNode(primary.Node, primary.InstanceId, primary.PartType);
+
+        EmitSignal(SignalName.SelectionChanged, _selection.Count);
+    }
+
+    /// <summary>How many parts are selected. The toolbar says so when it is
+    /// more than one — a group operation with nothing on screen to say how
+    /// large the group is is a group operation nobody trusts.</summary>
+    public int SelectionCount => _selection.Count;
+
+    /// <summary>Instance ids of everything selected, for tests and for the
+    /// status line.</summary>
+    public IReadOnlyList<string> SelectedInstanceIds()
+    {
+        var ids = new List<string>(_selection.Count);
+        foreach (var part in _selection) ids.Add(part.InstanceId);
+        return ids;
+    }
+
+    /// <summary>Delete everything selected, as one undo step. Public because
+    /// Del is not the only route to it: the toolbar offers it, and a headless
+    /// test drives it directly.</summary>
+    public void DeleteSelectedPart()
+    {
+        if (_selection.Count == 0) return;
+
+        var doomed = new List<IEditorCommand>(_selection.Count);
+        foreach (var entry in _selection)
+        {
+            doomed.Add(new PartCommand(this, entry.PartType, entry.Node.Position,
+                                       entry.Node.Rotation,
+                                       isPlacement: false, instanceId: entry.InstanceId));
+        }
+
+        GD.Print(doomed.Count == 1
+            ? $"Deleted part '{_selection[0].InstanceId}'"
+            : $"Deleted {doomed.Count} parts (Ctrl+Z to put them back)");
 
         DeselectPart();
-        _history.ExecuteCommand(new PartCommand(this, partType, position, rotation,
-                                                isPlacement: false, instanceId: entry.InstanceId));
+        // One step, so Ctrl+Z after deleting a section of line brings the whole
+        // section back rather than one belt per press.
+        _history.ExecuteCommand(CompositeCommand.Of(doomed));
         MarkDirty();
         NotifyTagsChanged();
     }
@@ -1972,8 +2334,10 @@ public partial class SceneEditor : Node3D
     /// current properties, as a single undoable placement. See FF-21.</summary>
     public void DuplicateSelectedPart()
     {
-        if (_selectedPart is not { } source) return;
+        if (_selection.Count == 0) return;
+        if (_selection.Count > 1) { DuplicateSelection(); return; }
 
+        var source = _selection[0];
         var offset = source.Node.Position + DuplicateOffset(source.Node);
         var data = new PartInstanceData
         {
@@ -1992,6 +2356,78 @@ public partial class SceneEditor : Node3D
         _history.ExecuteCommand(new DuplicateCommand(this, data));
         MarkDirty();
         GD.Print($"Duplicated '{source.InstanceId}'");
+    }
+
+    /// <summary>
+    /// Copy a whole selection, shifted by one offset (ES-03).
+    ///
+    /// One offset for the group rather than each part's own, because a group is
+    /// a *shape* — duplicating a belt, its sensor and its pusher has to keep
+    /// them lined up with each other, and giving each one its own footprint
+    /// offset would take the copy apart. The offset is the widest part's, so
+    /// the copy clears the original along the axis the group was built on.
+    /// </summary>
+    private void DuplicateSelection()
+    {
+        Vector3 offset = Vector3.Zero;
+        foreach (var entry in _selection)
+        {
+            Vector3 own = DuplicateOffset(entry.Node);
+            if (own.Length() > offset.Length()) offset = own;
+        }
+
+        var copies = new List<PartInstanceData>(_selection.Count);
+        foreach (var entry in _selection)
+        {
+            Vector3 to = entry.Node.Position + offset;
+            copies.Add(new PartInstanceData
+            {
+                Id = "",
+                Type = entry.PartType,
+                Position = new[] { to.X, to.Y, to.Z },
+                Rotation = new[]
+                {
+                    entry.Node.Rotation.X, entry.Node.Rotation.Y, entry.Node.Rotation.Z,
+                },
+                Properties = PartProperties.Capture(entry.Node),
+            });
+        }
+
+        _history.ExecuteCommand(new DuplicateGroupCommand(this, copies));
+        MarkDirty();
+        GD.Print($"Duplicated {copies.Count} parts");
+    }
+
+    private sealed class DuplicateGroupCommand : IEditorCommand
+    {
+        private readonly SceneEditor _editor;
+        private readonly List<PartInstanceData> _data;
+        private readonly List<PlacedPart> _placed = new();
+
+        public DuplicateGroupCommand(SceneEditor editor, List<PartInstanceData> data)
+        {
+            _editor = editor;
+            _data = data;
+        }
+
+        public void Execute()
+        {
+            _placed.Clear();
+            foreach (var item in _data)
+            {
+                if (_editor.SpawnFromData(item) is { } made) _placed.Add(made);
+            }
+            // The copies become the selection, so a second Ctrl+D walks the
+            // whole group on again rather than repeating from the original.
+            _editor.SelectAll(_placed, add: false);
+        }
+
+        public void Undo()
+        {
+            _editor.DeselectPart();
+            foreach (var placed in _placed) _editor.ForgetPart(placed);
+            _placed.Clear();
+        }
     }
 
     /// <summary>
@@ -2023,12 +2459,7 @@ public partial class SceneEditor : Node3D
     /// original. Same three effects a click's selection has, so the gizmo and
     /// the inspector cannot end up describing a different part from the one
     /// the next keystroke will act on.</summary>
-    private void SelectPlaced(PlacedPart part)
-    {
-        _selectedPart = part;
-        _gizmo.AttachToNode(part.Node);
-        PropertyInspector?.InspectNode(part.Node, part.InstanceId, part.PartType);
-    }
+    private void SelectPlaced(PlacedPart part) => SelectOnly(part);
 
     /// <summary>
     /// Shift the selection one grid cell (BF-03).
@@ -2045,7 +2476,7 @@ public partial class SceneEditor : Node3D
     public void NudgeSelectedPart(Vector2 screenDelta)
     {
         if (Mode != EditorMode.Edit) return;
-        if (_selectedPart is not { } entry) return;
+        if (_selection.Count == 0) return;
 
         float cell = Grid?.CellSize ?? 0.5f;
 
@@ -2062,12 +2493,17 @@ public partial class SceneEditor : Node3D
         // Screen right is world +X at heading 0, and screen "up" is away from
         // the camera, which on the work plane is -Z.
         var world = new Basis(Vector3.Up, heading) * new Vector3(screenDelta.X, 0, -screenDelta.Y);
+        Vector3 step = world * cell;
+        if (step.IsZeroApprox()) return;
 
-        Vector3 from = entry.Node.Position;
-        Vector3 to = from + world * cell;
-        if (to.IsEqualApprox(from)) return;
+        var moves = new List<IEditorCommand>(_selection.Count);
+        foreach (var entry in _selection)
+        {
+            Vector3 from = entry.Node.Position;
+            moves.Add(new MoveCommand(entry.Node, from, from + step));
+        }
 
-        _history.ExecuteCommand(new MoveCommand(entry.Node, from, to));
+        _history.ExecuteCommand(CompositeCommand.Of(moves));
         MarkDirty();
     }
 
@@ -2110,11 +2546,21 @@ public partial class SceneEditor : Node3D
     /// with a click. See FF-20.</summary>
     public void RotateSelectedPart()
     {
-        if (_selectedPart is not { } selected) return;
+        if (_selection.Count == 0) return;
 
-        var from = selected.Node.Rotation;
-        var to = new Vector3(from.X, from.Y + Mathf.Pi / 2.0f, from.Z);
-        _history.ExecuteCommand(new RotateCommand(selected.Node, from, to));
+        // Each part about its own centre, not the group's. Turning a line of
+        // belts should turn each belt, which is what somebody who selected five
+        // of them and pressed R is asking for; swinging them all about a shared
+        // pivot would scatter them off the grid.
+        var turns = new List<IEditorCommand>(_selection.Count);
+        foreach (var entry in _selection)
+        {
+            var from = entry.Node.Rotation;
+            var to = new Vector3(from.X, from.Y + Mathf.Pi / 2.0f, from.Z);
+            turns.Add(new RotateCommand(entry.Node, from, to));
+        }
+
+        _history.ExecuteCommand(CompositeCommand.Of(turns));
         MarkDirty();
     }
 
@@ -2268,6 +2714,30 @@ public partial class SceneEditor : Node3D
     {
         if (index < 0 || index >= _placedParts.Count) return;
         SelectPlaced(_placedParts[index]);
+    }
+
+    /// <summary>Add the nth placed part to the selection, or take it out —
+    /// what Shift+click does, without a camera.</summary>
+    public void ToggleSelectionByIndex(int index)
+    {
+        if (index < 0 || index >= _placedParts.Count) return;
+        ToggleSelection(_placedParts[index]);
+    }
+
+    /// <summary>Where each selected part stands, in selection order.</summary>
+    public IReadOnlyList<Vector3> SelectedPositions()
+    {
+        var at = new List<Vector3>(_selection.Count);
+        foreach (var part in _selection) at.Add(part.Node.Position);
+        return at;
+    }
+
+    /// <summary>Each selected part's heading, in selection order.</summary>
+    public IReadOnlyList<float> SelectedHeadings()
+    {
+        var headings = new List<float>(_selection.Count);
+        foreach (var part in _selection) headings.Add(part.Node.Rotation.Y);
+        return headings;
     }
 
     /// <summary>Where the selected part stands, or null when nothing is

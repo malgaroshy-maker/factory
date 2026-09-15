@@ -342,6 +342,13 @@ public partial class Main : Node
         // tool stays armed after a placement (BF-01) and is put down by four
         // things the palette never hears about.
         editor.PlacementArmedChanged += (partType) => paletteUI.SetArmed(partType);
+
+        // The box-select rectangle. Added before the rest of the UI so it sits
+        // under the panels: a rectangle drawn over the palette would obscure
+        // the very buttons somebody is dragging away from.
+        var selectionRect = new SelectionRectUI { Name = "SelectionRectUI" };
+        AddChild(selectionRect);
+        editor.SelectionRectChanged += (rect, active) => selectionRect.SetRect(rect, active);
         AddChild(paletteUI);
 
         var wiringUI = new DriverWiringUI { Name = "DriverWiringUI" };

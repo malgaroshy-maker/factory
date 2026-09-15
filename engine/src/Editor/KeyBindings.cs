@@ -28,6 +28,8 @@ public static class KeyBindings
         // keyboard route implies the obvious one does not work.
         new("Click", "Place — the part stays in hand for the next one", "BUILDING"),
         new("Drag", "Move a part — the mouse route", "BUILDING"),
+        new("Shift+Click", "Add / remove from the selection", "BUILDING"),
+        new("Ctrl+Drag", "Box-select everything inside", "BUILDING"),
         new("M", "Move selected part — the keyboard route", "BUILDING"),
         new("R", "Rotate — while placing, or a selected part", "BUILDING"),
         new("Arrows", "Nudge selected part one cell", "BUILDING"),
