@@ -57,7 +57,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C1 | Panel buttons: one-scan pulse, maintained E-stop, cap picking incl. rotated | `--self-test=buttons` |
 | C2 | Rename and I/O export | `--self-test=io` |
 | C3 | Scene save/load round-trip, every part type, undo/redo | `--self-test=scene` |
-| C4 | Every shipped start-screen template loads and registers its I/O | `--self-test=templates` |
+| C4 | Every shipped start-screen template loads and registers its I/O  Each one also carries a **brief** — what to build, which tags to use, how you know it works — and every tag a brief names must exist in the scene the editor has just loaded. A shipped template with no brief is a failure, not a skip. | `--self-test=templates` |
 | C5 | F5 driver modal's minimum size still fits the screen once auto-detect writes a long status message | `--self-test=layout` |
 | C6 | Tag Inspector's Force button works on int and float tags, not just bits, and refuses a bad value. And the panel around it: tags group under the machine that owns them and a group collapses, the search box keeps what matches and takes an empty group's header away with it, the kind filter shows one half of the I/O at a time, and a forced tag marks its **name** rather than only its button — with one button that hands every forced tag back. Driven through the panel's own controls, found by what is on screen. | `--self-test=force` |
 | C7 | `--scene=` loads a template headless (not just windowed) and `--print-tags` dumps its real I/O | `--scene=... --print-tags` |

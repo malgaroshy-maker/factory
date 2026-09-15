@@ -292,6 +292,12 @@ most likely to slip.
       a forgotten force is a value that disagrees with the simulation on
       purpose, and it explains more "why is my program not working" than
       anything else here.
+- [x] **Every template says what it is asking you to build** (BR-01…BR-04, see
+      [TASK_BRIEFS_PLAN.md](TASK_BRIEFS_PLAN.md)) — eight scenes, each chosen
+      to teach something specific, and the app never said what: the lesson
+      lived in `tools/try_scene.py`, a Python test harness. `T` now opens the
+      task, the tags to use and how you know it works, and every tag a brief
+      names is checked against the scene it belongs to.
 
 **Near:** part-to-part linking in the editor — the measuring encoder finds the
 belt under it by geometry, which is right for a wheel resting on a deck and
