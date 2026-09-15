@@ -28,7 +28,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 │                            │          │                          │
 │  3D render + Jolt physics  │  tag bus │  asyncua      (OPC UA)   │
 │  scene editor / voxel grid │ ◄──────► │  pythonnet    (PLCSIM)   │
-│  24-part library           │    WS    │  python-snap7 (S7)       │
+│  29-part library           │    WS    │  python-snap7 (S7)       │
 │  tag registry (authority)  │   JSON   │  built-in     (Modbus)   │
 └────────────────────────────┘          └──────────────────────────┘
 ```
@@ -43,7 +43,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 * ⏯️ **Run / Pause / Reset & time scale (0.25×–4×)**: freeze the line mid-cycle to read every sensor and actuator at that instant, or slow a fast sequence down to watch an interlock. The PLC stays connected while paused.
 * 🎮 **Godot 4.7 C# 3D Engine & Jolt Physics**: 60 FPS 3D rendering with 4× MSAA, soft shadows, SSAO, glow on the parts that are meant to be lights, and continuous collision detection. Conveyor drums turn at true surface speed, cylinders cushion into their end stops, stack-light lamps cast real light onto what is beside them, and the camera frames the scene you just opened instead of leaving you looking at a control panel.
 * 📦 **Real rigid-body cartons**: mass from carton density, friction tuned per material pair (rubber belt, cardboard, steel chute), boxes that accumulate behind a blocked diverter instead of passing through it.
-* 🏠 **Start screen with seven templates**: open on a chooser rather than cold into one demo. Each template teaches a different thing — momentary buttons and a latching E-stop, analog level control with a nonlinear process, sorting on a measurement instead of two bits, a checkweigher with metal detection, a pick-and-place gantry you sequence on feedback rather than timers, and a thermal loop where proportional control alone visibly parks short of setpoint — plus recent scenes and the full key list. **`F12`** brings that key list back once a scene is open.
+* 🏠 **Start screen with eight templates**: open on a chooser rather than cold into one demo. Each template teaches a different thing — momentary buttons and a latching E-stop, analog level control with a nonlinear process, sorting on a measurement instead of two bits, a checkweigher with metal detection, a pick-and-place gantry you sequence on feedback rather than timers, and a thermal loop where proportional control alone visibly parks short of setpoint, and a buffer where product accumulates behind a blade stop and is released by belt travel rather than by a timer — plus recent scenes and the full key list. **`F12`** brings that key list back once a scene is open.
 * 🕹️ **Operate any component by hand (`F1`)**: switch the toolbar from **`✎ Build`** to **`👆 Operate`** and click a conveyor, a pusher, a stack light lamp or a tank valve directly — not just the operator panel's Start/Stop/Reset/E-stop. **Every shipped scene answers to its panel**: Start runs the line, Stop stops it, the mushroom latches a trip that only Reset clears, and the panel's setpoint pot is the one number that scene is about — the level to hold, the height that counts as tall, the weight that counts as a reject, the batch to make. Drag the knob mid-run and the line changes what it does, with no code edited. A banner names what's clickable, hovering outlines it, and every part's own property panel carries a live toggle or slider for its I/O too, so you can see what a part does before writing a line of PLC code against it.
 * 🛠️ **3D Scene Editor Suite**: a searchable palette that tells you what each part does and which tags it will register, then click a placed part and **drag it** to a new cell — one gesture, one **`Ctrl+Z`** — with grid snapping, rotation (**`R`**), duplicate (**`Ctrl+D`**), a selection wireframe gizmo, and undo/redo throughout. The property panel names what the selected part responds to, so none of it has to be guessed.
 * 🔌 **Visual I/O Driver Wiring Panel (`F4`)**: Centered split-screen modal — click a PLC address (`%I0.0`, `%Q0.0`), then click the component tag to map it to. **Auto-map** suggests an address for every tag in the loaded scene, and **Export** writes `io_mapping.json` and `io_tags.csv` for the sidecar and for whoever is building the PLC side.
@@ -54,7 +54,7 @@ No accounts, no per-seat subscription fees, and 100% open for custom part & driv
 
 ---
 
-## 📦 24-Part Industrial Component Library
+## 📦 29-Part Industrial Component Library
 
 The tag ids below are the built-in scene's names. **A part's Name is its tag
 prefix** — rename a pusher to `reject` in the property panel and its tags become
@@ -87,6 +87,11 @@ rule, and it is what makes a scene you build addressable from a PLC.
 | **Alarm Beacon** | Rotating beacon that sweeps a real light across the machines near it, plus a horn with a visible diaphragm. What you notice from the other end of the building | `beacon.beacon`, `beacon.horn` (Bit, Output) |
 | **Selector Switch** | The third kind of operator input: not a pulse and not a latch, but a knob that **stays where it is put**. The controller reads a position, not an edge — which is what an Auto/Manual program is built around | `selector.position` (Int, Input) |
 | **Guard Door** | An interlocked guard whose switch is closed while the door is shut (normally closed, like the mushroom). The solenoid lock makes it a two-way contract: the controller decides whether the door may be opened at all, and until it releases the lock the handle does nothing | `guard.lock` (Bit, Output) · `guard.closed`, `guard.locked` (Bit, Input) |
+| **Blade Stop** | A blade that rises through the lane to hold cartons on a belt that *keeps running*. The only way to build an accumulation buffer here: the queue behind it builds because the solver says so, and releasing one lets the rest close up on their own. A seizure is the nasty one — frozen halfway, it stops short cartons and lets tall ones ride over | `stop.raise` (Bit, Output) · `stop.up`, `stop.down`, `stop.fault` (Bit, Input) |
+| **Transfer Turntable** | A rotary index that turns a carton into a new lane. The load is held on by **friction**, not by being parented to the deck, so a deck told to index too fast genuinely throws it — which is the real constraint on how fast a transfer can run | `xfer.index` (Bit, Output) · `xfer.athome`, `xfer.atindex`, `xfer.fault` (Bit, Input) |
+| **Measuring Encoder** | A wheel riding the belt it is placed over, counting pulses per metre of travel. Product tracked by *distance* instead of by a timer, so the logic survives anybody turning the drive up. Place it away from a conveyor and it counts nothing and does not turn — the honest failure, and a visible one | `enc.reset` (Bit, Output) · `enc.count` (Int), `enc.rate` (Float, Input) |
+| **Cooling Fan** | A ducted fan that adds to the loss term of any heating station within reach, giving the thermal plant a second actuator pulling the other way. One plant, two actuators — which is split-range control, and the first place a deadband exists for a reason | `fan.run`, `fan.speed` (Float, Output) · `fan.airflow` (Float), `fan.fault` (Bit, Input) |
+| **Two-Hand Control** | Two palm buttons whose permissive is **not** `left AND right`: the relay also requires that the two presses arrived within half a second of each other, so taping one button down defeats nothing. A program that ANDs the two bits itself passes its own test and fails the real device | `hands.left`, `hands.right`, `hands.valid` (Bit, Input) |
 
 ---
 
@@ -205,6 +210,7 @@ See [Getting Started](docs/GETTING_STARTED.md#-connecting-a-scene-you-built-your
 | 📋 **[PLAN.md](docs/PLAN.md)** | Architectural specifications, design choices, and status |
 | 🧹 **[LOOSE_ENDS_PLAN.md](docs/LOOSE_ENDS_PLAN.md)** | Claims without code, controls without effect — what a full sweep of the app found, and the plan to close it |
 | 🧩 **[COMPONENTS_AND_POLISH_PLAN.md](docs/COMPONENTS_AND_POLISH_PLAN.md)** | The nine parts that took the library from fifteen to twenty-four, why each one earns its place, and the presentation pass alongside them |
+| 🧱 **[LINE_PRIMITIVES_PLAN.md](docs/LINE_PRIMITIVES_PLAN.md)** | The five parts after those, chosen by what a student *could not build*: accumulation, a rotary index, distance instead of time, cooling, and a permissive a tie-down cannot defeat |
 | 🗺️ **[ROADMAP.md](docs/ROADMAP.md)** | Milestone completion tracking |
 | 📑 **[PRD.md](docs/PRD.md)** | Problem statement, target audience, and success criteria |
 | ⚡ **[tag-bus.md](docs/tag-bus.md)** | WebSocket tag bus protocol specification |

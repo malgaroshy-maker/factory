@@ -242,9 +242,28 @@ most likely to slip.
       camera that frames the scene you just opened instead of leaving you
       looking at a control panel.
 
-**Near:** part-to-part linking, which an incremental encoder
-needs to know which conveyor it is mounted on · more parts driven by what
-contributors ask for · headless grading mode for coursework ·
+- [x] **Five more parts, from twenty-four to twenty-nine** (LP-01…LP-05, see
+      [LINE_PRIMITIVES_PLAN.md](LINE_PRIMITIVES_PLAN.md)) — chosen by asking
+      what a student *could not build* rather than by counting what was already
+      there: a **blade stop**, so product can accumulate on a belt that keeps
+      running; a **turntable**, so a line can turn a corner; a **measuring
+      encoder**, so product can be tracked by distance instead of by a timer; a
+      **cooling fan**, so the thermal plant has a second actuator and
+      split-range control becomes teachable; and a **two-hand control**, whose
+      permissive a tie-down cannot defeat. Plus an eighth template,
+      `accumulation-buffer`, and `--self-test=lineparts`.
+- [x] **A carton that stops on a running belt can start again.** A belt drives
+      its load through a *surface* velocity, which acts through contact
+      friction — and contact friction does nothing to a body the solver has put
+      to sleep. Anything held stationary on a belt therefore fell asleep after a
+      second or two and could never be restarted by the belt underneath it.
+      Found by the blade stop, but it was every accumulation the library can
+      express.
+
+**Near:** part-to-part linking in the editor — the measuring encoder finds the
+belt under it by geometry, which is right for a wheel resting on a deck and
+would not be right for, say, a drive and a remote readout · more parts driven by
+what contributors ask for · headless grading mode for coursework ·
 MQTT **Sparkplug B** (the industrial MQTT standard, if plain MQTT proves useful) ·
 an example Node-RED flow and dashboard shipped with the docs
 

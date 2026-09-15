@@ -113,6 +113,13 @@ cd sidecar && python -m factoryforge_sidecar connect --driver opcua-client \
 # constant, a locked guard refuses the handle, and a selector still reads the
 # same many ticks after nobody touched it. Asserts effects, not existence.
 "<GODOT>" --headless --path engine/ -- --self-test=newparts --duration=60
+# Headless: the five parts added in LP-01..LP-05, two of them against real
+# physics rather than a hand-turned clock -- a raised blade genuinely stops a
+# carton on a belt that is still running, and a turntable deck carries its load
+# round by friction. Plus a measuring wheel that counts at the belt's true rate
+# and counts nothing over nothing, a fan that moves a heating station's balance
+# point, and a two-hand station that refuses two presses a second apart.
+"<GODOT>" --headless --path engine/ -- --self-test=lineparts --duration=60
 
 # Open a specific scene instead of the start screen (scripting, screenshots)
 "<GODOT>" --path engine/ -- --scene=res://templates/tank_level_control.json

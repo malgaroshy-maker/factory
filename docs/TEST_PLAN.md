@@ -80,6 +80,7 @@ themselves worked fine. So end-to-end coverage is not optional here.
 | C24 | A placed part can be dragged to a new cell: it lands on the same grid placement snaps to and stays on the work plane, one whole drag is one `Ctrl+Z`, a press that never travels pushes nothing onto the history, and Run mode refuses to drag at all | `--self-test=drag` |
 | C25 | A drive can **fail**: a faulted conveyor stops *while its command is still on*, refuses to restart until the fault clears, a jammed cylinder freezes mid-stroke rather than returning home, and a seized tank valve keeps filling while its command reads zero. Also that the fault tool aims at drives and nothing else, and refuses to arm in Build mode | `--self-test=fault` |
 | C26 | The nine parts added in CP-01…CP-09 do what their tags claim, asserted by **effect**: the VFD's actual speed lags its reference on the first tick and reaches it later; the diverter reports *neither* limit mid-sweep and freezes at that angle when seized; the gantry travels to a commanded position and refuses to claim a hold it does not have; the scanner's read pulse does not repeat for the same carton; the gauge's needle really moves; the heater has a measurable time constant and cools while its command still reads 100 %; a locked guard refuses the handle; and a selector still reads the same many ticks after nobody touched it | `--self-test=newparts` |
+| C27 | The five parts added in LP-01…LP-05 do what their tags claim, asserted by **effect**, and two of them against real physics rather than a hand-turned clock: a raised blade genuinely stops a carton on a belt that is still running and releases it when it drops; a turntable deck carries its load round by friction without throwing it; the measuring wheel counts at the belt's true rate, counts nothing when it is over nothing, and holds at zero while its reset leg is high; forced cooling moves a heating station's balance point by a hundred degrees and a failed fan delivers no air while its reference still reads 100 %; and a two-hand station refuses the permissive for two presses a second apart while *both* of its bits read true | `--self-test=lineparts` |
 
 ### C-release. The same self-tests, against a built binary
 
@@ -223,6 +224,10 @@ Honest list of what this plan does **not** prove:
 Godot 4.7.2-mono). The two skips are D1/D2, which need a display; both were run
 separately (`--self-test=click`, `--self-test=dragpath`) and **PASS**.
 
+Grown by `docs/LINE_PRIMITIVES_PLAN.md`: C27 (the five line primitives, two of
+them checked against the solver rather than the dispatch) and an eighth scene
+exercise in H.
+
 Grown by `docs/COMPONENTS_AND_POLISH_PLAN.md`: C26 (the nine new parts, asserted
 by effect) and H6/H7 (the two new scene exercises). The seven scene exercises:
 
@@ -282,7 +287,7 @@ Grown from the 2026-08-12 snapshot (20 passed) by Phases 2, 4, 5 and 6 of
 the per-scene demo profiles, Run-mode click and hover, "Try this scene", and
 the scene-tag-set fixture check), a pairwise Edit/Run self-test (C20), a
 second robustness check for non-bit forcing (G7), and a whole new section —
-H1…H7, all seven shipped scenes driven end to end through `try_scene.py`.
+H1…H8, all eight shipped scenes driven end to end through `try_scene.py`.
 
 Notable: **F5 sorts 5 tall / 5 short on the rigid-body scene**, matching the
 deterministic contract. That is not guaranteed and is not asserted — Jolt makes

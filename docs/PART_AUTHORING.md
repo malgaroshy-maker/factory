@@ -8,7 +8,7 @@ This guide explains how to author custom 3D factory components for **FactoryForg
 
 Every factory component in FactoryForge is a Godot C# node located in `engine/src/Parts/`. Components read output tags written by the PLC (motors, solenoids, lamps) and update input tags read by the PLC (optical sensors, limit switches, encoders).
 
-### Three rules that are not obvious
+### Four rules that are not obvious
 
 **1. A part's origin sits on the work plane.** `PartLayout.WorkPlaneY` (y = 0.5)
 is the conveyor height, and it is where the scene editor drops every part. Your
@@ -23,7 +23,16 @@ appends the suffix, so a part registered as `"conveyor"` resolves
 `conveyor.rotate.rotate`, which matches nothing — the part is placed, draws
 correctly, and silently does nothing.
 
-**3. Anything read in `_Ready` must also be saved.** Parts build their geometry
+**3. A belt cannot wake a sleeping carton.** If your part *holds* product —
+a stop, a gate, anything a carton can come to rest against — know that a belt
+drives its load through `ConstantLinearVelocity`, which is a **surface**
+velocity acting through contact friction, and contact friction does nothing to a
+body the solver has put to sleep. `BoxPhysics` therefore sets
+`CanSleep = false`; without it, anything held stationary on a belt slept after a
+second or two and the belt underneath it could never restart it. Do not undo
+that as an optimisation.
+
+**4. Anything read in `_Ready` must also be saved.** Parts build their geometry
 from their exported values, so a setting that is not in `PartProperties` is lost
 the moment the scene is saved and reloaded. See Step 5.
 
@@ -44,8 +53,9 @@ the moment the scene is saved and reloaded. See Step 5.
 > | `PartPropertyInspectorUI.InspectNode` | its sliders | tuned only by editing JSON |
 > | `WholeBodyOperableTag` (optional) | Operate-mode click | the part cannot be tried by hand |
 >
-> `--self-test=scene` catches the save/load half. `--self-test=newparts` is the
-> pattern for the rest: assert the *effect*, not that the tag exists.
+> `--self-test=scene` catches the save/load half. `--self-test=newparts` and
+> `--self-test=lineparts` are the pattern for the rest: assert the *effect*, not
+> that the tag exists.
 
 ---
 
