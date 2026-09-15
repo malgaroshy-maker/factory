@@ -42,6 +42,9 @@ public static class PartCatalog
         new("WeighingConveyor", "Weigh Conveyor", "TRANSPORT",
             "Belt section with a load cell under it, reading the carton's mass in grams.",
             "rotate · weight · fault"),
+        new("TurnTable", "Transfer Turntable", "TRANSPORT",
+            "Rotary index that turns a carton to a new lane. The load is held on by friction, so a deck told to index too fast throws it.",
+            "index · athome · atindex · fault"),
 
         new("PhotoelectricSensor", "Photoelectric Sensor", "SENSORS",
             "Diffuse beam that reflects off the item itself. Cheapest, shortest range.",
@@ -58,6 +61,9 @@ public static class PartCatalog
         new("BarcodeScanner", "Barcode Scanner", "SENSORS",
             "Overhead reader. Reports what the item *is* as a code, with a one-scan read pulse a program has to latch.",
             "enable · code · read · present"),
+        new("RotaryEncoder", "Measuring Encoder", "SENSORS",
+            "Wheel riding the belt it is placed over, counting pulses per metre travelled — so product can be tracked by distance instead of by a timer.",
+            "count · rate · reset"),
 
         new("PusherMechanism", "Pneumatic Pusher", "ACTUATORS",
             "Cylinder that strokes across the lane. A jam freezes it mid-stroke.",
@@ -68,6 +74,9 @@ public static class PartCatalog
         new("PickPlaceArm", "Pick & Place Gantry", "ACTUATORS",
             "Analog travel axis, vertical stroke and a vacuum cup that really picks a carton up. Three motions to sequence.",
             "target · lower · grip · position · inposition · lowered · raised · holding · fault"),
+        new("StopGate", "Blade Stop", "ACTUATORS",
+            "Blade that rises through the lane to hold cartons on a *running* belt. The only way to build an accumulation buffer here.",
+            "raise · up · down · fault"),
         new("Chute", "Ramp (Chute)", "ACTUATORS",
             "30° gravity chute with guide rails. Incline and friction are a matched pair.",
             "— (static)"),
@@ -84,6 +93,9 @@ public static class PartCatalog
         new("HeatingStation", "Heating Station", "PROCESS",
             "First-order thermal plant with ambient loss. Asymmetric, so pure P control leaves a standing offset you can measure.",
             "heater · temperature · attemp · fault"),
+        new("CoolingFan", "Cooling Fan", "PROCESS",
+            "Ducted fan that pulls heat out of any heating station in reach — the second actuator a split-range loop needs.",
+            "run · speed · airflow · fault"),
 
         new("ButtonPanel", "Control Panel", "OPERATOR",
             "Momentary Start/Stop/Reset, a maintained normally-closed E-stop, and a setpoint pot you drag.",
@@ -103,9 +115,12 @@ public static class PartCatalog
         new("SelectorSwitch", "Selector Switch", "OPERATOR",
             "A maintained rotary selector — Manual / Off / Auto. Stays where it is put, so the controller reads a position rather than an edge.",
             "position"),
-        new("SafetyGate", "Guard Door", "OPERATOR",
+        new("SafetyGate", "Guard Door", "SAFETY",
             "An interlocked guard. Its switch is closed while the door is shut, and a solenoid lock lets the controller decide whether it may be opened at all.",
             "closed · lock · locked"),
+        new("TwoHandControl", "Two-Hand Control", "SAFETY",
+            "Two palm buttons that only give a permissive when both are held *and* arrived together — so taping one down defeats nothing.",
+            "left · right · valid"),
     };
 
     /// <summary>Every part type, in palette order. The save/load self-test

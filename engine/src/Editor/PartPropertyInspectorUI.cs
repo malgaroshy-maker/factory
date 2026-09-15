@@ -318,6 +318,46 @@ public partial class PartPropertyInspectorUI : Control
             AddSliderProperty("Head Height (m)", scanner.HeightAboveBelt, 0.15f, 0.9f, 0.02f,
                               val => { scanner.HeightAboveBelt = val; scanner.Rebuild(); });
         }
+        // Everything below offers only settings the part re-reads every tick.
+        // Blade width, deck radius and wheel radius are all build-time
+        // geometry, so a slider for them would move and change nothing -- the
+        // exact failure LE-01 shipped. They stay in the scene file and out of
+        // this panel until the parts grow a Rebuild().
+        else if (node is StopGate stop)
+        {
+            AddSliderProperty("Stroke (m)", stop.Stroke, 0.08f, 0.45f, 0.01f,
+                              val => stop.Stroke = val);
+            AddSliderProperty("Lift Speed (m/s)", stop.LiftSpeed, 0.2f, 3.0f, 0.1f,
+                              val => stop.LiftSpeed = val);
+        }
+        else if (node is TurnTable table)
+        {
+            AddSliderProperty("Index Angle (deg)", table.IndexAngle, 15.0f, 180.0f, 5.0f,
+                              val => table.IndexAngle = val);
+            AddSliderProperty("Index Speed (deg/s)", table.IndexSpeed, 10.0f, 300.0f, 5.0f,
+                              val => table.IndexSpeed = val);
+        }
+        else if (node is RotaryEncoder encoder)
+        {
+            AddSliderProperty("Pulses / metre", encoder.PulsesPerMetre, 10.0f, 1000.0f, 10.0f,
+                              val => encoder.PulsesPerMetre = val);
+        }
+        else if (node is CoolingFan fan)
+        {
+            AddSliderProperty("Reach (m)", fan.Reach, 0.3f, 4.0f, 0.1f,
+                              val => fan.Reach = val);
+            AddSliderProperty("Cooling (/s/degC)", fan.CoolingRate, 0.05f, 3.0f, 0.05f,
+                              val => fan.CoolingRate = val);
+            AddSliderProperty("Spin-up (%/s)", fan.SpinUpRate, 5.0f, 200.0f, 5.0f,
+                              val => fan.SpinUpRate = val);
+        }
+        else if (node is TwoHandControl hands)
+        {
+            AddSliderProperty("Sync Window (s)", hands.SyncWindow, 0.05f, 2.0f, 0.05f,
+                              val => hands.SyncWindow = val);
+            AddSliderProperty("Hold Time (s)", hands.HoldTime, 0.5f, 6.0f, 0.1f,
+                              val => hands.HoldTime = val);
+        }
 
         AddTagControlsSection(instanceId);
         ResetScroll();

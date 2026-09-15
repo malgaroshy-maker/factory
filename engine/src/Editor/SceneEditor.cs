@@ -97,6 +97,11 @@ public partial class SceneEditor : Node3D
             ["HeatingStation"] = new[] { "heater", "temperature", "attemp", "fault" },
             ["SelectorSwitch"] = new[] { "position" },
             ["SafetyGate"] = new[] { "closed", "lock", "locked" },
+            ["StopGate"] = new[] { "raise", "up", "down", "fault" },
+            ["TurnTable"] = new[] { "index", "athome", "atindex", "fault" },
+            ["RotaryEncoder"] = new[] { "count", "rate", "reset" },
+            ["CoolingFan"] = new[] { "run", "speed", "airflow", "fault" },
+            ["TwoHandControl"] = new[] { "left", "right", "valid" },
         };
 
         /// <summary>Which tag suffixes a part type owns — the one place that
@@ -507,6 +512,54 @@ public partial class SceneEditor : Node3D
             }
             if (part.Node is Emitter emitter) emitter.ResetCount();
 
+            // Everything below is state a *run* accumulates rather than a
+            // machine somebody built, so a reset has to clear it (LP-12).
+            // Until this existed, Ctrl+R on the heat-treat scene left the plate
+            // at whatever temperature the last run reached, and the next run
+            // started from a place no experiment could reproduce -- the plant's
+            // whole point is its time constant, measured from ambient.
+            if (part.Node is HeatingStation station)
+            {
+                station.ResetTemperature();
+                SetIfPresent(part.InstanceId, "temperature", (double)station.Temperature);
+                SetIfPresent(part.InstanceId, "attemp", station.AtTemperature);
+            }
+            if (part.Node is CoolingFan coolingFan)
+            {
+                coolingFan.ResetFan();
+                SetIfPresent(part.InstanceId, "airflow", 0.0);
+            }
+            if (part.Node is SafetyGate resetGate)
+            {
+                resetGate.ResetGate();
+                SetIfPresent(part.InstanceId, "closed", true);
+            }
+            if (part.Node is StopGate resetStop)
+            {
+                resetStop.ResetGate();
+                SetIfPresent(part.InstanceId, "up", false);
+                SetIfPresent(part.InstanceId, "down", true);
+            }
+            if (part.Node is TurnTable resetTable)
+            {
+                resetTable.ResetDeck();
+                SetIfPresent(part.InstanceId, "athome", true);
+                SetIfPresent(part.InstanceId, "atindex", false);
+            }
+            if (part.Node is RotaryEncoder resetEncoder)
+            {
+                resetEncoder.ResetCount();
+                SetIfPresent(part.InstanceId, "count", 0);
+                SetIfPresent(part.InstanceId, "rate", 0.0);
+            }
+            if (part.Node is TwoHandControl resetHands)
+            {
+                resetHands.ResetStation();
+                SetIfPresent(part.InstanceId, "left", false);
+                SetIfPresent(part.InstanceId, "right", false);
+                SetIfPresent(part.InstanceId, "valid", false);
+            }
+
             if (part.Node is not Remover remover) continue;
 
             remover.ResetCount();
@@ -518,6 +571,16 @@ public partial class SceneEditor : Node3D
 
         _emitEdges.Clear();
         _emitAlternate = false;
+    }
+
+    /// <summary>Write a part's tag if the scene actually has it. A part can be
+    /// a *view* of tags the simulation owns, in which case it never registered
+    /// its own and there is nothing here to write.</summary>
+    private void SetIfPresent(string instanceId, string suffix, Variant value)
+    {
+        if (Tags is null) return;
+        string id = $"{instanceId}.{suffix}";
+        if (Tags.Contains(id)) Tags.Set(id, value);
     }
 
     /// <summary>Detach a part from the scene, taking its tags with it if it owns
@@ -745,6 +808,12 @@ public partial class SceneEditor : Node3D
         // hint find them, and handled by name in OperatePart.
         ["SelectorSwitch"] = "position",
         ["SafetyGate"] = "closed",
+        ["StopGate"] = "raise",
+        ["TurnTable"] = "index",
+        // The fan takes two tags to start, so a click cannot simply flip this
+        // one -- see OperatePart. It is named here so the hover outline and the
+        // "what is clickable" hint find the part at all.
+        ["CoolingFan"] = "run",
     };
 
     /// <summary>Whole-body parts whose one operable tag is analog, so a click
@@ -1018,6 +1087,16 @@ public partial class SceneEditor : Node3D
                     region = valve;
                     break;
 
+                // Two palm buttons far enough apart that one hand cannot span
+                // them. Hit-testing the bounding box would put both of them
+                // under every click, which is precisely the defeat the part
+                // exists to refuse.
+                case TwoHandControl twoHand:
+                    if (twoHand.HitTest(from, dir) is not { } palm) continue;
+                    distance = MeasureDistance(entry.Node, from, dir);
+                    region = palm;
+                    break;
+
                 default:
                     if (!WholeBodyOperableTag.ContainsKey(entry.PartType)) continue;
                     if (PartBounds.RayDistance(entry.Node, from, dir) is not { } boxDistance) continue;
@@ -1194,7 +1273,12 @@ public partial class SceneEditor : Node3D
 
         foreach (var entry in _placedParts)
         {
-            if (entry.Node is not (ButtonPanel or StackLight or LevelTank)
+            // The precise parts first, then everything with a whole-body tag.
+            // A part reachable only through its own HitTest and missing from
+            // this list is a part the Run-mode banner never mentions, which is
+            // the surest way to leave a control undiscovered (the rule
+            // docs/PART_AUTHORING.md states in Step 8).
+            if (entry.Node is not (ButtonPanel or StackLight or LevelTank or TwoHandControl)
                 && !WholeBodyOperableTag.ContainsKey(entry.PartType))
                 continue;
 
@@ -1217,6 +1301,10 @@ public partial class SceneEditor : Node3D
                 "HeatingStation" => "heater",
                 "SelectorSwitch" => "selector",
                 "SafetyGate" => "guard door",
+                "StopGate" => "blade stop",
+                "TurnTable" => "turntable",
+                "CoolingFan" => "fan",
+                "TwoHandControl" => "two-hand station",
                 _ => entry.PartType,
             };
             if (!kinds.Contains(kind)) kinds.Add(kind);
@@ -1258,6 +1346,27 @@ public partial class SceneEditor : Node3D
 
             case "SafetyGate":
                 if (entry.Node is SafetyGate gate) gate.Toggle();
+                break;
+
+            case "TwoHandControl" when region is not null:
+                // Drives the part, not the tag: the station decides whether the
+                // two hands arrived together, and publishes the permissive on
+                // the next tick. Writing `.valid` from here would make a click
+                // and the relay two authorities for one bit.
+                if (entry.Node is TwoHandControl twoHand) twoHand.Press(region);
+                break;
+
+            case "CoolingFan":
+                // A fan needs an enable *and* a reference, so a click has to
+                // move both or the part looks broken: the speed would go to
+                // 100 % and nothing would turn. Driven off `run`, since that is
+                // the one that decides.
+                if (!ids.TryGetValue("run", out var fanRunId)) break;
+                if (!Tags.TryGetVisible(fanRunId, out var fanRunVal)) break;
+                bool fanOn = !(bool)fanRunVal;
+                Tags.Force(fanRunId, fanOn);
+                if (ids.TryGetValue("speed", out var fanSpeedId))
+                    Tags.Force(fanSpeedId, fanOn ? 100.0 : 0.0);
                 break;
 
             default:
@@ -2358,6 +2467,75 @@ public partial class SceneEditor : Node3D
                             Tags.TrySet(weightId, (int)weighBelt.MeasuredWeight);
                     }
                     break;
+
+                case "StopGate":
+                    if (node is StopGate stop && ids.TryGetValue("raise", out var raiseId)
+                        && Tags.TryGetVisible(raiseId, out var raiseVal))
+                    {
+                        if (ids.TryGetValue("fault", out var stopFaultId)
+                            && Tags.TryGetVisible(stopFaultId, out var stopFaultVal))
+                            stop.SetFaulted((bool)stopFaultVal);
+
+                        stop.UpdateLift((bool)raiseVal, dt);
+                        Tags.TrySet(ids["up"], stop.IsUp);
+                        Tags.TrySet(ids["down"], stop.IsDown);
+                    }
+                    break;
+
+                case "TurnTable":
+                    if (node is TurnTable table && ids.TryGetValue("index", out var indexId)
+                        && Tags.TryGetVisible(indexId, out var indexVal))
+                    {
+                        if (ids.TryGetValue("fault", out var tableFaultId)
+                            && Tags.TryGetVisible(tableFaultId, out var tableFaultVal))
+                            table.SetFaulted((bool)tableFaultVal);
+
+                        table.UpdateIndex((bool)indexVal, dt);
+                        Tags.TrySet(ids["athome"], table.IsHome);
+                        Tags.TrySet(ids["atindex"], table.IsAtIndex);
+                    }
+                    break;
+
+                case "RotaryEncoder":
+                    if (node is RotaryEncoder encoder)
+                    {
+                        bool zero = ids.TryGetValue("reset", out var encResetId)
+                                    && Tags.TryGetVisible(encResetId, out var encResetVal)
+                                    && (bool)encResetVal;
+
+                        encoder.Step(zero, dt);
+                        Tags.TrySet(ids["count"], encoder.Count);
+                        Tags.TrySet(ids["rate"], (double)encoder.Rate);
+                    }
+                    break;
+
+                case "CoolingFan":
+                    if (node is CoolingFan fan)
+                    {
+                        if (ids.TryGetValue("fault", out var fanFaultId)
+                            && Tags.TryGetVisible(fanFaultId, out var fanFaultVal))
+                            fan.SetFaulted((bool)fanFaultVal);
+
+                        bool fanRun = ids.TryGetValue("run", out var fanRunId)
+                                      && Tags.TryGetVisible(fanRunId, out var fanRunVal) && (bool)fanRunVal;
+                        float fanSpeed = ids.TryGetValue("speed", out var fanSpeedId)
+                                         && Tags.TryGetVisible(fanSpeedId, out var fanSpeedVal)
+                            ? (float)System.Convert.ToDouble(fanSpeedVal) : 0.0f;
+
+                        fan.Step(fanRun, fanSpeed, dt);
+                        Tags.TrySet(ids["airflow"], (double)fan.Airflow);
+                    }
+                    break;
+
+                case "TwoHandControl":
+                    if (node is TwoHandControl hands)
+                    {
+                        hands.Step(dt);
+                        Tags.TrySet(ids["left"], hands.LeftHeld);
+                        Tags.TrySet(ids["right"], hands.RightHeld);
+                        Tags.TrySet(ids["valid"], hands.IsValid);
+                    }
+                    break;
             }
         }
     }
@@ -2511,6 +2689,11 @@ public partial class SceneEditor : Node3D
             "HeatingStation" => new HeatingStation(),
             "SelectorSwitch" => new SelectorSwitch(),
             "SafetyGate" => new SafetyGate(),
+            "StopGate" => new StopGate(),
+            "TurnTable" => new TurnTable(),
+            "RotaryEncoder" => new RotaryEncoder(),
+            "CoolingFan" => new CoolingFan(),
+            "TwoHandControl" => new TwoHandControl(),
             _ => null
         };
     }

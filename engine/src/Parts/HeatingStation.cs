@@ -209,7 +209,13 @@ public partial class HeatingStation : Node3D
 
         float applied = IsFaulted ? 0.0f : CommandedPower;
         float input = HeaterPower * applied / 100.0f;
-        float loss = (Temperature - Ambient) * LossRate;
+        // Forced cooling enters the *same* loss term the room does, so a split
+        // range controller is driving one plant with two actuators rather than
+        // two plants that happen to share a tag. Consumed here and zeroed, so a
+        // fan that stops offering it stops cooling on the next tick and not
+        // whenever somebody remembers to clear a flag.
+        float loss = (Temperature - Ambient) * (LossRate + _offeredCooling);
+        _offeredCooling = 0.0f;
 
         Temperature += (input - loss) / Mathf.Max(ThermalMass, 0.01f) * delta;
         // Physically the plate cannot go below ambient with no cooling, and a
@@ -220,10 +226,37 @@ public partial class HeatingStation : Node3D
         ApplyTemperature();
     }
 
+    /// <summary>Extra loss coefficient offered by forced cooling this tick, in
+    /// the same units as <see cref="LossRate"/>.</summary>
+    private float _offeredCooling;
+
+    /// <summary>
+    /// Offer forced cooling for this tick (LP-04).
+    ///
+    /// Accumulated rather than applied, and consumed by <see cref="Step"/>,
+    /// because parts are dispatched in placement order: a fan placed before its
+    /// station would land on one side of the integration and a fan placed after
+    /// it on the other, and the plant would behave differently depending on the
+    /// order somebody clicked. Adding rather than assigning also means two fans
+    /// on one station cool it twice, which is what two fans do.
+    /// </summary>
+    public void AddCooling(float extraLossRate)
+    {
+        if (extraLossRate <= 0.0f) return;
+        // Clamped, because the consumer is <see cref="Step"/> and Step only
+        // runs while the station's own `heater` tag exists. A station placed as
+        // a *view* of tags something else owns is never stepped, so without a
+        // ceiling a fan beside one would pile up an unbounded loss coefficient
+        // and then dump the lot on the first tick that did run. Ten is already
+        // thirty times the plant's own loss to ambient.
+        _offeredCooling = Mathf.Min(_offeredCooling + extraLossRate, 10.0f);
+    }
+
     public void ResetTemperature()
     {
         Temperature = Ambient;
         CommandedPower = 0.0f;
+        _offeredCooling = 0.0f;
         ApplyTemperature();
     }
 

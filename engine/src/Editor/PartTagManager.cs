@@ -318,6 +318,53 @@ public static class PartTagManager
                 tags.Add(new Tag($"{instanceId}.locked", $"Guard {index} Locked Shut", TagType.Bit, TagKind.Input));
                 tags.Set($"{instanceId}.closed", true);
                 break;
+
+            case "StopGate":
+                tags.Add(new Tag($"{instanceId}.raise", $"Stop {index} (Raise)", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.up", $"Stop {index} (Blade Up)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.down", $"Stop {index} (Blade Down)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"Stop {index} Drive Fault", TagType.Bit, TagKind.Input));
+                // Parked, so the scene starts in the state the geometry shows.
+                tags.Set($"{instanceId}.down", true);
+                break;
+
+            case "TurnTable":
+                tags.Add(new Tag($"{instanceId}.index", $"Turntable {index} (Index)", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.athome", $"Turntable {index} (At Home)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.atindex", $"Turntable {index} (At Index)", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"Turntable {index} Drive Fault", TagType.Bit, TagKind.Input));
+                tags.Set($"{instanceId}.athome", true);
+                break;
+
+            case "RotaryEncoder":
+                // The count is an Int because that is what a high-speed counter
+                // hands a program, and the rate is a Float because it is a
+                // measurement -- the same split as the light curtain's
+                // `blocked` and `height`.
+                tags.Add(new Tag($"{instanceId}.count", $"Encoder {index} Count", TagType.Int, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.rate", $"Encoder {index} Rate (pulses/s)", TagType.Float, TagKind.Input));
+                // A level, not an edge: holding the reset leg high holds the
+                // count at zero, exactly like a counter's own reset.
+                tags.Add(new Tag($"{instanceId}.reset", $"Encoder {index} Reset", TagType.Bit, TagKind.Output));
+                break;
+
+            case "CoolingFan":
+                tags.Add(new Tag($"{instanceId}.run", $"Fan {index} Run", TagType.Bit, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.speed", $"Fan {index} Speed Ref (%)", TagType.Float, TagKind.Output));
+                tags.Add(new Tag($"{instanceId}.airflow", $"Fan {index} Airflow (%)", TagType.Float, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.fault", $"Fan {index} Motor Fault", TagType.Bit, TagKind.Input));
+                break;
+
+            case "TwoHandControl":
+                // All three are Inputs: the operator drives the buttons and the
+                // *relay* decides the permissive. `valid` is an input to the
+                // controller for the same reason a guard switch is -- the
+                // program reads the safety device's verdict, it does not
+                // compute it.
+                tags.Add(new Tag($"{instanceId}.left", $"Two-Hand {index} Left Held", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.right", $"Two-Hand {index} Right Held", TagType.Bit, TagKind.Input));
+                tags.Add(new Tag($"{instanceId}.valid", $"Two-Hand {index} Permissive", TagType.Bit, TagKind.Input));
+                break;
         }
 
         return (instanceId, true);

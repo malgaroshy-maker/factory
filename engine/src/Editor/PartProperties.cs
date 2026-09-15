@@ -170,6 +170,34 @@ public static class PartProperties
                 p["target_temp"] = N(heater.TargetTemp);
                 p["tolerance"] = N(heater.Tolerance);
                 break;
+
+            case StopGate stop:
+                p["stroke"] = N(stop.Stroke);
+                p["lift_speed"] = N(stop.LiftSpeed);
+                p["blade_width"] = N(stop.BladeWidth);
+                break;
+
+            case TurnTable table:
+                p["deck_radius"] = N(table.DeckRadius);
+                p["index_angle"] = N(table.IndexAngle);
+                p["index_speed"] = N(table.IndexSpeed);
+                break;
+
+            case RotaryEncoder encoder:
+                p["pulses_per_metre"] = N(encoder.PulsesPerMetre);
+                p["wheel_radius"] = N(encoder.WheelRadius);
+                break;
+
+            case CoolingFan fan:
+                p["reach"] = N(fan.Reach);
+                p["cooling_rate"] = N(fan.CoolingRate);
+                p["spin_up_rate"] = N(fan.SpinUpRate);
+                break;
+
+            case TwoHandControl hands:
+                p["sync_window"] = N(hands.SyncWindow);
+                p["hold_time"] = N(hands.HoldTime);
+                break;
         }
 
         return p;
@@ -312,6 +340,34 @@ public static class PartProperties
                 if (Num(props, "ambient") is { } ambient) heater.Ambient = ambient;
                 if (Num(props, "target_temp") is { } target) heater.TargetTemp = target;
                 if (Num(props, "tolerance") is { } band) heater.Tolerance = band;
+                break;
+
+            case StopGate stop:
+                if (Num(props, "stroke") is { } stopStroke) stop.Stroke = stopStroke;
+                if (Num(props, "lift_speed") is { } lift) stop.LiftSpeed = lift;
+                if (Num(props, "blade_width") is { } bladeWidth) stop.BladeWidth = bladeWidth;
+                break;
+
+            case TurnTable table:
+                if (Num(props, "deck_radius") is { } deckRadius) table.DeckRadius = deckRadius;
+                if (Num(props, "index_angle") is { } indexAngle) table.IndexAngle = indexAngle;
+                if (Num(props, "index_speed") is { } indexSpeed) table.IndexSpeed = indexSpeed;
+                break;
+
+            case RotaryEncoder encoder:
+                if (Num(props, "pulses_per_metre") is { } ppm) encoder.PulsesPerMetre = ppm;
+                if (Num(props, "wheel_radius") is { } wheelRadius) encoder.WheelRadius = wheelRadius;
+                break;
+
+            case CoolingFan fan:
+                if (Num(props, "reach") is { } reach) fan.Reach = reach;
+                if (Num(props, "cooling_rate") is { } coolingRate) fan.CoolingRate = coolingRate;
+                if (Num(props, "spin_up_rate") is { } spinUp) fan.SpinUpRate = spinUp;
+                break;
+
+            case TwoHandControl hands:
+                if (Num(props, "sync_window") is { } syncWindow) hands.SyncWindow = syncWindow;
+                if (Num(props, "hold_time") is { } holdTime) hands.HoldTime = holdTime;
                 break;
         }
     }
