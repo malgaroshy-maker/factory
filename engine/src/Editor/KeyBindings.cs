@@ -49,6 +49,7 @@ public static class KeyBindings
         new("Ctrl+S / O", "Save / open a scene", "PLC & FILES"),
         new("F4", "I/O wiring and export", "PLC & FILES"),
         new("F5", "Connect a PLC driver", "PLC & FILES"),
+        new("T", "What this scene asks you to build", "PLC & FILES"),
         new("F12", "This key list", "PLC & FILES"),
     };
 

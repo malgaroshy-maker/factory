@@ -419,6 +419,7 @@ public partial class Main : Node
         editor.IdleHint = idleHint;
         toolbarUI.FaultToolToggled += () => editor.SetFaultToolArmed(!editor.FaultToolArmed);
         toolbarUI.PartNamesToggled += () => editor.TogglePartNames();
+        toolbarUI.TaskBriefRequested += ToggleTaskBrief;
         toolbarUI.HelpRequested += () => GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
         AddChild(toolbarUI);
 
@@ -426,6 +427,7 @@ public partial class Main : Node
         // order and an overlay behind the parts palette is an overlay nobody
         // can read. Still before the start screen, which owns the very top.
         AddChild(new KeyHelpUI { Name = "KeyHelpUI" });
+        AddChild(new TaskBriefUI { Name = "TaskBriefUI" });
 
         // The start screen goes on last so it draws over everything, and it is
         // only ever a GUI thing — headless runs and the self-tests never see it.
@@ -631,6 +633,10 @@ public partial class Main : Node
             {
                 GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.Toggle();
             }
+            else if (keyEvent.Keycode == Key.T && !keyEvent.CtrlPressed)
+            {
+                ToggleTaskBrief();
+            }
             // 1-4: standard viewing angles (NV-03). They change the angle and
             // not the subject, so whatever you were looking at stays framed.
             else if (ViewPresetFor(keyEvent.Keycode) is { } preset)
@@ -639,10 +645,11 @@ public partial class Main : Node
             }
             else if (keyEvent.Keycode == Key.Escape)
             {
-                // Only if the overlay is actually open: Escape also cancels a
+                // Only if an overlay is actually open: Escape also cancels a
                 // placement and disarms the fault tool, and spending it here
                 // unconditionally would break both.
                 GetNodeOrNull<KeyHelpUI>("KeyHelpUI")?.DismissIfOpen();
+                GetNodeOrNull<TaskBriefUI>("TaskBriefUI")?.DismissIfOpen();
             }
             else if (keyEvent.Keycode == Key.C)
             {
@@ -710,6 +717,15 @@ public partial class Main : Node
         Key.Key4 => OrbitCamera.CameraPreset.Side,
         _ => null,
     };
+
+    /// <summary>Open or close the brief for whatever scene is loaded (BR-03).
+    /// The editor knows the scene's name and the manifest knows its lesson, so
+    /// neither has to hold a copy of the other.</summary>
+    private void ToggleTaskBrief()
+    {
+        if (_editor is null) return;
+        GetNodeOrNull<TaskBriefUI>("TaskBriefUI")?.Toggle(_editor.SceneName);
+    }
 
     private void FrameWholeScene()
     {

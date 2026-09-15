@@ -46,6 +46,8 @@ public partial class SceneToolbarUI : Control
     private bool? _lastDemoActive;
 
     /// <summary>Arm or disarm the fault tool (FI-01).</summary>
+    [Signal] public delegate void TaskBriefRequestedEventHandler();
+
     [Signal] public delegate void PartNamesToggledEventHandler();
 
     [Signal] public delegate void FaultToolToggledEventHandler();
@@ -310,6 +312,15 @@ public partial class SceneToolbarUI : Control
         };
         _faultBtn.Pressed += () => EmitSignal(SignalName.FaultToolToggled);
         hbox.AddChild(_faultBtn);
+
+        var taskBtn = new Button
+        {
+            Text = "📋 Task",
+            TooltipText = "What this scene is asking you to build (T)",
+            CustomMinimumSize = new Vector2(78, 32),
+        };
+        taskBtn.Pressed += () => EmitSignal(SignalName.TaskBriefRequested);
+        hbox.AddChild(taskBtn);
 
         _namesBtn = new Button
         {

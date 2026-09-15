@@ -198,7 +198,11 @@ public partial class StartScreenUI : Control
                 Alignment = HorizontalAlignment.Left,
                 Text = $"  {template.Title}\n  {template.Blurb}",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                TooltipText = template.Blurb,
+                // The task, not just the blurb: the blurb says what the scene
+                // *is* and the brief says what to do with it, and choosing
+                // between eight templates is exactly when somebody wants the
+                // second one (BR-02).
+                TooltipText = TooltipFor(template),
             };
             button.AddThemeFontSizeOverride("font_size", 13);
             StyleClickable(button);
@@ -212,6 +216,18 @@ public partial class StartScreenUI : Control
             };
             list.AddChild(button);
         }
+    }
+
+    /// <summary>What a template's button says on hover: what the scene is,
+    /// then what it is asking you to build and how you know you are done.
+    /// Choosing between eight of them is exactly when somebody wants the
+    /// second half (BR-02).</summary>
+    private static string TooltipFor(TemplateEntry template)
+    {
+        if (template.Brief is not { } brief) return template.Blurb;
+        return template.Blurb
+               + "\n\nYOUR TASK\n" + brief.Task
+               + "\n\nDONE WHEN\n" + brief.Done;
     }
 
     private void BuildSideColumn(HBoxContainer columns)
