@@ -277,6 +277,13 @@ most likely to slip.
       part drag reached both — the part followed the cursor while the world turned
       underneath it. True for as long as dragging has existed, and the same
       collision was on the setpoint pot in Run mode.
+- [x] **Reading what you built, and getting around it** (NV-01…NV-04, see
+      [NAMES_AND_VIEWS_PLAN.md](NAMES_AND_VIEWS_PLAN.md)) — `N` floats every
+      part's instance id over it, which is the tag prefix a PLC program is
+      written against and previously took one click per part to read;
+      `Ctrl+A`, `Ctrl+C` and `Ctrl+V` select everything and carry a section
+      into another scene; and `1`-`4` snap the camera to iso, top, front and
+      side without losing what was framed.
 
 **Near:** part-to-part linking in the editor — the measuring encoder finds the
 belt under it by geometry, which is right for a wheel resting on a deck and

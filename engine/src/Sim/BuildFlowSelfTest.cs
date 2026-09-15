@@ -52,6 +52,8 @@ public partial class BuildFlowSelfTest : Node
             CheckNudge();
             CheckMoveDisarms();
             CheckGroupEdits();
+            CheckSelectAllAndClipboard();
+            CheckPartNames();
         }
         catch (System.Exception ex)
         {
@@ -317,6 +319,105 @@ public partial class BuildFlowSelfTest : Node
         Expect(PartCount() == before2,
                $"and one Ctrl+Z brings the whole group back (got {PartCount()} of {before2})");
     }
+
+    // ---------- NV-02
+
+    private void CheckSelectAllAndClipboard()
+    {
+        Editor.ClearAllPlacedParts();
+        Editor.SetPlacementPart("ConveyorBelt");
+        Editor.PlacePreviewAt(new Vector3(0, 0, 0));
+        Editor.PlacePreviewAt(new Vector3(2.0f, 0, 0));
+        Editor.CancelPlacement();
+        Editor.SetPlacementPart("PhotoelectricSensor");
+        Editor.PlacePreviewAt(new Vector3(0, 0, 0.5f));
+        Editor.CancelPlacement();
+
+        Editor.SelectEverything();
+        Expect(Editor.SelectionCount == 3,
+               $"Ctrl+A selects every part (got {Editor.SelectionCount} of 3)");
+
+        var shape = new List<Vector3>(Editor.SelectedPositions());
+        Editor.CopySelection();
+        Expect(Editor.ClipboardCount == 3, "Ctrl+C holds the whole selection");
+
+        int before = PartCount();
+        Editor.PasteClipboard();
+        Expect(PartCount() == before + 3,
+               $"Ctrl+V puts all of it down (got {PartCount() - before} of 3)");
+        Expect(Editor.SelectionCount == 3, "and what landed is what is selected");
+
+        var pasted = Editor.SelectedPositions();
+        Vector3 offset = pasted[0] - shape[0];
+        bool keptShape = true;
+        for (int i = 0; i < pasted.Count; i++)
+        {
+            if (!(pasted[i] - shape[i]).IsEqualApprox(offset)) keptShape = false;
+        }
+        Expect(offset.Length() > 0.01f, "clear of what it was copied from");
+        // A copied belt, its sensor and its pusher have to stay lined up with
+        // each other, which is why the clipboard stores offsets from a group
+        // anchor rather than absolute positions.
+        Expect(keptShape, "and the same shape as what was copied");
+
+        // Distinct ids, or a pasted belt would adopt the tags of the one it was
+        // copied from and two parts would drive one `rotate`.
+        var ids = new HashSet<string>(Editor.PlacedPartIds());
+        Expect(ids.Count == PartCount(),
+               $"every pasted part mints its own instance id ({ids.Count} for {PartCount()})");
+
+        // A second paste walks on rather than landing on the first.
+        Editor.PasteClipboard();
+        var second = Editor.SelectedPositions();
+        Expect(!second[0].IsEqualApprox(pasted[0]),
+               "a second Ctrl+V lands somewhere new rather than on top of the first");
+
+        Editor.Undo();
+        Expect(PartCount() == before + 3, "one Ctrl+Z takes a whole paste back");
+    }
+
+    // ---------- NV-01
+
+    private void CheckPartNames()
+    {
+        Expect(!Editor.PartNamesVisible, "part names start off");
+
+        Editor.TogglePartNames();
+        Expect(Editor.PartNamesVisible, "N turns them on");
+
+        // The label carries the *instance id*, which is the tag prefix, and it
+        // has to follow a rename — a stale name on screen points at tags that
+        // no longer exist, which is worse than no name at all.
+        string id = Editor.PlacedPartIds()[0];
+        var node = Editor.NodeFor(id);
+        Expect(node is not null, "the first part is still there to be named");
+        Expect(LabelTextOf(node!) == id,
+               $"the label reads the part's instance id (got '{LabelTextOf(node!)}', want '{id}')");
+
+        Editor.SelectPartByIndex(0);
+        if (Editor.TryRenameSelectedPart("relabelled", out _))
+        {
+            Expect(LabelTextOf(node!) == "relabelled",
+                   $"and follows a rename (got '{LabelTextOf(node!)}')");
+        }
+
+        // Nothing that measures a part may see the label: PartBounds reads
+        // MeshInstance3D and a Label3D is not one, so the selection outline,
+        // the click box and the duplicate offset are all unchanged by it.
+        Editor.SelectPartByIndex(0);
+        Vector3 wasAt = Editor.SelectedPosition!.Value;
+        Editor.DuplicateSelectedPart();
+        float step = Editor.SelectedPosition!.Value.X - wasAt.X;
+        Expect(step >= 1.5f - 0.01f,
+               $"and does not grow the part it names (duplicate stepped {step:0.00} m)");
+        Editor.Undo();
+
+        Editor.TogglePartNames();
+        Expect(!Editor.PartNamesVisible, "N turns them off again");
+    }
+
+    private static string LabelTextOf(Node3D part) =>
+        part.GetNodeOrNull<Label3D>("PartNameLabel")?.Text ?? "";
 
     // ---------- BF-01's exception
 
