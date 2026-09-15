@@ -608,6 +608,143 @@
         "kind": "output"
       }
     ],
+    "accumulation-buffer": [
+      {
+        "id": "buffer.actual",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "buffer.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "buffer.run",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "buffer.speed",
+        "type": "float",
+        "kind": "output"
+      },
+      {
+        "id": "count_display.value",
+        "type": "int",
+        "kind": "output"
+      },
+      {
+        "id": "emitter.emit",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "enc.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "enc.rate",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "enc.reset",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "exit_eye.detect",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "outfeed.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "outfeed.rotate",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.estop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "panel.reset",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.setpoint",
+        "type": "float",
+        "kind": "input"
+      },
+      {
+        "id": "panel.start",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "panel.stop",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "released.count",
+        "type": "int",
+        "kind": "input"
+      },
+      {
+        "id": "stop.down",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "stop.fault",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "stop.raise",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "stop.up",
+        "type": "bit",
+        "kind": "input"
+      },
+      {
+        "id": "tower.green",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.red",
+        "type": "bit",
+        "kind": "output"
+      },
+      {
+        "id": "tower.yellow",
+        "type": "bit",
+        "kind": "output"
+      }
+    ],
     "heat-treat-station": [
       {
         "id": "alarm.beacon",
