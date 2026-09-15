@@ -100,6 +100,22 @@ public partial class PartPaletteUI : Control
         _groups.AddChild(_empty);
     }
 
+    /// <summary>Every part button by type, for the armed highlight.</summary>
+    private readonly Dictionary<string, Button> _buttonsByType = new();
+
+    /// <summary>The label each button started with. Kept because the armed
+    /// button's text gains a marker, and reconstructing the original from the
+    /// decorated string is the kind of round trip that goes wrong the first
+    /// time a label contains the marker character.</summary>
+    private static readonly Dictionary<string, string> Labels = BuildLabels();
+
+    private static Dictionary<string, string> BuildLabels()
+    {
+        var labels = new Dictionary<string, string>();
+        foreach (var info in PartCatalog.All) labels[info.Type] = info.Label;
+        return labels;
+    }
+
     private void BuildFromCatalog()
     {
         string? currentGroup = null;
@@ -157,7 +173,68 @@ public partial class PartPaletteUI : Control
         button.Pressed += () => EmitSignal(SignalName.PartSelected, info.Type);
         container.AddChild(button);
 
+        _buttonsByType[info.Type] = button;
         _entries.Add((button, $"{info.Label} {info.Type} {info.Group} {info.Summary} {info.Tags}".ToLowerInvariant()));
+    }
+
+    /// <summary>
+    /// Light the button for the part the placement tool is holding, and put the
+    /// others out (BF-04).
+    ///
+    /// The tool stays armed after a placement, which makes building a line
+    /// click-click-click -- and makes the editor modal. A mode with nothing on
+    /// screen to say which mode it is in is a worse problem than the one that
+    /// bought it, so this is not decoration: it is the other half of BF-01.
+    ///
+    /// Driven from <see cref="SceneEditor.PlacementArmedChanged"/> rather than
+    /// from this palette's own button press, because the tool is put down by
+    /// four things the palette never hears about -- Escape, a right-click,
+    /// entering Run mode, and committing a move. A highlight only the button
+    /// could clear would be left lit after every one of them.
+    /// </summary>
+    public void SetArmed(string partType)
+    {
+        foreach (var (type, button) in _buttonsByType)
+        {
+            if (type == partType)
+            {
+                button.AddThemeColorOverride("font_color", InkOnArmed);
+                button.AddThemeColorOverride("font_hover_color", InkOnArmed);
+                button.AddThemeStyleboxOverride("normal", ArmedStyle);
+                button.AddThemeStyleboxOverride("hover", ArmedStyle);
+                button.Text = Labels[type] + "   \u25cf";
+            }
+            else
+            {
+                button.RemoveThemeColorOverride("font_color");
+                button.RemoveThemeColorOverride("font_hover_color");
+                button.RemoveThemeStyleboxOverride("normal");
+                button.RemoveThemeStyleboxOverride("hover");
+                button.Text = Labels[type];
+            }
+        }
+    }
+
+    private static readonly Color InkOnArmed = new(0.10f, 0.10f, 0.12f);
+
+    /// <summary>Safety yellow, the colour this project already uses for "this
+    /// is the live thing" -- the floor markings, the guard frame, the blade of
+    /// a stop. Built once and shared: a stylebox per button per arm would
+    /// allocate on every placement.</summary>
+    private static readonly StyleBoxFlat ArmedStyle = BuildArmedStyle();
+
+    private static StyleBoxFlat BuildArmedStyle()
+    {
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(0.95f, 0.75f, 0.10f),
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3,
+            CornerRadiusBottomRight = 3,
+        };
+        style.SetContentMarginAll(6);
+        return style;
     }
 
     /// <summary>

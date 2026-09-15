@@ -277,6 +277,10 @@ public partial class Main : Node
         {
             AddChild(new LinePartsSelfTest { Name = "LinePartsSelfTest", Editor = _editor!, Tags = tags });
         }
+        if (_selfTest == "buildflow")
+        {
+            AddChild(new BuildFlowSelfTest { Name = "BuildFlowSelfTest", Editor = _editor!, Tags = tags });
+        }
     }
 
     private void BuildView(TagTable tags)
@@ -334,6 +338,10 @@ public partial class Main : Node
 
         var paletteUI = new PartPaletteUI { Name = "PartPaletteUI" };
         paletteUI.PartSelected += (partType) => editor.SetPlacementPart(partType);
+        // The palette follows the editor, not its own button: the placement
+        // tool stays armed after a placement (BF-01) and is put down by four
+        // things the palette never hears about.
+        editor.PlacementArmedChanged += (partType) => paletteUI.SetArmed(partType);
         AddChild(paletteUI);
 
         var wiringUI = new DriverWiringUI { Name = "DriverWiringUI" };

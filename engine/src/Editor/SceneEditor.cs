@@ -40,6 +40,16 @@ public partial class SceneEditor : Node3D
     /// to mean one thing at a time.</summary>
     public EditorMode Mode { get; private set; } = EditorMode.Edit;
 
+    /// <summary>Which part type the placement tool currently holds, or the
+    /// empty string when it holds nothing (BF-04).
+    ///
+    /// The palette follows this rather than remembering what its own button
+    /// press did, because the tool is put down by things the palette never
+    /// hears about: Escape, a right-click, entering Run mode, and committing a
+    /// move. A highlight that only the button could clear would be left lit
+    /// after every one of them.</summary>
+    [Signal] public delegate void PlacementArmedChangedEventHandler(string partType);
+
     private string? _activePartType;
     private Node3D? _previewNode;
     private float _previewRotationY;
@@ -228,15 +238,31 @@ public partial class SceneEditor : Node3D
         if (Mode == EditorMode.Run) return;
 
         ClearPreview();
+        ArmPreview(partType, 0f);
+    }
+
+    /// <summary>
+    /// Build the ghost for a part type and take up the tool.
+    ///
+    /// Split out of <see cref="SetPlacementPart"/> because BF-01 needs to re-arm
+    /// *without* resetting the rotation: a line of belts turned 90° should stay
+    /// turned for the next one, and a tool that silently springs back to 0° on
+    /// every placement is worse than one that never rotated.
+    /// </summary>
+    private void ArmPreview(string partType, float rotationY)
+    {
         _activePartType = partType;
-        _previewRotationY = 0f;
+        _previewRotationY = rotationY;
         _previewNode = CreatePartNode(partType);
 
         if (_previewNode is not null)
         {
             _previewNode.Name = "PlacementPreview";
+            _previewNode.Rotation = new Vector3(0, _previewRotationY, 0);
             AddChild(_previewNode);
         }
+
+        EmitSignal(SignalName.PlacementArmedChanged, _previewNode is null ? "" : partType);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -367,12 +393,28 @@ public partial class SceneEditor : Node3D
                 ClearPreview();
                 DeselectPart();
             }
+            else if (_selectedPart is not null && NudgeFor(keyEvent.Keycode) is { } nudge)
+            {
+                NudgeSelectedPart(nudge);
+            }
             else if (keyEvent.Keycode == Key.Delete || keyEvent.Keycode == Key.Backspace)
             {
                 DeleteSelectedPart();
             }
         }
     }
+
+    /// <summary>Screen-space direction for an arrow key, or null for anything
+    /// else. Kept as one table rather than four branches so the key list and
+    /// the handler cannot disagree about which keys nudge.</summary>
+    private static Vector2? NudgeFor(Key keycode) => keycode switch
+    {
+        Key.Left => new Vector2(-1, 0),
+        Key.Right => new Vector2(1, 0),
+        Key.Up => new Vector2(0, 1),
+        Key.Down => new Vector2(0, -1),
+        _ => null,
+    };
 
     private readonly EditorCommandHistory _history = new();
 
@@ -1932,8 +1974,7 @@ public partial class SceneEditor : Node3D
     {
         if (_selectedPart is not { } source) return;
 
-        float step = Grid?.CellSize ?? 0.5f;
-        var offset = source.Node.Position + new Vector3(step, 0, 0);
+        var offset = source.Node.Position + DuplicateOffset(source.Node);
         var data = new PartInstanceData
         {
             // Empty, not "part": RegisterPartTags only auto-numbers a fresh id
@@ -1953,6 +1994,83 @@ public partial class SceneEditor : Node3D
         GD.Print($"Duplicated '{source.InstanceId}'");
     }
 
+    /// <summary>
+    /// Where a duplicate goes, relative to what it was copied from (BF-02).
+    ///
+    /// One grid cell was wrong twice over. A belt is three cells long, so the
+    /// copy landed *inside* its source; and because nothing selected the copy,
+    /// the next Ctrl+D duplicated the original again and put a second part in
+    /// the same cell, invisibly.
+    ///
+    /// The offset is the part's own footprint along the direction it faces,
+    /// measured from its meshes and rounded up to a whole cell so the result is
+    /// still on the grid everything else snaps to. A duplicated belt lands end
+    /// to end with its source; a duplicated sensor lands in the next cell.
+    /// </summary>
+    private Vector3 DuplicateOffset(Node3D node)
+    {
+        float cell = Grid?.CellSize ?? 0.5f;
+        float span = PartBounds.Measure(node).Size.X;
+
+        // Ceiling to a whole cell, and never zero: a part that draws nothing
+        // along X would otherwise duplicate onto itself.
+        float steps = Mathf.Max(1.0f, Mathf.Ceil(span / cell));
+        return node.Basis * new Vector3(cell * steps, 0, 0);
+    }
+
+    /// <summary>Select a part the editor already holds — after a duplicate, so
+    /// the next Ctrl+D walks on from the copy rather than repeating from the
+    /// original. Same three effects a click's selection has, so the gizmo and
+    /// the inspector cannot end up describing a different part from the one
+    /// the next keystroke will act on.</summary>
+    private void SelectPlaced(PlacedPart part)
+    {
+        _selectedPart = part;
+        _gizmo.AttachToNode(part.Node);
+        PropertyInspector?.InspectNode(part.Node, part.InstanceId, part.PartType);
+    }
+
+    /// <summary>
+    /// Shift the selection one grid cell (BF-03).
+    ///
+    /// <paramref name="screenDelta"/> is in screen terms — (1,0) is "right" as
+    /// the user sees it — and is turned into world axes through the camera's
+    /// heading, because a nudge that moves a part in world +X while the camera
+    /// looks down -X sends it the wrong way and reads as a bug rather than as a
+    /// convention.
+    ///
+    /// One press is one undo step, which is the whole point of a nudge: press
+    /// it twice too far and Ctrl+Z twice puts it back.
+    /// </summary>
+    public void NudgeSelectedPart(Vector2 screenDelta)
+    {
+        if (Mode != EditorMode.Edit) return;
+        if (_selectedPart is not { } entry) return;
+
+        float cell = Grid?.CellSize ?? 0.5f;
+
+        // Snap the camera's heading to the nearest quarter turn, so a nudge
+        // always lands on the grid instead of sliding a part off it by a
+        // fraction of a cell at every odd viewing angle.
+        float heading = 0.0f;
+        if (GetViewport()?.GetCamera3D() is { } camera)
+        {
+            Vector3 forward = -camera.GlobalBasis.Z;
+            heading = Mathf.Round(Mathf.Atan2(forward.X, forward.Z) / (Mathf.Pi / 2.0f)) * (Mathf.Pi / 2.0f);
+        }
+
+        // Screen right is world +X at heading 0, and screen "up" is away from
+        // the camera, which on the work plane is -Z.
+        var world = new Basis(Vector3.Up, heading) * new Vector3(screenDelta.X, 0, -screenDelta.Y);
+
+        Vector3 from = entry.Node.Position;
+        Vector3 to = from + world * cell;
+        if (to.IsEqualApprox(from)) return;
+
+        _history.ExecuteCommand(new MoveCommand(entry.Node, from, to));
+        MarkDirty();
+    }
+
     private sealed class DuplicateCommand : IEditorCommand
     {
         private readonly SceneEditor _editor;
@@ -1965,11 +2083,23 @@ public partial class SceneEditor : Node3D
             _data = data;
         }
 
-        public void Execute() => _placed = _editor.SpawnFromData(_data);
+        public void Execute()
+        {
+            _placed = _editor.SpawnFromData(_data);
+            // Selecting here rather than at the call site so a *redo* selects
+            // it too: without that, redoing a duplicate leaves the gizmo on
+            // whatever was selected before and the next Ctrl+D walks from the
+            // wrong part.
+            if (_placed is { } made) _editor.SelectPlaced(made);
+        }
 
         public void Undo()
         {
-            if (_placed is { } placed) _editor.ForgetPart(placed);
+            if (_placed is { } placed)
+            {
+                if (_editor._selectedPart == placed) _editor.DeselectPart();
+                _editor.ForgetPart(placed);
+            }
             _placed = null;
         }
     }
@@ -2092,6 +2222,58 @@ public partial class SceneEditor : Node3D
         return new Vector3(snapped.X, PartLayout.WorkPlaneY, snapped.Z);
     }
 
+    /// <summary>
+    /// Drop the held part at a chosen cell.
+    ///
+    /// The mouse path is "follow the cursor, then place"; this is the same
+    /// second half with the first half supplied, so a headless test drives the
+    /// real placement rather than a copy of it. There is no camera in a
+    /// headless run, and <see cref="UpdatePreviewPosition"/> projects a ray
+    /// through one.
+    /// </summary>
+    public void PlacePreviewAt(Vector3 position)
+    {
+        if (_previewNode is null) return;
+        _previewNode.Position = new Vector3(position.X, PartLayout.WorkPlaneY, position.Z);
+        PlaceCurrentPart();
+    }
+
+    /// <summary>The part type the placement tool is holding, or null. The
+    /// palette shows this; a test asserts it.</summary>
+    public string? ArmedPartType => _activePartType;
+
+    /// <summary>Put the held part down. What Escape and a right-click both do,
+    /// exposed so a headless test can reach the same path rather than a copy
+    /// of it.</summary>
+    public void CancelPlacement() => ClearPreview();
+
+    /// <summary>Turn the ghost a quarter turn — what R does while placing.</summary>
+    public void RotatePreview()
+    {
+        if (_previewNode is null) return;
+        _previewRotationY += Mathf.Pi / 2.0f;
+        _previewNode.Rotation = new Vector3(0, _previewRotationY, 0);
+    }
+
+    /// <summary>The ghost's heading, so a test can check it survives a
+    /// placement.</summary>
+    public float PreviewRotationY => _previewRotationY;
+
+    /// <summary>Pick the part up — what M does.</summary>
+    public void StartMoveSelected() => StartMoveSelectedPart();
+
+    /// <summary>Select the nth placed part. For headless tests, which have no
+    /// camera to click through.</summary>
+    public void SelectPartByIndex(int index)
+    {
+        if (index < 0 || index >= _placedParts.Count) return;
+        SelectPlaced(_placedParts[index]);
+    }
+
+    /// <summary>Where the selected part stands, or null when nothing is
+    /// selected.</summary>
+    public Vector3? SelectedPosition => _selectedPart?.Node.Position;
+
     private void PlaceCurrentPart()
     {
         if (_previewNode is null || _activePartType is null) return;
@@ -2108,14 +2290,26 @@ public partial class SceneEditor : Node3D
 
         // Through the history, so Ctrl+Z can take it back. Nothing used to be
         // recorded at all, which left undo/redo as buttons that did nothing.
+        string placedType = _activePartType;
+        float placedRotation = _previewRotationY;
+
         _history.ExecuteCommand(new PartCommand(this, _activePartType,
                                                 _previewNode.Position,
                                                 _previewNode.Rotation,
                                                 isPlacement: true,
                                                 instanceId: movedId));
         MarkDirty();
-        GD.Print($"Placed component '{_activePartType}' at {_previewNode.Position}");
+        GD.Print($"Placed component '{placedType}' at {_previewNode.Position}");
         ClearPreview();
+
+        // Keep the tool (BF-01). Six conveyors in a line used to be six trips
+        // back to the palette, which is the tax every user pays on their first
+        // scene. Esc or a right-click puts it down.
+        //
+        // A committed *move* is the exception, and it has to be: a move is one
+        // part going to one place, so re-arming there would leave a ghost of
+        // what you just moved, ready to drop a second copy on the next click.
+        if (movedId is null) ArmPreview(placedType, placedRotation);
     }
 
     /// <summary>Below this, a carton has fallen off the world and is not
@@ -2646,6 +2840,8 @@ public partial class SceneEditor : Node3D
 
     private void ClearPreview()
     {
+        bool wasArmed = _activePartType is not null;
+
         if (_previewNode is not null)
         {
             _previewNode.QueueFree();
@@ -2653,6 +2849,11 @@ public partial class SceneEditor : Node3D
         }
         _activePartType = null;
         _movingPart = null;   // a cancelled move leaves the original untouched
+
+        // Only on a real change: ClearPreview is called at the top of every
+        // arm, and a palette that is told "nothing is armed" between two arms
+        // flickers its highlight off and on again on every placement.
+        if (wasArmed) EmitSignal(SignalName.PlacementArmedChanged, "");
     }
 
     private static Node3D? CreatePartNode(string partType)

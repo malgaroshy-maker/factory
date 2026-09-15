@@ -21,15 +21,17 @@ public static class KeyBindings
         new("F1", "Edit / Run mode", "MODES"),
         new("Space", "Pause / resume", "MODES"),
         new("Ctrl+R", "Reset the run", "MODES"),
-        new("Esc", "Cancel placement, or disarm the fault tool", "MODES"),
+        new("Esc", "Put the part down, or disarm the fault tool", "MODES"),
 
-        // Listed above M deliberately. The drag is what everyone tries first,
-        // and a key list that offers only the keyboard route implies the
-        // obvious one does not work.
+        // The two mouse gestures first, and Drag above M deliberately: the
+        // drag is what everyone tries, and a key list offering only the
+        // keyboard route implies the obvious one does not work.
+        new("Click", "Place — the part stays in hand for the next one", "BUILDING"),
         new("Drag", "Move a part — the mouse route", "BUILDING"),
         new("M", "Move selected part — the keyboard route", "BUILDING"),
         new("R", "Rotate — while placing, or a selected part", "BUILDING"),
-        new("Ctrl+D", "Duplicate selected part", "BUILDING"),
+        new("Arrows", "Nudge selected part one cell", "BUILDING"),
+        new("Ctrl+D", "Duplicate — again to build a line", "BUILDING"),
         new("Del", "Delete selected part", "BUILDING"),
         new("Ctrl+Z / Y", "Undo / redo", "BUILDING"),
 
