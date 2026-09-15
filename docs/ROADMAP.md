@@ -266,6 +266,17 @@ most likely to slip.
       the original and selects it, so pressing it again walks a line instead of
       stacking parts in one cell; and the arrow keys nudge the selection a cell
       at a time, one undo step per press.
+- [x] **A shop, and a selection that is a group** (EN-01…EN-02, ES-01…ES-05,
+      see [SHOP_AND_SELECTION_PLAN.md](SHOP_AND_SELECTION_PLAN.md)) — the line
+      stands on poured concrete with a joint around every two-metre bay, inside
+      clad walls five metres to the eaves, both generated in code; and Shift+click
+      or a Ctrl+drag box selects several parts, which then move, nudge, rotate,
+      duplicate and delete together as one undo step.
+- [x] **Dragging a part no longer spins the camera.** The orbit camera and the
+      editor both listened on `_UnhandledInput` and neither claimed anything, so a
+      part drag reached both — the part followed the cursor while the world turned
+      underneath it. True for as long as dragging has existed, and the same
+      collision was on the setpoint pot in Run mode.
 
 **Near:** part-to-part linking in the editor — the measuring encoder finds the
 belt under it by geometry, which is right for a wheel resting on a deck and
