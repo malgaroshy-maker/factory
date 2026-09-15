@@ -35,6 +35,7 @@ SELF_TESTS = [
     "startstop", "tank", "lightcurtain", "roller", "refusal", "proppanel",
     "operate", "modehint", "tryscene", "scenes", "modes", "partsettings",
     "sidecar", "setpoint", "drag", "fault", "newparts", "lineparts",
+    "buildflow",
 ]
 
 

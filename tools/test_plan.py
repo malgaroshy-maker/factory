@@ -378,6 +378,11 @@ def section_c() -> None:
     # friction -- so that test runs those on real engine ticks and hand-turns
     # the rest.
     _self_test("C27", "the five LP-01..LP-05 parts do what their tags claim", "lineparts")
+    # The loop a person is in while building a line, asserted as a loop: a
+    # second click after a placement makes a second part, Escape stops that
+    # happening, two duplicates land in two cells rather than one, and a nudge
+    # is one undo step.
+    _self_test("C28", "the build loop: repeat placement, duplicate walks, arrow nudge", "buildflow")
 
 
 def section_d(enabled: bool) -> None:
