@@ -1634,6 +1634,210 @@ async def drive_heat_treat_station(bus: TagBusClient, duration: float,
     return not check.problems, "; ".join(check.problems)
 
 
+async def drive_accumulation_buffer(bus: TagBusClient, duration: float,
+                                    verbose: bool) -> tuple[bool, str]:
+    """Accumulation, and a release measured in distance rather than seconds
+    (LP-20).
+
+    Two claims, and the second is the one worth the scene:
+
+    1. A raised blade stop holds product on a belt that never stops. Nothing
+       gets past it, and the encoder keeps counting the whole time -- so "the
+       line stopped" is ruled out as the explanation.
+    2. A release window of N encoder pulses lets the same amount of product
+       through at any line speed. The run does the same release at 40 % and at
+       80 % of the drive and compares the counts; the wall-clock times differ by
+       about half, which is exactly what a controller written with a timer would
+       have got wrong.
+
+    Cartons are counted by the remover at the end of the lane, not by the
+    photo-eye. Accumulated product travels touching, and an eye cannot separate
+    two cartons with no gap between them -- which is true of a real eye too, and
+    is why a real line counts at a point where the product has been singulated.
+
+    Mirrors AccumulationBufferProfile.
+    """
+    #: Pulses of belt travel the blade stays down for. 100 pulses is one metre.
+    WINDOW = 120.0
+    SLOW = 40.0
+    FAST = 80.0
+    EMIT_HALF_PERIOD = 0.6
+
+    check = Checks(verbose)
+    #: `manual_run` overrides the station's own verdict when it is not None.
+    #: Used only by the seized-stop leg, which has to keep the line moving with
+    #: a drive fault standing -- something the interlocks correctly refuse to do
+    #: on their own, and the only way to show that the raise command tells you
+    #: nothing. Same device the heat-treat exercise uses, for the same reason.
+    state = {
+        "emit": False, "next_toggle": 0.0, "feeding": False,
+        "raise_blade": True, "reference": SLOW, "manual_run": None,
+    }
+
+    async def tick(dt: float) -> None:
+        station.scan()
+        running = station.running if state["manual_run"] is None else state["manual_run"]
+
+        now = time.perf_counter()
+        if state["feeding"] and running:
+            if now >= state["next_toggle"]:
+                state["emit"] = not state["emit"]
+                state["next_toggle"] = now + EMIT_HALF_PERIOD
+        else:
+            state["emit"] = False
+            state["next_toggle"] = now + EMIT_HALF_PERIOD
+
+        # The eye is watched, not counted on. Accumulated product travels
+        # touching, so a batch coming past the blade breaks the beam once and
+        # clears it once however many cartons are in it. What it can honestly
+        # say is whether anything is moving past the stop at all -- which is how
+        # a blade seized *down* becomes visible while the controller is still
+        # commanding `raise`. Mirrors AccumulationBufferProfile.
+        flowing = bit(bus, "exit_eye.detect")
+        holding = state["raise_blade"] or not running
+
+        lamps = station.lamps()
+        # The one scene that lights two tower stages at once, deliberately:
+        # green is "running", amber is "running and holding".
+        if running and state["raise_blade"]:
+            lamps["tower.yellow"] = True
+        if flowing and holding:
+            lamps["panel.red"] = True
+
+        await write_present(bus, {
+            "buffer.run": running,
+            "buffer.speed": state["reference"] if running else 0.0,
+            "outfeed.rotate": running,
+            "emitter.emit": state["emit"],
+            # A stopped line holds what it has: dropping the blade while the
+            # belt is off would spill the whole buffer the moment it restarted.
+            "stop.raise": holding,
+            "count_display.value": int(num(bus, "released.count")),
+            **lamps,
+        })
+
+    async def accumulate(seconds: float) -> None:
+        state["raise_blade"] = True
+        state["feeding"] = True
+        await asyncio.sleep(seconds)
+        state["feeding"] = False
+        await asyncio.sleep(1.0)
+
+    async def release(reference: float, drain: float) -> tuple[int, float]:
+        """Drop the blade for WINDOW pulses of belt travel, then wait for
+        whatever escaped to reach the remover. Returns how many cartons came
+        out and how long the window itself took."""
+        state["reference"] = reference
+        await asyncio.sleep(1.5)            # let the drive finish its ramp
+
+        before = int(num(bus, "released.count"))
+        start_count = num(bus, "enc.count")
+        started = time.perf_counter()
+
+        state["raise_blade"] = False
+        while num(bus, "enc.count") - start_count < WINDOW:
+            if time.perf_counter() - started > 30.0:
+                break
+            await asyncio.sleep(0.02)
+        elapsed = time.perf_counter() - started
+        state["raise_blade"] = True
+
+        await asyncio.sleep(drain)
+        return int(num(bus, "released.count")) - before, elapsed
+
+    station = Station(bus, faults=("buffer.fault", "stop.fault"))
+    stop_event, task = controller(tick)
+    estop_ms = -1.0
+    slow_out = fast_out = 0
+    slow_secs = fast_secs = 0.0
+
+    try:
+        await turn_pot(bus, WINDOW)
+        await asyncio.sleep(0.2)
+        # The *command*, not the belt's last revolution: this drive ramps down,
+        # and a VFD that coasts is not an E-stop failure -- it is why a real
+        # E-stop circuit removes power. Same measurement the pick-and-place
+        # cell makes, for the same reason.
+        estop_ms = await exercise_interlocks(bus, station, check,
+                                             lambda: bit(bus, "buffer.run"),
+                                             "the buffer drive")
+
+        # --- 1. a raised blade holds the lot
+        state["reference"] = SLOW
+        held_before = int(num(bus, "released.count"))
+        pulses_before = num(bus, "enc.count")
+        await accumulate(12.0)
+        held_after = int(num(bus, "released.count"))
+        pulses_after = num(bus, "enc.count")
+
+        check(held_after == held_before,
+              f"nothing gets past a raised blade stop "
+              f"({held_after - held_before} carton(s) escaped)")
+        check(pulses_after - pulses_before > 100.0,
+              f"and the belt ran the whole time, so that is the blade and not a "
+              f"stopped line ({pulses_after - pulses_before:.0f} pulses of travel)")
+        check(bit(bus, "stop.up") and not bit(bus, "stop.down"),
+              "the blade reports its raised limit while it is holding")
+
+        # --- 2. the same window at two line speeds
+        slow_out, slow_secs = await release(SLOW, 14.0)
+        check(slow_out >= 2,
+              f"a release at {SLOW:.0f} % lets product through ({slow_out} cartons)")
+
+        await accumulate(12.0)
+        fast_out, fast_secs = await release(FAST, 9.0)
+
+        check(abs(slow_out - fast_out) <= 1,
+              f"the same pulse window releases the same amount at twice the speed "
+              f"({slow_out} at {SLOW:.0f} % vs {fast_out} at {FAST:.0f} %)")
+        check(fast_secs < slow_secs * 0.75,
+              f"while taking about half as long ({slow_secs:.1f}s vs {fast_secs:.1f}s) "
+              f"-- which is what a controller timed in seconds would have got wrong")
+
+        # --- 3. a seized blade, with the command still on
+        #
+        # Seized *down*, which is the failure that matters: a stop frozen in
+        # its raised position is merely a line that will not run, and everybody
+        # notices that within a minute.
+        await accumulate(10.0)
+        state["reference"] = FAST
+        state["raise_blade"] = False
+        await asyncio.sleep(1.4)
+        await bus.force({"stop.fault": True})
+        await asyncio.sleep(1.0)
+        check(bit(bus, "panel.red"),
+              "a seized stop trips the station, exactly like the mushroom does")
+
+        # Which is correct, and is also why this leg cannot end there: a
+        # controller that trips proves nothing about whether its own *output*
+        # could have told it anything. So hold the line running by hand, with
+        # the fault standing and the raise command on, and watch.
+        state["manual_run"] = True
+        state["raise_blade"] = True
+        await asyncio.sleep(2.0)
+        check(not bit(bus, "stop.up"),
+              "a seized blade never reaches its raised limit, however long the "
+              "raise command is held")
+        escaped_before = int(num(bus, "released.count"))
+        await asyncio.sleep(10.0)
+        check(int(num(bus, "released.count")) > escaped_before,
+              "and product keeps escaping past it while the controller believes "
+              "it is holding -- the limit switch is the only honest thing to read")
+        state["manual_run"] = None
+        await bus.force(clear=["stop.fault"])
+        await asyncio.sleep(2.5)
+        check(bit(bus, "stop.up"), "clearing the fault lets the blade finish rising")
+    finally:
+        stop_event.set()
+        await task
+
+    print(f"RESULT sequence={'PASS' if not check.problems else 'FAIL'} "
+          f"window={WINDOW:.0f}p slow={slow_out}@{slow_secs:.1f}s "
+          f"fast={fast_out}@{fast_secs:.1f}s "
+          f"outfeed={int(num(bus, 'released.count'))} estop={estop_ms:.0f}ms")
+    return not check.problems, "; ".join(check.problems)
+
+
 DRIVERS = {
     "sorting-by-height": drive_sorting_by_height,
     "start-stop-station": drive_start_stop_station,
@@ -1642,6 +1846,7 @@ DRIVERS = {
     "roller-line-weighing": drive_roller_line_weighing,
     "pick-and-place-cell": drive_pick_and_place_cell,
     "heat-treat-station": drive_heat_treat_station,
+    "accumulation-buffer": drive_accumulation_buffer,
 }
 
 #: The *production* window, not the whole run: every scene now runs the shared
@@ -1658,6 +1863,10 @@ DEFAULT_DURATION = {
     "roller-line-weighing": 30.0,
     "pick-and-place-cell": 34.0,   # several full gantry cycles, not just one
     "heat-treat-station": 50.0,    # the P-only offset, then PI closing it
+    # Two accumulate-and-release cycles plus their drains, and the drains are
+    # most of it: a released carton has two metres to travel before the remover
+    # can count it.
+    "accumulation-buffer": 95.0,
 }
 
 

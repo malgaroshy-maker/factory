@@ -55,6 +55,7 @@ public partial class DemoDriver : Node
         ["roller-line-weighing"] = () => new RollerLineWeighingProfile(),
         ["pick-and-place-cell"] = () => new PickAndPlaceCellProfile(),
         ["heat-treat-station"] = () => new HeatTreatStationProfile(),
+        ["accumulation-buffer"] = () => new AccumulationBufferProfile(),
     };
 
     private IDemoProfile? _profile;

@@ -42,6 +42,13 @@
     "scene": "pick-and-place-cell"
   },
   {
+    "id": "accumulation-buffer",
+    "title": "Accumulation buffer",
+    "blurb": "Cartons pile up behind a blade stop on a belt that never stops, and are let out a batch at a time. The release is timed by encoder pulses, so it stays the same size when you turn the drive up — a timer would not.",
+    "path": "res://templates/accumulation_buffer.json",
+    "scene": "accumulation-buffer"
+  },
+  {
     "id": "heat-treat-station",
     "title": "Heat treat station",
     "blurb": "A thermal process with real inertia: you can heat as fast as the element allows and can only cool at the rate the room takes it. Pure proportional control leaves a standing offset you can measure.",
